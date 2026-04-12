@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-title" content="基金看板">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Jany基金看板</title>
@@ -292,6 +293,23 @@ main{padding:12px;width:100%}
 </main>
 
 <script>
+// ── iOS桌面图标（canvas动态生成）──
+(function(){
+  const c=document.createElement('canvas');
+  c.width=c.height=256;
+  const ctx=c.getContext('2d');
+  ctx.fillStyle='#1a2130';
+  ctx.fillRect(0,0,256,256);
+  ctx.font='150px "Apple Color Emoji",sans-serif';
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.fillText('💰',128,140);
+  const lnk=document.createElement('link');
+  lnk.rel='apple-touch-icon';
+  lnk.href=c.toDataURL('image/png');
+  document.head.appendChild(lnk);
+})();
+
 // ── 时钟 ──
 const DAYS=['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
 let _mktOpen=null;
