@@ -125,16 +125,22 @@ main{padding:12px 12px calc(var(--sab) + 24px);width:100%}
 .fund-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--flat)}
 .fund-card.up-card::before{background:var(--up)}
 .fund-card.down-card::before{background:var(--dn)}
-.card-top{display:flex;align-items:flex-start;justify-content:space-between;padding:12px 12px 10px 16px}
-.card-info{flex:1;min-width:0;margin-right:8px}
+.card-top{display:flex;align-items:center;padding:10px 12px 10px 6px;gap:6px}
+.card-info{flex:1;min-width:0}
 .card-name{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card-meta{display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap}
 .card-code{font-family:'Outfit',sans-serif;font-size:12px;color:var(--t2)}
 .shield-badge{font-size:10px;color:#60a5fa;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.25);border-radius:4px;padding:1px 6px}
 .card-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
-.drag-handle{color:var(--t3);cursor:grab;font-size:18px;padding:2px 4px;line-height:1;touch-action:none;user-select:none}
+.drag-handle{color:var(--t3);cursor:grab;font-size:20px;padding:4px 6px;line-height:1;touch-action:none;user-select:none;flex-shrink:0}
 .del-btn{font-size:11px;color:var(--t3);background:transparent;border:1px solid var(--bd2);border-radius:6px;padding:4px 10px;cursor:pointer}
 .del-btn:active{color:var(--up);border-color:var(--up-bd)}
+/* 收窄模式 */
+.fund-card.collapsed .card-data{display:none}
+.fund-card.collapsed .card-meta{display:none}
+.card-mini{display:none;border-top:1px solid var(--bd);padding:8px 12px 10px 18px;grid-template-columns:1fr 1fr}
+.fund-card.collapsed .card-mini{display:grid}
+.mini-pct{font-family:'Outfit',sans-serif;font-size:22px;font-weight:600;border-radius:6px;padding:1px 4px;margin-left:-4px}
 .card-data{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--bd)}
 .data-half{padding:12px 12px 14px 14px;overflow:hidden}
 .data-half:first-child{border-right:1px solid var(--bd)}
@@ -233,9 +239,15 @@ main{padding:12px 12px calc(var(--sab) + 24px);width:100%}
   </div>
   <button class="tbtn tbtn-p" onclick="addFund()">添加</button>
   <button class="tbtn tbtn-g" id="refBtn" onclick="refreshData()">刷新</button>
+  <button class="tbtn tbtn-g" id="colBtn" onclick="toggleAllCollapse()">收窄</button>
   <button class="tbtn tbtn-d" onclick="clearFunds()">清空</button>
 </div>
 
+<div id="testBar" style="display:none">
+  <span style="font-size:11px;color:#6b7f96">调试</span>
+  <button onclick="testFlash()" style="padding:5px 12px;border-radius:8px;border:1px solid rgba(59,130,246,0.4);background:rgba(59,130,246,0.1);color:#60a5fa;font-size:12px;cursor:pointer">▶ 模拟闪烁</button>
+  <button onclick="testDot()" style="padding:5px 12px;border-radius:8px;border:1px solid rgba(34,197,94,0.4);background:rgba(34,197,94,0.1);color:#22c55e;font-size:12px;cursor:pointer">● 绿点脉冲</button>
+</div>
 <main>
   <div class="card-view" id="cardView">
     <div class="empty-state"><div class="empty-icon">📊</div><div>数据加载中...</div></div>
@@ -251,6 +263,7 @@ main{padding:12px 12px calc(var(--sab) + 24px);width:100%}
 <script>
 // ── 时钟 ──
 const DAYS=['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+let _mktOpen=null;
 function updateClock(){
   const n=new Date();
   document.getElementById('liveTime').textContent=
@@ -260,9 +273,12 @@ function updateClock(){
   const d=n.getDay(),t=n.getHours()*60+n.getMinutes();
   const weekend=d===0||d===6;
   const open=!weekend&&((t>=570&&t<690)||(t>=780&&t<900));
-  document.getElementById('mktDot').className='mkt-dot'+(open?' open':'');
-  document.getElementById('mktLabel').textContent=weekend?'休市·周末':open?'交易中':
-    t<570?'盘前':t<900?(t<690?'午间休市':'盘后'):'已收盘';
+  if(open!==_mktOpen){
+    _mktOpen=open;
+    document.getElementById('mktDot').className='mkt-dot'+(open?' open':'');
+    document.getElementById('mktLabel').textContent=weekend?'休市·周末':open?'交易中':
+      t<570?'盘前':t<900?(t<690?'午间休市':'盘后'):'已收盘';
+  }
 }
 setInterval(updateClock,1000);updateClock();
 
@@ -367,43 +383,76 @@ async function fetchSingleFund(code){
 
 // ── 渲染 ──
 const prevData={};
+let allCollapsed=false;
 let cardSortable=null,tblSortable=null;
+let _lastResults=[];
+
 function fp(v){
   if(v==null)return{cls:'flat',txt:'--'};
   return{cls:v>0?'up':v<0?'down':'flat',txt:(v>0?'+':'')+v.toFixed(2)+'%'};
 }
-function renderCards(results){
+
+function toggleAllCollapse(){
+  allCollapsed=!allCollapsed;
+  document.getElementById('colBtn').textContent=allCollapsed?'展开':'收窄';
+  if(_lastResults.length)renderAll(_lastResults);
+}
+
+function calcFlash(results){
+  const fl={};
+  results.forEach(f=>{
+    if(f.error){fl[f.code]={ef:'',of2:''};return;}
+    const pr=prevData[f.code];
+    fl[f.code]={
+      ef:pr&&pr.estPct!==f.estPct&&f.estPct!=null?(f.estPct>(pr.estPct||0)?'flash-up':'flash-down'):'',
+      of2:pr&&pr.offPct!==f.offPct&&f.offPct!=null?(f.offPct>(pr.offPct||0)?'flash-up':'flash-down'):'',
+    };
+  });
+  results.forEach(f=>{if(!f.error)prevData[f.code]={estPct:f.estPct,offPct:f.offPct};});
+  return fl;
+}
+
+function renderAll(results){
+  _lastResults=results;
+  const fl=calcFlash(results);
+  renderCards(results,fl);
+  renderTable(results,fl);
+}
+
+function renderCards(results,fl){
   const html=results.map(f=>{
     if(f.error)return`<div class="fund-card" data-code="${f.code}">
-      <div class="card-top"><div class="card-info"><div class="card-name" style="color:var(--t3)">${NAMES[f.code]||f.code}</div><div class="card-meta"><span class="card-code">${f.code}</span></div></div>
-      <div class="card-actions"><span class="drag-handle">⠿</span><button class="del-btn" onclick="delFund('${f.code}')">删除</button></div></div>
+      <div class="card-top"><span class="drag-handle">⠿</span><div class="card-info"><div class="card-name" style="color:var(--t3)">${NAMES[f.code]||f.code}</div></div>
+      <div class="card-actions"><button class="del-btn" onclick="delFund('${f.code}')">删除</button></div></div>
       <div style="padding:10px 16px 14px;font-size:12px;color:var(--t3);border-top:1px solid var(--bd)">⚠ 获取超时，请刷新</div></div>`;
     const ep=fp(f.estPct),op=fp(f.offPct);
     const cc=f.estPct!=null?(f.estPct>0?'up-card':f.estPct<0?'down-card':''):'';
-    const pr=prevData[f.code];
-    const ef=pr&&pr.estPct!==f.estPct&&f.estPct!=null?(f.estPct>(pr.estPct||0)?'flash-up':'flash-down'):'';
-    const of2=pr&&pr.offPct!==f.offPct&&f.offPct!=null?(f.offPct>(pr.offPct||0)?'flash-up':'flash-down'):'';
-    prevData[f.code]={estPct:f.estPct,offPct:f.offPct};
+    const{ef,of2}=(fl||{})[f.code]||{ef:'',of2:''};
     const sh=f.code==='022439'?'<span class="shield-badge">🛡 护盾</span>':'';
-    return`<div class="fund-card ${cc}" data-code="${f.code}">
+    return`<div class="fund-card ${cc}${allCollapsed?' collapsed':''}" data-code="${f.code}">
       <div class="card-top">
-        <div class="card-info"><div class="card-name">${f.name}</div><div class="card-meta"><span class="card-code">${f.code}</span>${sh}</div></div>
-        <div class="card-actions"><span class="drag-handle">⠿</span><button class="del-btn" onclick="delFund('${f.code}')">删除</button></div>
+        <span class="drag-handle">⠿</span>
+        <div class="card-info"><div class="card-name">${f.name}${sh?'&nbsp;'+sh:''}</div></div>
+        <div class="card-actions"><button class="del-btn" onclick="delFund('${f.code}')">删除</button></div>
       </div>
       <div class="card-data">
         <div class="data-half"><div class="dh-label">盘中估算</div><div class="dh-pct ${ep.cls} ${ef}">${ep.txt}</div><div class="dh-nav">净值 <span class="nv">${f.estVal||'--'}</span></div><div class="dh-time">${f.estTime||'--'}</div></div>
-        <div class="data-half"><div class="dh-label">官方净值</div><div class="dh-pct ${op.cls} ${of2}">${op.txt}</div><div class="dh-nav">净值 <span class="nv">${f.offVal||'--'}</span></div><div class="dh-time">${f.offDate||'--'}</div></div>
-      </div></div>`;
+        <div class="data-half"><div class="dh-label">官方数据</div><div class="dh-pct ${op.cls} ${of2}">${op.txt}</div><div class="dh-nav">净值 <span class="nv">${f.offVal||'--'}</span></div><div class="dh-time">${f.offDate||'--'}</div></div>
+      </div>
+      <div class="card-mini">
+        <div><div class="mini-pct ${ep.cls} ${ef}">${ep.txt}</div></div>
+        <div><div class="mini-pct ${op.cls} ${of2}">${op.txt}</div></div>
+      </div>
+    </div>`;
   }).join('');
   document.getElementById('cardView').innerHTML=html||`<div class="empty-state"><div class="empty-icon">📭</div><div>暂无关注基金</div></div>`;
 }
-function renderTable(results){
+
+function renderTable(results,fl){
   const html=results.map(f=>{
     if(f.error)return`<tr data-code="${f.code}"><td><span class="tbl-drag">⠿</span><div style="display:inline-block;vertical-align:top"><div class="tbl-name" style="color:var(--t3)">${NAMES[f.code]||f.code}</div><div class="tbl-code">${f.code}</div></div></td><td colspan="2" style="color:var(--t3);font-size:12px">⚠ 获取超时</td><td><button class="tbl-del" onclick="delFund('${f.code}')">删除</button></td></tr>`;
     const ep=fp(f.estPct),op=fp(f.offPct);
-    const pr=prevData[f.code]||{};
-    const ef=pr.estPct!==undefined&&pr.estPct!==f.estPct&&f.estPct!=null?(f.estPct>(pr.estPct||0)?'flash-up':'flash-down'):'';
-    const of2=pr.offPct!==undefined&&pr.offPct!==f.offPct&&f.offPct!=null?(f.offPct>(pr.offPct||0)?'flash-up':'flash-down'):'';
+    const{ef,of2}=(fl||{})[f.code]||{ef:'',of2:''};
     const sh=f.code==='022439'?' 🛡':'';
     return`<tr data-code="${f.code}">
       <td><span class="tbl-drag">⠿</span><div style="display:inline-block;vertical-align:top"><div class="tbl-name">${f.name}${sh}</div><div class="tbl-code">${f.code}</div></div></td>
@@ -426,7 +475,7 @@ async function refreshData(){
     btn.textContent='刷新';btn.disabled=false;return;
   }
   const results=await Promise.all(funds.map(fetchSingleFund));
-  renderCards(results);renderTable(results);
+  renderAll(results);
   btn.textContent='刷新';btn.disabled=false;
   if(cardSortable)cardSortable.destroy();
   if(tblSortable)tblSortable.destroy();
@@ -447,6 +496,18 @@ function delFund(code){funds=funds.filter(c=>c!==code);saveFunds();refreshData()
 function clearFunds(){if(confirm('确定清空全部基金？')){funds=[];saveFunds();refreshData();}}
 document.getElementById('codeInput').addEventListener('keydown',e=>{if(e.key==='Enter')addFund();});
 
+function testFlash(){
+  if(!_lastResults.length){alert('请等数据加载完毕');return;}
+  const faked=_lastResults.map(f=>f.error?f:({...f,
+    estPct:(f.estPct||0)+(Math.random()>0.5?0.5:-0.5),
+    offPct:(f.offPct||0)+(Math.random()>0.5?0.3:-0.3),
+  }));
+  renderAll(faked);
+}
+function testDot(){
+  _mktOpen=null;
+  document.getElementById('mktDot').className='mkt-dot open';
+}
 refreshData();
 setInterval(fetchIndices,10000);
 setInterval(refreshData,60000);
