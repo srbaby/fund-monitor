@@ -9,6 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Jany基金看板</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
@@ -293,21 +294,6 @@ main{padding:12px;width:100%}
 </main>
 
 <script>
-// ── iOS桌面图标（canvas动态生成）──
-(function(){
-  const c=document.createElement('canvas');
-  c.width=c.height=256;
-  const ctx=c.getContext('2d');
-  ctx.font='220px "Apple Color Emoji",sans-serif';
-  ctx.textAlign='center';
-  ctx.textBaseline='middle';
-  ctx.fillText('💰',128,138);
-  const lnk=document.createElement('link');
-  lnk.rel='apple-touch-icon';
-  lnk.href=c.toDataURL('image/png');
-  document.head.appendChild(lnk);
-})();
-
 // ── 时钟 ──
 const DAYS=['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
 let _mktOpen=null;
