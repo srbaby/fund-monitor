@@ -64,10 +64,9 @@ body{
 .idx-cell.down::after{background:var(--dn);opacity:1}
 .idx-cell:nth-child(3n){border-right:none}
 .idx-cell:nth-child(n+4){border-bottom:none}
-.idx-lbl{font-size:10px;color:var(--t2);font-weight:500;margin-bottom:5px;white-space:nowrap}
-.idx-row{display:flex;align-items:baseline;gap:6px}
-.idx-chg{font-family:'Outfit',sans-serif;font-size:16px;font-weight:700;line-height:1}
-.idx-price{font-family:'Outfit',sans-serif;font-size:11px;font-weight:400;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.idx-lbl{font-size:10px;color:var(--t2);font-weight:500;margin-bottom:4px;white-space:nowrap}
+.idx-price{font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;line-height:1;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.idx-chg{font-family:'Outfit',sans-serif;font-size:11px;margin-top:4px;font-weight:500}
 
 /* ── 卡片列标题栏 (手机端，卡片上方) ── */
 .card-header-bar{
@@ -221,8 +220,7 @@ main{padding:12px;width:100%}
   .idx-cell{border-bottom:none}
   .idx-cell:nth-child(3n){border-right:1px solid var(--bd)}
   .idx-cell:nth-child(6){border-right:none}
-  .idx-chg{font-size:20px}
-  .idx-price{font-size:12px}
+  .idx-price{font-size:16px}
   /* 桌面：列标题栏静态显示，隐藏循环和收窄 */
   .card-header-bar{display:flex!important;position:static;padding:10px 24px}
   #cycleBtn{display:none!important}
@@ -334,7 +332,7 @@ function fetchIndices(){
       const map={};diff.forEach(d=>{map[d.f12]=d;});
       document.getElementById('idxBar').innerHTML=INDICES.map(idx=>{
         const d=map[idx.id];
-        if(!d||!d.f2)return`<div class="idx-cell" data-id="${idx.id}"><div class="idx-lbl">${idx.lbl}</div><div class="idx-row"><div class="idx-chg flat">—</div></div></div>`;
+        if(!d||!d.f2)return`<div class="idx-cell" data-id="${idx.id}"><div class="idx-lbl">${idx.lbl}</div><div class="idx-price flat">—</div><div class="idx-chg flat">—</div></div>`;
         const price=(typeof d.f2==='number'?d.f2.toFixed(2):String(d.f2));
         const pct=d.f3??0;
         const cls=pct>0?'up':pct<0?'down':'flat';
@@ -344,10 +342,8 @@ function fetchIndices(){
         idxPrev[idx.id]=price;
         return`<div class="idx-cell ${cls} ${flash}" data-id="${idx.id}">
           <div class="idx-lbl">${idx.lbl}</div>
-          <div class="idx-row">
-            <div class="idx-chg ${cls}">${sign}${(typeof pct==='number'?pct.toFixed(2):pct)}%</div>
-            <div class="idx-price">${price}</div>
-          </div>
+          <div class="idx-price ${cls}">${price}</div>
+          <div class="idx-chg ${cls}">${sign}${(typeof pct==='number'?pct.toFixed(2):pct)}%</div>
         </div>`;
       }).join('');
     };
@@ -479,11 +475,11 @@ function renderAll(results){
   }
 }
 
-function inlinePctHtml(ep,op,stale,ef,of2){
-  if(miniMode===0) return`<span class="inline-pct ${ep.cls} ${ef}">${ep.txt}</span>`;
-  if(miniMode===1) return`<span class="inline-pct ${stale?'flat':op.cls} ${of2}">${op.txt}</span>`;
+function inlinePctHtml(ep,op,stale){
+  if(miniMode===0) return`<span class="inline-pct ${ep.cls}">${ep.txt}</span>`;
+  if(miniMode===1) return`<span class="inline-pct ${stale?'flat':op.cls}">${op.txt}</span>`;
   // mode 2: 估算|官方
-  return`<span class="inline-pct"><span class="${ep.cls} ${ef}">${ep.txt}</span><span style="color:var(--t3);margin:0 3px">|</span><span class="${stale?'flat':op.cls} ${of2}">${op.txt}</span></span>`;
+  return`<span class="inline-pct"><span class="${ep.cls}">${ep.txt}</span><span style="color:var(--t3);margin:0 3px">|</span><span class="${stale?'flat':op.cls}">${op.txt}</span></span>`;
 }
 
 function renderCards(results,fl,today){
@@ -498,7 +494,7 @@ function renderCards(results,fl,today){
     const sh=f.code==='022439'?'<span class="shield-badge">🛡</span>':'';
     const estDateToday=f.estTime&&f.estTime.slice(0,10)===today;
     const isStale=estDateToday&&(!f.offDate||f.offDate.slice(0,10)<today);
-    const inlinePct=inlinePctHtml(ep,op,isStale,ef,of2);
+    const inlinePct=inlinePctHtml(ep,op,isStale);
     return`<div class="fund-card ${cc}${allCollapsed?' collapsed':''}" data-code="${f.code}">
       <div class="card-top">
         <span class="drag-handle">⠿</span>
