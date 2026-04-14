@@ -27,24 +27,11 @@
   --sab:env(safe-area-inset-bottom,0px);
 }
 html,body{max-width:100%;overflow-x:hidden}
-body{
-  background:var(--bg);color:var(--t1);
-  font-family:'Noto Sans SC','PingFang SC',-apple-system,sans-serif;
-  font-size:14px;min-height:100vh;
-  -webkit-font-smoothing:antialiased;
-}
+body{background:var(--bg);color:var(--t1);font-family:'Noto Sans SC','PingFang SC',-apple-system,sans-serif;font-size:14px;min-height:100vh;-webkit-font-smoothing:antialiased}
 .up{color:var(--up)}.down{color:var(--dn)}.flat{color:var(--flat)}
 
 /* ── Header ── */
-.header{
-  position:sticky;top:0;z-index:200;
-  padding:calc(var(--sat) + 12px) 16px 12px;
-  background:rgba(10,14,20,0.95);
-  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-  border-bottom:1px solid var(--bd);
-  display:flex;align-items:center;justify-content:space-between;
-  width:100%;
-}
+.header{position:sticky;top:0;z-index:200;padding:calc(var(--sat) + 12px) 16px 12px;background:rgba(10,14,20,0.95);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;width:100%}
 .hd-left{display:flex;align-items:center;gap:10px;min-width:0}
 .hd-logo{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0}
 .hd-title{font-size:16px;font-weight:600}
@@ -64,63 +51,30 @@ body{
 .idx-cell.down::after{background:var(--dn);opacity:1}
 .idx-cell:nth-child(3n){border-right:none}
 .idx-cell:nth-child(n+4){border-bottom:none}
-.idx-lbl{font-size:10px;color:var(--t2);font-weight:500;margin-bottom:4px;white-space:nowrap}
-.idx-price{font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;line-height:1;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.idx-chg{font-family:'Outfit',sans-serif;font-size:11px;margin-top:4px;font-weight:500}
+.idx-lbl{font-size:10px;color:var(--t2);font-weight:500;margin-bottom:5px;white-space:nowrap}
+.idx-row{display:flex;align-items:baseline;gap:6px}
+.idx-chg{font-family:'Outfit',sans-serif;font-size:16px;font-weight:700;line-height:1}
+.idx-price{font-family:'Outfit',sans-serif;font-size:11px;font-weight:400;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-/* ── 卡片列标题栏 (手机端，卡片上方) ── */
-.card-header-bar{
-  display:none;
-  align-items:center;
-  padding:6px 12px 6px 16px;
-  background:var(--bg2);
-  border-bottom:1px solid var(--bd);
-  gap:8px;
-  position:sticky;top:calc(var(--sat) + 56px);
-  z-index:100;
-}
+/* ── 卡片列标题栏 ── */
+.card-header-bar{display:none;align-items:center;padding:6px 12px 6px 16px;background:var(--bg2);border-bottom:1px solid var(--bd);gap:8px;position:sticky;top:calc(var(--sat) + 56px);z-index:100}
 .chb-title{font-size:11px;color:var(--t3);font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chb-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
 .chb-btn{padding:4px 10px;border-radius:8px;border:1px solid var(--bd2);background:transparent;color:var(--t2);font-size:11px;font-family:'Noto Sans SC',sans-serif;cursor:pointer;white-space:nowrap}
 .chb-btn:active{background:var(--bg3)}
 
 /* ── 底部工具栏 ── */
-.toolbar{
-  background:var(--bg2);
-  border-top:1px solid var(--bd);
-  padding:10px 12px;
-  display:flex;align-items:center;gap:8px;
-}
-/* 收窄时吸底 */
-body.collapsed-mode .toolbar{
-  position:fixed;bottom:0;left:0;right:0;
-  padding:10px 12px calc(var(--sab) + 10px);
-  z-index:150;
-  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-}
-body.collapsed-mode main{
-  padding-bottom:calc(var(--sab) + 68px);
-}
-.search-wrap{
-  flex:1;min-width:0;
-  display:flex;align-items:center;
-  background:var(--bg3);border:1px solid var(--bd2);
-  border-radius:10px;padding:0 12px;gap:8px;
-}
-.search-wrap input{
-  flex:1;min-width:0;background:transparent;border:none;outline:none;
-  color:var(--t1);font-family:'Outfit',sans-serif;
-  font-size:14px;padding:9px 0;letter-spacing:1px;
-}
+.toolbar{background:var(--bg2);border-top:1px solid var(--bd);padding:10px 12px;display:flex;align-items:center;gap:8px}
+body.collapsed-mode .toolbar{position:fixed;bottom:0;left:0;right:0;padding:10px 12px calc(var(--sab) + 10px);z-index:150;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+body.collapsed-mode main{padding-bottom:calc(var(--sab) + 68px)}
+.search-wrap{flex:1;min-width:0;display:flex;align-items:center;background:var(--bg3);border:1px solid var(--bd2);border-radius:10px;padding:0 12px;gap:8px}
+.search-wrap input{flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--t1);font-family:'Outfit',sans-serif;font-size:14px;padding:9px 0;letter-spacing:1px}
 .search-wrap input::placeholder{color:var(--t3);font-family:'Noto Sans SC',sans-serif;font-size:13px;letter-spacing:0}
 .si{color:var(--t3);font-size:14px;flex-shrink:0}
-.tbtn{
-  padding:8px 12px;border-radius:10px;border:none;
-  font-size:13px;font-weight:500;font-family:'Noto Sans SC',sans-serif;
-  cursor:pointer;white-space:nowrap;flex-shrink:0;transition:opacity .15s;
-}
+.tbtn{padding:8px 12px;border-radius:10px;border:none;font-size:13px;font-weight:500;font-family:'Noto Sans SC',sans-serif;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:opacity .15s}
 .tbtn:active{opacity:.7}
 .tbtn-p{background:var(--accent);color:#fff}
+.tbtn-g{background:var(--bg3);color:var(--t2);border:1px solid var(--bd2)}
 
 /* ── Main ── */
 main{padding:12px;width:100%}
@@ -159,7 +113,6 @@ main{padding:12px;width:100%}
 .fund-card.collapsed .card-top{padding:5px 10px 5px 6px;gap:4px}
 .fund-card.collapsed .card-name{font-size:13px}
 .fund-card.collapsed .del-btn{display:none}
-/* 收窄时内联涨跌显示 */
 .inline-pct{display:none;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;flex-shrink:0;white-space:nowrap}
 .fund-card.collapsed .inline-pct{display:block}
 
@@ -199,19 +152,10 @@ main{padding:12px;width:100%}
 
 /* ── 浅色模式 ── */
 @media(prefers-color-scheme:light){
-  :root{
-    --bg:#f0f4f8;--bg2:#ffffff;--bg3:#f0f4f8;--bg4:#e2e8f0;
-    --bd:rgba(0,0,0,0.08);--bd2:rgba(0,0,0,0.14);
-    --t1:#1a202c;--t2:#4a5568;--t3:#718096;
-    --accent:#2563eb;--flat:#94a3b8;
-    --up:#dc2626;--up-bg:rgba(220,38,38,0.08);--up-bd:rgba(220,38,38,0.3);
-    --dn:#16a34a;--dn-bd:rgba(22,163,74,0.3);
-  }
+  :root{--bg:#f0f4f8;--bg2:#ffffff;--bg3:#f0f4f8;--bg4:#e2e8f0;--bd:rgba(0,0,0,0.08);--bd2:rgba(0,0,0,0.14);--t1:#1a202c;--t2:#4a5568;--t3:#718096;--accent:#2563eb;--flat:#94a3b8;--up:#dc2626;--up-bg:rgba(220,38,38,0.08);--up-bd:rgba(220,38,38,0.3);--dn:#16a34a;--dn-bd:rgba(22,163,74,0.3)}
   .header{background:rgba(240,244,248,0.95)}
   .toolbar{background:rgba(255,255,255,0.95)}
   .card-header-bar{background:rgba(240,244,248,0.95)}
-  .mkt-dot.open{animation:pulseLight 2s infinite}
-  @keyframes pulseLight{0%{box-shadow:0 0 0 0 rgba(22,163,74,.5)}70%{box-shadow:0 0 0 6px transparent}100%{box-shadow:0 0 0 0 transparent}}
 }
 
 /* ── 桌面响应式 ── */
@@ -220,8 +164,8 @@ main{padding:12px;width:100%}
   .idx-cell{border-bottom:none}
   .idx-cell:nth-child(3n){border-right:1px solid var(--bd)}
   .idx-cell:nth-child(6){border-right:none}
-  .idx-price{font-size:16px}
-  /* 桌面：列标题栏静态显示，隐藏循环和收窄 */
+  .idx-chg{font-size:20px}
+  .idx-price{font-size:12px}
   .card-header-bar{display:flex!important;position:static;padding:10px 24px}
   #cycleBtn{display:none!important}
   #colBtn{display:none!important}
@@ -248,12 +192,12 @@ main{padding:12px;width:100%}
 </header>
 
 <div class="idx-bar" id="idxBar">
-  <div class="idx-cell"><div class="idx-lbl">沪深300</div><div class="idx-price"><span class="sk" style="width:60px;height:14px"></span></div><div class="idx-chg"><span class="sk" style="width:44px;height:11px;margin-top:4px"></span></div></div>
-  <div class="idx-cell"><div class="idx-lbl">中证A500</div><div class="idx-price"><span class="sk" style="width:60px;height:14px"></span></div></div>
-  <div class="idx-cell"><div class="idx-lbl">中证500</div><div class="idx-price"><span class="sk" style="width:60px;height:14px"></span></div></div>
-  <div class="idx-cell"><div class="idx-lbl">红利低波</div><div class="idx-price"><span class="sk" style="width:60px;height:14px"></span></div></div>
-  <div class="idx-cell"><div class="idx-lbl">国债指数</div><div class="idx-price"><span class="sk" style="width:60px;height:14px"></span></div></div>
-  <div class="idx-cell"><div class="idx-lbl">恒生指数</div><div class="idx-price"><span class="sk" style="width:60px;height:14px"></span></div></div>
+  <div class="idx-cell"><div class="idx-lbl">沪深300</div><div class="idx-row"><span class="sk" style="width:44px;height:16px"></span></div></div>
+  <div class="idx-cell"><div class="idx-lbl">中证A500</div><div class="idx-row"><span class="sk" style="width:44px;height:16px"></span></div></div>
+  <div class="idx-cell"><div class="idx-lbl">中证500</div><div class="idx-row"><span class="sk" style="width:44px;height:16px"></span></div></div>
+  <div class="idx-cell"><div class="idx-lbl">红利低波</div><div class="idx-row"><span class="sk" style="width:44px;height:16px"></span></div></div>
+  <div class="idx-cell"><div class="idx-lbl">国债指数</div><div class="idx-row"><span class="sk" style="width:44px;height:16px"></span></div></div>
+  <div class="idx-cell"><div class="idx-lbl">恒生指数</div><div class="idx-row"><span class="sk" style="width:44px;height:16px"></span></div></div>
 </div>
 
 <div id="testBar" style="display:none">
@@ -262,7 +206,6 @@ main{padding:12px;width:100%}
 </div>
 
 <main>
-  <!-- 手机卡片列标题栏 -->
   <div class="card-header-bar" id="cardHeaderBar">
     <span class="chb-title">基金名称</span>
     <div class="chb-actions">
@@ -283,7 +226,6 @@ main{padding:12px;width:100%}
     </table>
   </div>
 
-  <!-- 添加bar，跟在内容后面 -->
   <div class="toolbar">
     <div class="search-wrap">
       <span class="si">⌕</span>
@@ -332,8 +274,8 @@ function fetchIndices(){
       const map={};diff.forEach(d=>{map[d.f12]=d;});
       document.getElementById('idxBar').innerHTML=INDICES.map(idx=>{
         const d=map[idx.id];
-        if(!d||!d.f2)return`<div class="idx-cell" data-id="${idx.id}"><div class="idx-lbl">${idx.lbl}</div><div class="idx-price flat">—</div><div class="idx-chg flat">—</div></div>`;
-        const price=(typeof d.f2==='number'?d.f2.toFixed(2):String(d.f2));
+        if(!d||!d.f2)return`<div class="idx-cell" data-id="${idx.id}"><div class="idx-lbl">${idx.lbl}</div><div class="idx-row"><div class="idx-chg flat">—</div></div></div>`;
+        const price=typeof d.f2==='number'?d.f2.toFixed(2):String(d.f2);
         const pct=d.f3??0;
         const cls=pct>0?'up':pct<0?'down':'flat';
         const sign=pct>0?'+':'';
@@ -342,8 +284,10 @@ function fetchIndices(){
         idxPrev[idx.id]=price;
         return`<div class="idx-cell ${cls} ${flash}" data-id="${idx.id}">
           <div class="idx-lbl">${idx.lbl}</div>
-          <div class="idx-price ${cls}">${price}</div>
-          <div class="idx-chg ${cls}">${sign}${(typeof pct==='number'?pct.toFixed(2):pct)}%</div>
+          <div class="idx-row">
+            <div class="idx-chg ${cls}">${sign}${typeof pct==='number'?pct.toFixed(2):pct}%</div>
+            <div class="idx-price">${price}</div>
+          </div>
         </div>`;
       }).join('');
     };
@@ -365,45 +309,55 @@ let funds=[];
 function loadFunds(){const c=localStorage.getItem(STORE);funds=(c&&c!=='[]')?JSON.parse(c):[...DEFAULT_CODES];}
 function saveFunds(){localStorage.setItem(STORE,JSON.stringify(funds));}
 
+// 估算接口：并发请求
 window.jsonpResolvers={};
 window.jsonpgz=function(data){
   if(data?.fundcode&&window.jsonpResolvers[data.fundcode]){
     window.jsonpResolvers[data.fundcode](data);delete window.jsonpResolvers[data.fundcode];
   }
 };
-const estQ=[];let estBusy=false;
-function fetchEst(code){return new Promise(r=>{estQ.push({code,resolve:r});drainEst();});}
-function drainEst(){
-  if(estBusy||!estQ.length)return;estBusy=true;
-  const{code,resolve}=estQ.shift();let done=false;
-  const fin=v=>{if(!done){done=true;resolve(v);estBusy=false;setTimeout(drainEst,30);}};
-  window.jsonpResolvers[code]=fin;
-  const s=document.createElement('script');
-  s.src=`https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`;
-  s.onerror=()=>fin(null);setTimeout(()=>fin(null),3000);document.head.appendChild(s);
+function fetchEst(code){
+  return new Promise(resolve=>{
+    let done=false;
+    const fin=v=>{if(!done){done=true;delete window.jsonpResolvers[code];resolve(v);}};
+    window.jsonpResolvers[code]=fin;
+    const s=document.createElement('script');
+    s.src=`https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`;
+    s.onerror=()=>fin(null);setTimeout(()=>fin(null),3000);document.head.appendChild(s);
+  });
 }
+
+// 官方净值：F10接口，串行
 const offQ=[];let offBusy=false;
 function fetchOff(code){return new Promise(r=>{offQ.push({code,resolve:r});drainOff();});}
 function drainOff(){
   if(offBusy||!offQ.length)return;offBusy=true;
   const{code,resolve}=offQ.shift();let done=false;
-  const fin=v=>{if(!done){done=true;window.Data_netWorthTrend=undefined;resolve(v);offBusy=false;setTimeout(drainOff,30);}};
+  const fin=v=>{if(!done){done=true;window.apidata=undefined;resolve(v);offBusy=false;setTimeout(drainOff,30);}};
   const s=document.createElement('script');
-  s.src=`https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`;
+  s.src=`https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz&code=${code}&page=1&per=1&v=${Date.now()}`;
   s.onload=()=>{
     try{
-      const arr=window.Data_netWorthTrend;
-      if(arr?.length){
-        const last=arr[arr.length-1],prev=arr.length>1?arr[arr.length-2]:null;
-        let pct=last.equityReturn;
-        if(pct==null&&prev)pct=(last.y-prev.y)/prev.y*100;
-        const date=new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(last.x)).replace(/\//g,'-');
-        fin({nav:Number(last.y).toFixed(4),pct:pct!=null?Number(pct).toFixed(2):null,date});
-      }else fin(null);
+      const html=window.apidata?.content;
+      if(html){
+        const tr=html.match(/<tbody>\s*<tr>(.*?)<\/tr>/i);
+        if(tr){
+          const tds=tr[1].match(/<td[^>]*>(.*?)<\/td>/g).map(td=>td.replace(/<[^>]+>/g,'').trim());
+          if(tds.length>=4){
+            const date=tds[0],nav=tds[1];
+            let pct=null;
+            if(tds[3]&&tds[3]!=='---')pct=parseFloat(tds[3].replace('%',''));
+            fin({nav:Number(nav).toFixed(4),pct:pct!=null?pct.toFixed(2):null,date});
+            return;
+          }
+        }
+      }
+      fin(null);
     }catch(e){fin(null);}
   };
   s.onerror=()=>fin(null);setTimeout(()=>fin(null),3000);document.head.appendChild(s);
 }
+
 async function fetchSingleFund(code){
   const[est,off]=await Promise.all([fetchEst(code),fetchOff(code)]);
   if(!est&&!off)return{code,error:true};
@@ -419,7 +373,6 @@ async function fetchSingleFund(code){
 // ── 状态 ──
 const prevData={};
 let allCollapsed=false;
-// miniMode: 0=盘中估算 1=官方数据 2=估算|官方
 let miniMode=0;
 const miniLabels=['盘中估算','官方数据','估算|官方'];
 let cardSortable=null,tblSortable=null;
@@ -430,12 +383,15 @@ function fp(v){
   return{cls:v>0?'up':v<0?'down':'flat',txt:(v>0?'+':'')+v.toFixed(2)+'%'};
 }
 
+function todayDateStr(){
+  return new Date().toLocaleDateString('zh-CN',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).replace(/\//g,'-');
+}
+
 function toggleAllCollapse(){
   allCollapsed=!allCollapsed;
   document.getElementById('colBtn').textContent=allCollapsed?'展开':'收窄';
   document.getElementById('cycleBtn').style.display=allCollapsed?'':'none';
-  // 收窄时body加class让toolbar吸底
-  document.body.classList.toggle('collapsed-mode', allCollapsed);
+  document.body.classList.toggle('collapsed-mode',allCollapsed);
   if(_lastResults.length)renderAll(_lastResults);
 }
 
@@ -459,27 +415,19 @@ function calcFlash(results){
   return fl;
 }
 
-function todayDateStr(){
-  return new Date().toLocaleDateString('zh-CN',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).replace(/\//g,'-');
-}
-
 function renderAll(results){
   _lastResults=results;
   const fl=calcFlash(results);
   const today=todayDateStr();
   renderCards(results,fl,today);
   renderTable(results,fl,today);
-  // 显示卡片列标题栏
-  if(results.length){
-    document.getElementById('cardHeaderBar').style.display='flex';
-  }
+  if(results.length)document.getElementById('cardHeaderBar').style.display='flex';
 }
 
-function inlinePctHtml(ep,op,stale){
-  if(miniMode===0) return`<span class="inline-pct ${ep.cls}">${ep.txt}</span>`;
-  if(miniMode===1) return`<span class="inline-pct ${stale?'flat':op.cls}">${op.txt}</span>`;
-  // mode 2: 估算|官方
-  return`<span class="inline-pct"><span class="${ep.cls}">${ep.txt}</span><span style="color:var(--t3);margin:0 3px">|</span><span class="${stale?'flat':op.cls}">${op.txt}</span></span>`;
+function inlinePctHtml(ep,op,stale,ef,of2){
+  if(miniMode===0)return`<span class="inline-pct ${ep.cls} ${ef}">${ep.txt}</span>`;
+  if(miniMode===1)return`<span class="inline-pct ${stale?'flat':op.cls} ${of2}">${op.txt}</span>`;
+  return`<span class="inline-pct"><span class="${ep.cls} ${ef}">${ep.txt}</span><span style="color:var(--t3);margin:0 3px">|</span><span class="${stale?'flat':op.cls} ${of2}">${op.txt}</span></span>`;
 }
 
 function renderCards(results,fl,today){
@@ -494,7 +442,7 @@ function renderCards(results,fl,today){
     const sh=f.code==='022439'?'<span class="shield-badge">🛡</span>':'';
     const estDateToday=f.estTime&&f.estTime.slice(0,10)===today;
     const isStale=estDateToday&&(!f.offDate||f.offDate.slice(0,10)<today);
-    const inlinePct=inlinePctHtml(ep,op,isStale);
+    const inlinePct=inlinePctHtml(ep,op,isStale,ef,of2);
     return`<div class="fund-card ${cc}${allCollapsed?' collapsed':''}" data-code="${f.code}">
       <div class="card-top">
         <span class="drag-handle">⠿</span>
