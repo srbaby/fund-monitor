@@ -22,7 +22,7 @@
   --accent:#3b82f6;
   --up:#f04444;--up-bg:rgba(240,68,68,0.12);--up-bd:rgba(240,68,68,0.3);
   --dn:#22c55e;--dn-bd:rgba(34,197,94,0.3);
-  --flat:#4a5568;
+  --flat:#e8edf5;
   --sat:env(safe-area-inset-top,0px);
   --sab:env(safe-area-inset-bottom,0px);
 }
@@ -152,7 +152,7 @@ main{padding:12px;width:100%}
 
 /* ── 浅色模式 ── */
 @media(prefers-color-scheme:light){
-  :root{--bg:#f0f4f8;--bg2:#ffffff;--bg3:#f0f4f8;--bg4:#e2e8f0;--bd:rgba(0,0,0,0.08);--bd2:rgba(0,0,0,0.14);--t1:#1a202c;--t2:#4a5568;--t3:#718096;--accent:#2563eb;--flat:#94a3b8;--up:#dc2626;--up-bg:rgba(220,38,38,0.08);--up-bd:rgba(220,38,38,0.3);--dn:#16a34a;--dn-bd:rgba(22,163,74,0.3)}
+  :root{--bg:#f0f4f8;--bg2:#ffffff;--bg3:#f0f4f8;--bg4:#e2e8f0;--bd:rgba(0,0,0,0.08);--bd2:rgba(0,0,0,0.14);--t1:#1a202c;--t2:#4a5568;--t3:#718096;--accent:#2563eb;--flat:#e8edf5;--up:#dc2626;--up-bg:rgba(220,38,38,0.08);--up-bd:rgba(220,38,38,0.3);--dn:#16a34a;--dn-bd:rgba(22,163,74,0.3)}
   .header{background:rgba(240,244,248,0.95)}
   .toolbar{background:rgba(255,255,255,0.95)}
   .card-header-bar{background:rgba(240,244,248,0.95)}
@@ -441,7 +441,10 @@ function renderCards(results,fl,today){
     const{ef,of2}=(fl||{})[f.code]||{ef:'',of2:''};
     const sh=f.code==='022439'?'<span class="shield-badge">🛡</span>':'';
     const estDateToday=f.estTime&&f.estTime.slice(0,10)===today;
-    const isStale=estDateToday&&(!f.offDate||f.offDate.slice(0,10)<today);
+    const n=new Date(),wd=n.getDay(),hm=n.getHours()*60+n.getMinutes();
+    const tradingDayStart=wd>=1&&wd<=5&&hm>=540;
+    const offStale=!f.offDate||f.offDate.slice(0,10)<today;
+    const isStale=(estDateToday||tradingDayStart)&&offStale;
     const inlinePct=inlinePctHtml(ep,op,isStale,ef,of2);
     return`<div class="fund-card ${cc}${allCollapsed?' collapsed':''}" data-code="${f.code}">
       <div class="card-top">
@@ -466,7 +469,9 @@ function renderTable(results,fl,today){
     const{ef,of2}=(fl||{})[f.code]||{ef:'',of2:''};
     const sh=f.code==='022439'?' 🛡':'';
     const estDateToday=f.estTime&&f.estTime.slice(0,10)===today;
-    const tblStale=estDateToday&&(!f.offDate||f.offDate.slice(0,10)<today);
+    const n2=new Date(),wd2=n2.getDay(),hm2=n2.getHours()*60+n2.getMinutes();
+    const tradingDayStart2=wd2>=1&&wd2<=5&&hm2>=540;
+    const tblStale=(estDateToday||tradingDayStart2)&&(!f.offDate||f.offDate.slice(0,10)<today);
     return`<tr data-code="${f.code}">
       <td><span class="tbl-drag">⠿</span><div style="display:inline-block;vertical-align:top"><div class="tbl-name">${f.name}${sh}</div><div class="tbl-code">${f.code}</div></div></td>
       <td><div class="tbl-pct ${ep.cls} ${ef}">${ep.txt}</div><div class="tbl-nav">净值 <span class="nv">${f.estVal||'--'}</span></div><div class="tbl-time">${f.estTime||'--'}</div></td>
