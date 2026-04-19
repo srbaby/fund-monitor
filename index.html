@@ -64,7 +64,7 @@ body{background:var(--bg);color:var(--t1);font-family:'Noto Sans SC','PingFang S
 .chb-btn:active{background:var(--bg3)}
 
 /* ── 底部工具栏 ── */
-.toolbar{background:var(--bg2);border-top:1px solid var(--bd);padding:10px 12px;display:flex;align-items:center;gap:8px}
+.toolbar{background:var(--bg2);border-top:1px solid var(--bd);padding:10px 12px;display:flex;align-items:center;gap:8px;overflow:hidden}
 body.collapsed-mode .toolbar{position:fixed;bottom:0;left:0;right:0;padding:10px 12px calc(var(--sab) + 10px);z-index:150;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
 body.collapsed-mode main{padding-bottom:calc(var(--sab) + 68px)}
 .search-wrap{flex:1;min-width:0;display:flex;align-items:center;background:var(--bg3);border:1px solid var(--bd2);border-radius:10px;padding:0 12px;gap:8px}
@@ -389,7 +389,7 @@ main{padding:12px;width:100%}
   <div class="toolbar">
     <div class="search-wrap">
       <span class="si">⌕</span>
-      <input id="codeInput" type="number" placeholder="输入6位基金代码" maxlength="6"/>
+      <input id="codeInput" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="输入6位基金代码" maxlength="6"/>
     </div>
     <button class="tbtn tbtn-p" onclick="addFund()">添加</button>
   </div>
@@ -735,6 +735,12 @@ const DEFAULT_HOLDINGS = {
 const STORE_PE='jy_pe_v1', STORE_PE_DATE='jy_pe_date_v1', STORE_HOLDINGS='jy_holdings_v1';
 
 // ── 工具函数 ──
+function fmt(n, decimals=0){ // 千分位格式化
+  if(n==null||isNaN(n))return '--';
+  return n.toLocaleString('zh-CN',{minimumFractionDigits:decimals,maximumFractionDigits:decimals});
+}
+function fmtMoney(n){ return '¥'+fmt(n,0); }   // ¥1,234
+function fmtShares(n){ return fmt(n,2)+' 份'; } // 1,234.56 份
 
 // 抽屉里用简称
 function getProductName(code){
@@ -872,7 +878,7 @@ function openHoldingDrawer(){
 
   // 汇总（基于已加载的_lastResults）
   let totalVal=0,totalEq=0;
-  const rows=PRODUCTS.map(p=>{
+  const rows=funds.map(code=>PRODUCTS.find(p=>p.code===code)).filter(Boolean).map(p=>{
     const shares=holdings[p.code]||0;
     const nav=getNavByCode(p.code);
     const val=(nav&&shares)?shares*nav:null;
@@ -892,7 +898,7 @@ function openHoldingDrawer(){
       <div style="font-size:11px;color:var(--t3);margin-bottom:8px;font-weight:500">📊 权益校对汇总</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
         <div><div style="font-size:10px;color:var(--t3)">持仓总市值</div>
-          <div style="font-family:'Outfit',sans-serif;font-size:15px;font-weight:600">¥${totalVal>0?totalVal.toFixed(0):'--'}</div></div>
+          <div style="font-family:'Outfit',sans-serif;font-size:15px;font-weight:600">${totalVal>0?fmtMoney(totalVal):'--'}</div></div>
         <div><div style="font-size:10px;color:var(--t3)">实际权益</div>
           <div style="font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;color:${diffCol}">${actualEqPct!=null?actualEqPct.toFixed(1)+'%':'--'}</div></div>
         <div><div style="font-size:10px;color:var(--t3)">目标权益</div>
@@ -909,16 +915,16 @@ function openHoldingDrawer(){
       <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--bd);font-size:12px">
         <div><div style="font-weight:500">${p.name}</div>
           <div style="font-size:10px;color:var(--t3)">${shares.toFixed(2)}份×${nav?nav.toFixed(4):'--'}</div></div>
-        <div style="text-align:right;font-family:'Outfit',sans-serif;color:var(--t2)">${val!=null?'¥'+val.toFixed(0):'--'}</div>
+        <div style="text-align:right;font-family:'Outfit',sans-serif;color:var(--t2)">${val!=null?fmtMoney(val):'--'}</div>
         <div style="text-align:right;font-size:10px;color:var(--t3)">×${Math.round(p.equity*100)}%</div>
-        <div style="text-align:right;font-family:'Outfit',sans-serif;font-weight:500;color:var(--accent)">${eqVal!=null?'¥'+eqVal.toFixed(0):'--'}</div>
+        <div style="text-align:right;font-family:'Outfit',sans-serif;font-weight:500;color:var(--accent)">${eqVal!=null?fmtMoney(eqVal):'--'}</div>
       </div>`).join('')}
       <div style="display:grid;grid-template-columns:1fr auto;padding:10px 12px;font-size:12px;font-weight:600">
         <div>权益合计</div>
-        <div style="font-family:'Outfit',sans-serif;color:var(--accent)">¥${totalEq>0?totalEq.toFixed(0):'--'}</div>
+        <div style="font-family:'Outfit',sans-serif;color:var(--accent)">${totalEq>0?fmtMoney(totalEq):'--'}</div>
       </div>
     </div>
-    ${PRODUCTS.map(p=>`
+    ${funds.map(code=>PRODUCTS.find(p=>p.code===code)).filter(Boolean).map(p=>`
     <div class="holding-row">
       <div class="holding-name">
         <div style="font-size:13px;font-weight:500">${getProductName(p.code)}</div>
@@ -942,7 +948,7 @@ function openHoldingDrawer(){
 
 function saveHoldings(){
   const h={};
-  PRODUCTS.forEach(p=>{
+  funds.map(code=>PRODUCTS.find(p=>p.code===code)).filter(Boolean).forEach(p=>{
     const v=parseFloat(document.getElementById('hi_'+p.code)?.value||'0');
     h[p.code]=isNaN(v)?0:v;
   });
@@ -1033,8 +1039,7 @@ function renderPlanDrawer(){
     <!-- 买入预案 -->
     <div style="margin-bottom:20px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-        <span style="font-size:11px;font-weight:600;color:#60a5fa;background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.3);border-radius:6px;padding:2px 8px">📉 买入预案</span>
-        <span style="font-size:11px;color:var(--t3)">PE跌破${PE_LO}%（增权）→ 目标权益${BUY_TARGET}%</span>
+        <span style="font-size:11px;font-weight:600;color:#60a5fa;background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.3);border-radius:6px;padding:2px 8px">▲ 增权</span>
       </div>
       <div style="background:rgba(59,130,246,.05);border:1px solid rgba(59,130,246,.15);border-radius:10px;padding:12px">
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
@@ -1043,18 +1048,18 @@ function renderPlanDrawer(){
           <div><div style="font-size:10px;color:var(--t3)">触发后目标</div>
             <div style="font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;color:#60a5fa">${BUY_TARGET}%</div></div>
           <div><div style="font-size:10px;color:var(--t3)">需卖兴全</div>
-            <div style="font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;color:#60a5fa">${buyAmt!=null?'¥'+buyAmt.toFixed(0):'--'}</div></div>
+            <div style="font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;color:#60a5fa">${buyAmt!=null?fmtMoney(buyAmt):'--'}</div></div>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--bg3);border-radius:8px">
           <div>
             <div style="font-size:12px;font-weight:500">卖 兴全中长债 → 买 A500C</div>
             <div style="font-size:10px;color:var(--t3);margin-top:3px">
-              卖 ${buyAmt!=null?(buyAmt/xqNav).toFixed(2):'--'} 份 → 买 ${buyAmt!=null?(buyAmt/a500Nav).toFixed(2):'--'} 份
+              卖 ${buyAmt!=null?fmt(buyAmt/xqNav,2):'--'} 份 → 买 <b>${buyAmt!=null?fmt(buyAmt/a500Nav,2):'--'} 份</b>
             </div>
           </div>
           <div style="text-align:right">
-            <div style="font-family:'Outfit',sans-serif;font-size:16px;font-weight:700;color:#60a5fa">${buyAmt!=null?'¥'+buyAmt.toFixed(0):'--'}</div>
-            <div style="font-size:10px;color:var(--t3)">0摩擦</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;color:#60a5fa">${buyAmt!=null?fmt(buyAmt/a500Nav,2)+' 份':'--'}</div>
+            <div style="font-size:11px;color:var(--t3)">${buyAmt!=null?fmtMoney(buyAmt):''} · 0摩擦</div>
           </div>
         </div>
       </div>
@@ -1063,11 +1068,8 @@ function renderPlanDrawer(){
     <!-- 卖出预案 -->
     <div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:11px;font-weight:600;color:#f87171;background:rgba(240,68,68,.15);border:1px solid rgba(240,68,68,.3);border-radius:6px;padding:2px 8px">📈 卖出预案</span>
-          <span style="font-size:11px;color:var(--t3)">PE涨破${PE_HI}%（降权）→ 目标权益${SELL_TARGET}%</span>
-        </div>
-        <button onclick="saveSellPlan()" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--bd2);background:transparent;color:var(--t2);cursor:pointer">💾 保存比例</button>
+        <span style="font-size:11px;font-weight:600;color:#f59e0b;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.3);border-radius:6px;padding:2px 8px">▼ 降权</span>
+        <button onclick="saveSellPlan()" style="font-size:11px;padding:3px 10px;border-radius:6px;border:1px solid var(--bd2);background:transparent;color:var(--t2);cursor:pointer">保存</button>
       </div>
       <div style="background:rgba(240,68,68,.04);border:1px solid rgba(240,68,68,.12);border-radius:10px;padding:12px">
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
@@ -1076,7 +1078,7 @@ function renderPlanDrawer(){
           <div><div style="font-size:10px;color:var(--t3)">触发后目标</div>
             <div style="font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;color:#f87171">${SELL_TARGET}%</div></div>
           <div><div style="font-size:10px;color:var(--t3)">需减权益金额</div>
-            <div style="font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;color:#f87171">${sellNeededEq!=null?'¥'+sellNeededEq.toFixed(0):'--'}</div></div>
+            <div style="font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;color:#f59e0b">${sellNeededEq!=null?fmtMoney(sellNeededEq):'--'}</div></div>
         </div>
         <div style="font-size:11px;color:var(--t3);margin-bottom:10px">填比例（整数，空=不参与）→ 系统按比例分配卖出金额，0.5%摩擦自动计入兴全到账</div>
         ${funds.map(code=>PRODUCTS.find(p=>p.code===code)).filter(p=>p&&p.equity>0).map(p=>{
@@ -1087,12 +1089,12 @@ function renderPlanDrawer(){
           return`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg3);border-radius:8px;margin-bottom:6px">
             <div style="flex:1;min-width:0">
               <div style="font-size:12px;font-weight:500">${getProductName(p.code)}</div>
-              <div style="font-size:10px;color:var(--t3)">${val!=null?'¥'+val.toFixed(0):'--'} · 权益${Math.round(p.equity*100)}%${p.equity<1?' · 0.5%摩擦':' · 0摩擦'}</div>
+              <div style="font-size:10px;color:var(--t3)">${val!=null?fmtMoney(val):'--'} · 权益${Math.round(p.equity*100)}%${p.equity<1?' · 0.5%摩擦':' · 0摩擦'}</div>
             </div>
             <div style="text-align:right;min-width:90px;font-size:11px;color:var(--t3)" id="sell_calc_${p.code}">-- 元<br>-- 份</div>
-            <input type="number" min="0" step="1" placeholder="比例"
+            <input type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="比例"
               style="width:50px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);font-family:'Outfit',sans-serif;font-size:14px;padding:5px 6px;text-align:center;outline:none"
-              id="ratio_${p.code}" value="${saved}" oninput="calcSellPreview()" onchange="calcSellPreview()" onkeyup="calcSellPreview()">
+              id="ratio_${p.code}" value="${saved}" type="tel" inputmode="numeric" pattern="[0-9]*" oninput="calcSellPreview()" onchange="calcSellPreview()" onkeyup="calcSellPreview()">
           </div>`;
         }).join('')}
         <div style="margin-top:10px;padding:10px;background:var(--bg3);border-radius:8px" id="sell_preview_result">
@@ -1115,7 +1117,7 @@ function saveSellPlan(){
   // 按钮反馈
   const btn=event.target;
   btn.textContent='✅ 已保存';
-  setTimeout(()=>btn.textContent='💾 保存比例',1500);
+  setTimeout(()=>btn.textContent='保存',1500);
 }
 
 function calcSellPreview(){
@@ -1164,7 +1166,7 @@ function calcSellPreview(){
     totalXqAmt+=xqAmt;
 
     const el=document.getElementById('sell_calc_'+p.code);
-    if(el)el.innerHTML=`<span style="color:#f87171;font-weight:600">¥${actualSell.toFixed(0)}</span><br><span style="color:var(--t3)">${(actualSell/nav).toFixed(2)}份</span>`;
+    if(el)el.innerHTML=`<span style="font-family:'Outfit',sans-serif;font-weight:600;color:var(--t1)">${fmt(actualSell/nav,2)}份</span><br><span style="font-size:11px;color:var(--t3)">${fmtMoney(actualSell)}</span>`;
   });
 
   const afterEqPct=afterEqVal/totalVal*100;
@@ -1175,11 +1177,10 @@ function calcSellPreview(){
       <div><div style="color:var(--t3);font-size:10px">操作后权益</div>
         <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:16px;color:#22c55e">${afterEqPct.toFixed(1)}%</div></div>
       <div><div style="color:var(--t3);font-size:10px">兴全到账</div>
-        <div style="font-family:'Outfit',sans-serif;font-weight:600;font-size:14px;color:var(--t1)">¥${totalXqAmt.toFixed(0)}</div></div>
+        <div style="font-family:'Outfit',sans-serif;font-weight:600;font-size:14px;color:var(--t1)">${fmtMoney(totalXqAmt)}</div></div>
       <div><div style="color:var(--t3);font-size:10px">兴全买入份额</div>
-        <div style="font-family:'Outfit',sans-serif;font-weight:600;font-size:14px;color:var(--t1)">${(totalXqAmt/xqNav).toFixed(2)}份</div></div>
-    </div>
-    <div style="font-size:11px;color:#22c55e">✅ 达标（目标${SELL_TARGET}%）</div>`;
+        <div style="font-family:'Outfit',sans-serif;font-weight:600;font-size:14px;color:var(--t1)">${fmt(totalXqAmt/xqNav,2)}份</div></div>
+    </div>`;
 }
 function confirmPlan(){
   if(!confirm('确认已在基金平台完成操作？将同步更新本地持仓份额。'))return;
