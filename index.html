@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-title" content="基金看板">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1114,10 +1114,7 @@ function saveSellPlan(){
     if(v)plan[p.code]=v;
   });
   localStorage.setItem('jy_sell_plan_v1',JSON.stringify(plan));
-  // 按钮反馈
-  const btn=event.target;
-  btn.textContent='✅ 已保存';
-  setTimeout(()=>btn.textContent='保存',1500);
+  closeAllDrawers();
 }
 
 function calcSellPreview(){
