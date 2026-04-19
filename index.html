@@ -1033,7 +1033,7 @@ function renderPlanDrawer(){
     <div style="background:var(--bg3);border-radius:10px;padding:10px 12px;margin-bottom:16px;border:1px solid var(--bd);font-size:12px;color:var(--t2)">
       当前PE <b style="color:var(--t1)">${peVal!=null?peVal.toFixed(2)+'%':'--'}</b>
       · 当前权益 <b style="color:var(--t1)">${currentEq!=null?currentEq.toFixed(1)+'%':'--'}</b>
-      · 总市值 <b style="color:var(--t1)">${totalVal!=null?'¥'+totalVal.toFixed(0):'--'}</b>
+      · 总市值 <b style="color:var(--t1)">${totalVal!=null?fmtMoney(totalVal):'--'}</b>
     </div>
 
     <!-- 买入预案 -->
@@ -1053,13 +1053,10 @@ function renderPlanDrawer(){
         <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--bg3);border-radius:8px">
           <div>
             <div style="font-size:12px;font-weight:500">卖 兴全中长债 → 买 A500C</div>
-            <div style="font-size:10px;color:var(--t3);margin-top:3px">
-              卖 ${buyAmt!=null?fmt(buyAmt/xqNav,2):'--'} 份 → 买 <b>${buyAmt!=null?fmt(buyAmt/a500Nav,2):'--'} 份</b>
-            </div>
+            <div style="font-size:11px;color:var(--t3);margin-top:3px">${buyAmt!=null?fmtMoney(buyAmt):'--'}</div>
           </div>
           <div style="text-align:right">
-            <div style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;color:#60a5fa">${buyAmt!=null?fmt(buyAmt/a500Nav,2)+' 份':'--'}</div>
-            <div style="font-size:11px;color:var(--t3)">${buyAmt!=null?fmtMoney(buyAmt):''} · 0摩擦</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;color:#60a5fa">${buyAmt!=null?fmt(buyAmt/xqNav,2):'--'} <span style="font-size:11px;font-weight:400;color:var(--t3)">份</span></div>
           </div>
         </div>
       </div>
@@ -1089,7 +1086,7 @@ function renderPlanDrawer(){
           return`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg3);border-radius:8px;margin-bottom:6px">
             <div style="flex:1;min-width:0">
               <div style="font-size:12px;font-weight:500">${getProductName(p.code)}</div>
-              <div style="font-size:10px;color:var(--t3)">${val!=null?fmtMoney(val):'--'} · 权益${Math.round(p.equity*100)}%${p.equity<1?' · 0.5%摩擦':' · 0摩擦'}</div>
+              <div style="font-size:10px;color:var(--t3)">${val!=null?fmtMoney(val):'--'} · 权益${Math.round(p.equity*100)}%</div>
             </div>
             <div style="text-align:right;min-width:90px;font-size:11px;color:var(--t3)" id="sell_calc_${p.code}">-- 元<br>-- 份</div>
             <input type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="比例"
@@ -1114,7 +1111,9 @@ function saveSellPlan(){
     if(v)plan[p.code]=v;
   });
   localStorage.setItem('jy_sell_plan_v1',JSON.stringify(plan));
-  closeAllDrawers();
+  // 确保抽屉关闭（手机端兼容）
+  document.getElementById('drawerMask').classList.remove('open');
+  document.querySelectorAll('.drawer').forEach(d=>d.classList.remove('open'));
 }
 
 function calcSellPreview(){
@@ -1163,7 +1162,7 @@ function calcSellPreview(){
     totalXqAmt+=xqAmt;
 
     const el=document.getElementById('sell_calc_'+p.code);
-    if(el)el.innerHTML=`<span style="font-family:'Outfit',sans-serif;font-weight:600;color:var(--t1)">${fmt(actualSell/nav,2)}份</span><br><span style="font-size:11px;color:var(--t3)">${fmtMoney(actualSell)}</span>`;
+    if(el)el.innerHTML=`<span style="font-family:'Outfit',sans-serif;font-weight:600;color:var(--t1)">${fmt(actualSell/nav,2)} <span style='color:var(--t3);font-weight:400'>份</span></span><br><span style="font-size:11px;color:var(--t3)">${fmtMoney(actualSell)}</span>`;
   });
 
   const afterEqPct=afterEqVal/totalVal*100;
@@ -1176,7 +1175,7 @@ function calcSellPreview(){
       <div><div style="color:var(--t3);font-size:10px">兴全到账</div>
         <div style="font-family:'Outfit',sans-serif;font-weight:600;font-size:14px;color:var(--t1)">${fmtMoney(totalXqAmt)}</div></div>
       <div><div style="color:var(--t3);font-size:10px">兴全买入份额</div>
-        <div style="font-family:'Outfit',sans-serif;font-weight:600;font-size:14px;color:var(--t1)">${fmt(totalXqAmt/xqNav,2)}份</div></div>
+        <div style="font-family:'Outfit',sans-serif;font-weight:600;font-size:14px;color:var(--t1)">${fmt(totalXqAmt/xqNav,2)} <span style="color:var(--t3);font-weight:400;font-size:12px">份</span></div></div>
     </div>`;
 }
 function confirmPlan(){
