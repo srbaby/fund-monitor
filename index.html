@@ -175,12 +175,11 @@ main{padding:12px;width:100%}
 .pe-status.triggered-buy{background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid rgba(59,130,246,.3)}
 .pe-status.triggered-sell{background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid rgba(245,158,11,.3)}
 .pe-status.normal{background:var(--bg3);color:var(--t3);border:1px solid var(--bd)}
-/* track：左右两堵墙（买入线/卖出线），中间滑块标记当前位置 */
 .pe-track{flex:1;max-width:200px;height:10px;background:var(--bg3);border-radius:5px;position:relative}
 .pe-track-marker{position:absolute;top:50%;width:10px;height:10px;border-radius:50%;background:var(--t1);border:2px solid var(--bg2);transform:translate(-50%,-50%);transition:left .3s,background .3s;animation:peMarkerPulse 2s infinite}
 @keyframes peMarkerPulse{0%{box-shadow:0 0 0 0 rgba(232,237,245,.6)}70%{box-shadow:0 0 0 5px transparent}100%{box-shadow:0 0 0 0 transparent}}
-.pe-track-lo{position:absolute;top:0;bottom:0;width:3px;background:#3b82f6;border-radius:2px}
-.pe-track-hi{position:absolute;top:0;bottom:0;width:3px;background:#f59e0b;border-radius:2px}
+.pe-track-lo{position:absolute;top:0;bottom:0;width:3px;background:#3b82f6;border-radius:2px;transition:left .3s}
+.pe-track-hi{position:absolute;top:0;bottom:0;width:3px;background:#f59e0b;border-radius:2px;transition:left .3s}
 .pe-input-btn{font-size:11px;color:var(--t3);background:transparent;border:1px solid var(--bd2);border-radius:6px;padding:4px 10px;cursor:pointer;white-space:nowrap;flex-shrink:0}
 .pe-input-btn:active{background:var(--bg3)}
 .pe-plan-btn{font-size:12px;font-weight:500;padding:6px 14px;border-radius:8px;border:none;cursor:pointer;white-space:nowrap;flex-shrink:0;font-family:'Noto Sans SC',sans-serif}
@@ -217,13 +216,13 @@ main{padding:12px;width:100%}
 .ps-value.warn{color:#f59e0b}
 .ps-value.err{color:#f04444}
 
-/* PE输入弹窗 */
+/* 极简3参版 PE 弹窗 */
 .pe-modal{position:fixed;inset:0;z-index:600;display:flex;align-items:center;justify-content:center;padding:20px}
 .pe-modal-mask{position:absolute;inset:0;background:rgba(0,0,0,.6)}
 .pe-modal-box{position:relative;background:var(--bg2);border-radius:16px;padding:24px;width:100%;max-width:320px;border:1px solid var(--bd2)}
 .pe-modal-title{font-size:15px;font-weight:600;margin-bottom:6px}
 .pe-modal-sub{font-size:12px;color:var(--t3);margin-bottom:16px}
-.pe-modal-input{width:100%;background:var(--bg3);border:1px solid var(--bd2);border-radius:10px;color:var(--t1);font-family:'Outfit',sans-serif;font-size:24px;font-weight:600;padding:12px 16px;text-align:center;outline:none;margin-bottom:16px}
+.pe-modal-input{width:100%;background:var(--bg3);border:1px solid var(--bd2);border-radius:10px;color:var(--t1);font-family:'Outfit',sans-serif;font-weight:600;padding:12px 16px;text-align:center;outline:none;margin-bottom:16px}
 .pe-modal-input:focus{border-color:var(--accent)}
 .pe-modal-btns{display:flex;gap:8px}
 .pe-modal-cancel{flex:1;padding:10px;border-radius:10px;border:1px solid var(--bd2);background:transparent;color:var(--t2);font-size:14px;font-family:'Noto Sans SC',sans-serif;cursor:pointer}
@@ -290,7 +289,6 @@ main{padding:12px;width:100%}
   <div class="idx-cell"><div class="idx-lbl">恒生指数</div><div class="idx-row"><span class="sk" style="width:44px;height:16px"></span></div></div>
 </div>
 
-<!-- PE状态条 -->
 <div class="pe-bar" id="peBar">
   <div class="pe-bar-top">
     <div class="pe-bar-left">
@@ -299,38 +297,53 @@ main{padding:12px;width:100%}
       <span class="pe-status normal" id="peStatus">待机</span>
     </div>
     <div style="flex:1"></div>
-    <button class="pe-input-btn" onclick="openPeModal()">输入PE</button>
+    <button class="pe-input-btn" onclick="openPeModal()">输入盘中定锚</button>
     <button class="pe-input-btn" onclick="openHoldingDrawer()">持仓</button>
     <button class="pe-plan-btn neutral" id="planBtn" onclick="openPlanDrawer()">待机预案</button>
   </div>
   <div class="pe-bar-bottom">
-    <div class="pe-track" id="peTrack" title="买入线64.5% / 卖出线70.5%">
-      <div class="pe-track-lo" id="peTrackLo" style="left:64.5%"></div>
-      <div class="pe-track-hi" id="peTrackHi" style="left:70.5%"></div>
-      <div class="pe-track-marker" id="peTrackMarker" style="left:0%"></div>
+    <div class="pe-track" id="peTrack" title="动态插值轨道">
+      <div class="pe-track-lo" id="peTrackLo" style="left:0%; display:none;"></div>
+      <div class="pe-track-hi" id="peTrackHi" style="left:100%; display:none;"></div>
+      <div class="pe-track-marker" id="peTrackMarker" style="left:50%; display:none;"></div>
     </div>
     <div id="peEquityInfo" style="display:none;font-size:11px;color:var(--t3);gap:4px;align-items:center;flex-shrink:0;white-space:nowrap;margin-left:auto"></div>
   </div>
 </div>
 
-<!-- PE输入弹窗 -->
 <div class="pe-modal" id="peModal" style="display:none">
   <div class="pe-modal-mask" onclick="closePeModal()"></div>
   <div class="pe-modal-box">
-    <div class="pe-modal-title">输入今日PE百分位</div>
-    <div class="pe-modal-sub">来源：乐咕乐股 / 脚本输出（全量/自2005）</div>
-    <input class="pe-modal-input" id="peModalInput" type="number" step="0.01" min="0" max="100" placeholder="65.53">
+    <div class="pe-modal-title">输入夜间定锚数据</div>
+    <div class="pe-modal-sub">只需填入 Python 脚本输出的 3 个核心数据</div>
+    
+    <div style="display:flex; flex-direction:column; gap:16px; margin-bottom:20px">
+      <div>
+        <div style="font-size:11px;color:var(--t3);margin-bottom:4px">昨收 PE (%)</div>
+        <input class="pe-modal-input" id="peModalInputPct" type="number" step="0.01" style="margin-bottom:0; font-size:20px; padding:10px" placeholder="例如: 67.77">
+      </div>
+      
+      <div style="display:flex; gap:10px">
+        <div style="flex:1; background:var(--bg3); border:1px solid var(--bd2); padding:10px; border-radius:10px">
+          <div style="font-size:11px;color:#3b82f6;margin-bottom:4px">📉 跌破触发点位</div>
+          <input class="pe-modal-input" id="peModalBuyPrice" type="number" style="margin-bottom:0; font-size:18px; padding:8px; width:100%; border:none; background:transparent" placeholder="如 4610">
+        </div>
+        <div style="flex:1; background:var(--bg3); border:1px solid var(--bd2); padding:10px; border-radius:10px">
+          <div style="font-size:11px;color:#f59e0b;margin-bottom:4px">📈 涨破触发点位</div>
+          <input class="pe-modal-input" id="peModalSellPrice" type="number" style="margin-bottom:0; font-size:18px; padding:8px; width:100%; border:none; background:transparent" placeholder="如 4930">
+        </div>
+      </div>
+    </div>
+
     <div class="pe-modal-btns">
       <button class="pe-modal-cancel" onclick="closePeModal()">取消</button>
-      <button class="pe-modal-confirm" onclick="confirmPe()">确认</button>
+      <button class="pe-modal-confirm" onclick="confirmPe()">开启盘中追踪</button>
     </div>
   </div>
 </div>
 
-<!-- 遮罩 -->
 <div class="drawer-mask" id="drawerMask" onclick="closeAllDrawers()"></div>
 
-<!-- 调仓预案抽屉 -->
 <div class="drawer" id="planDrawer">
   <div class="drawer-handle"></div>
   <div class="drawer-header">
@@ -338,15 +351,13 @@ main{padding:12px;width:100%}
     <button class="drawer-close" onclick="closeAllDrawers()">×</button>
   </div>
   <div class="drawer-body" id="planDrawerBody">
-    <!-- 动态生成 -->
-  </div>
+    </div>
   <div class="drawer-footer">
     <button style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--bd2);background:transparent;color:var(--t2);font-size:14px;font-family:'Noto Sans SC',sans-serif;cursor:pointer" onclick="closeAllDrawers()">取消</button>
     <button style="flex:2;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:600;font-family:'Noto Sans SC',sans-serif;cursor:pointer" id="planConfirmBtn" onclick="confirmPlan()">确认已执行，更新持仓</button>
   </div>
 </div>
 
-<!-- 持仓编辑抽屉 -->
 <div class="drawer" id="holdingDrawer">
   <div class="drawer-handle"></div>
   <div class="drawer-header">
@@ -358,11 +369,6 @@ main{padding:12px;width:100%}
     <button style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--bd2);background:transparent;color:var(--t2);font-size:14px;font-family:'Noto Sans SC',sans-serif;cursor:pointer" onclick="closeAllDrawers()">取消</button>
     <button style="flex:2;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:600;font-family:'Noto Sans SC',sans-serif;cursor:pointer" onclick="saveHoldings()">保存持仓</button>
   </div>
-</div>
-
-<div id="testBar" style="display:none">
-  <button onclick="testFlash()">▶ 模拟闪烁</button>
-  <button onclick="testDot()">● 绿点脉冲</button>
 </div>
 
 <main>
@@ -424,6 +430,8 @@ const INDICES=[
   {id:'000012',lbl:'国债指数'},{id:'HSI',lbl:'恒生指数'},
 ];
 const idxPrev={};
+window._rt_csi300_price = null; 
+
 function fetchIndices(){
   return new Promise(resolve=>{
     const cb='_idx_'+Date.now();let done=false;
@@ -432,6 +440,18 @@ function fetchIndices(){
       fin();delete window[cb];
       const diff=data?.data?.diff;if(!diff)return;
       const map={};diff.forEach(d=>{map[d.f12]=d;});
+      
+      // 实时抓取沪深300指数价格，触发动态更新
+      if(map['000300'] && map['000300'].f2) {
+        const newPrice = parseFloat(map['000300'].f2);
+        if(window._rt_csi300_price !== newPrice) {
+            window._rt_csi300_price = newPrice;
+            if(document.getElementById('peModal').style.display !== 'flex') {
+                updatePeBar();
+            }
+        }
+      }
+
       document.getElementById('idxBar').innerHTML=INDICES.map(idx=>{
         const d=map[idx.id];
         if(!d||!d.f2)return`<div class="idx-cell" data-id="${idx.id}"><div class="idx-lbl">${idx.lbl}</div><div class="idx-row"><div class="idx-chg flat">—</div></div></div>`;
@@ -469,7 +489,6 @@ let funds=[];
 function loadFunds(){const c=localStorage.getItem(STORE);funds=(c&&c!=='[]')?JSON.parse(c):[...DEFAULT_CODES];}
 function saveFunds(){localStorage.setItem(STORE,JSON.stringify(funds));}
 
-// 估算接口：并发请求
 window.jsonpResolvers={};
 window.jsonpgz=function(data){
   if(data?.fundcode&&window.jsonpResolvers[data.fundcode]){
@@ -487,7 +506,6 @@ function fetchEst(code){
   });
 }
 
-// 官方净值：F10接口，串行
 const offQ=[];let offBusy=false;
 function fetchOff(code){return new Promise(r=>{offQ.push({code,resolve:r});drainOff();});}
 function drainOff(){
@@ -530,7 +548,6 @@ async function fetchSingleFund(code){
   };
 }
 
-// ── 状态 ──
 const prevData={};
 let allCollapsed=false;
 let miniMode=0;
@@ -577,7 +594,7 @@ function calcFlash(results){
 
 function renderAll(results){
   _lastResults=results;
-  updatePeBar(); // 数据加载完后更新PE状态条和权益显示
+  updatePeBar(); 
   const fl=calcFlash(results);
   const today=todayDateStr();
   const now=new Date(),wd=now.getDay(),hm=now.getHours()*60+now.getMinutes();
@@ -640,7 +657,6 @@ function renderTable(results,fl,today,tradingDay){
   document.getElementById('fundTbody').innerHTML=html;
 }
 
-// ── 刷新 ──
 async function refreshData(){
   const miniRefBtn=document.getElementById('miniRefBtn');
   if(miniRefBtn){miniRefBtn.textContent='↻';miniRefBtn.disabled=true;}
@@ -670,27 +686,16 @@ function addFund(){
   if(/^\d{6}$/.test(code)&&!funds.includes(code)){funds.push(code);saveFunds();input.value='';refreshData();}
   else input.value='';
 }
-function delFund(code){funds=funds.filter(c=>c!==code);saveFunds();refreshData();}
-// clearFunds()：控制台调用备用
-function clearFunds(){if(confirm('确定清空全部基金？')){funds=[];saveFunds();refreshData();}}
+function delFund(code){
+  if(!confirm(`确认删除「${NAMES[code]||code}」？`))return;
+  funds=funds.filter(c=>c!==code);saveFunds();refreshData();
+}
 document.getElementById('codeInput').addEventListener('keydown',e=>{if(e.key==='Enter')addFund();});
 
-// ── 调试（隐藏）──
-function testFlash(){
-  if(!_lastResults.length){alert('请等数据加载完毕');return;}
-  renderAll(_lastResults.map(f=>f.error?f:({...f,
-    estPct:(f.estPct||0)+(Math.random()>0.5?0.5:-0.5),
-    offPct:(f.offPct||0)+(Math.random()>0.5?0.3:-0.3),
-  })));
-}
-function testDot(){_mktOpen=null;document.getElementById('mktDot').className='mkt-dot open';}
-
-
 // ══════════════════════════════════════
-// 调仓预案模块 v2 - 精简版
+// 调仓预案模块 v2 - 极简 3 参全自动版
 // ══════════════════════════════════════
 
-// 产品配置（权益系数来自1号方法论v7.4）
 const PRODUCTS = [
   {code:'003949', name:'兴全中长债',   equity:0.00},
   {code:'160622', name:'鹏华丰利',     equity:0.15},
@@ -702,22 +707,13 @@ const PRODUCTS = [
   {code:'000500', name:'中证500C',     equity:1.00},
 ];
 
-// 简称表（与NAMES里全称对应，抽屉里显示）
 const SHORT_NAMES = {
   '003949':'兴全中长债','160622':'鹏华丰利','007466':'华泰红利',
   '011554':'海富通欣利','110027':'易方达回报','004496':'前海多元',
   '110020':'易方达沪深300','022439':'A500C','007028':'中证500联接',
   '000500':'中证500C',
 };
-function getShortName(code){
-  return SHORT_NAMES[code]||(PRODUCTS.find(p=>p.code===code)?.name)||code;
-}
 
-// PE触发死区
-const PE_LO = 64.5; // 买入线
-const PE_HI = 70.5; // 卖出线
-
-// 12档S曲线（1号方法论v7.4）
 const PE_EQUITY_TABLE = [
   {lo:80,hi:999,target:20},{lo:75,hi:80,target:22},{lo:70,hi:75,target:25},
   {lo:65,hi:70,target:29},{lo:60,hi:65,target:34},{lo:55,hi:60,target:40},
@@ -725,41 +721,28 @@ const PE_EQUITY_TABLE = [
   {lo:35,hi:40,target:61},{lo:30,hi:35,target:70},{lo:0,hi:30,target:80},
 ];
 
-// 初始持仓份额
 const DEFAULT_HOLDINGS = {
   '003949':66432.56,'160622':110301.46,'007466':63243.39,
   '011554':73105.15,'110027':41234.41,'004496':12154.72,
   '022439':0,'000500':0,
 };
 
-const STORE_PE='jy_pe_v1', STORE_PE_DATE='jy_pe_date_v1', STORE_HOLDINGS='jy_holdings_v1';
+const STORE_PE='jy_pe_v1_smart', STORE_PE_DATE='jy_pe_date_v1', STORE_HOLDINGS='jy_holdings_v1';
 
-// ── 工具函数 ──
-function fmt(n, decimals=0){ // 千分位格式化
+function fmt(n, decimals=0){
   if(n==null||isNaN(n))return '--';
   return n.toLocaleString('zh-CN',{minimumFractionDigits:decimals,maximumFractionDigits:decimals});
 }
-function fmtMoney(n){ return '¥'+fmt(n,0); }   // ¥1,234
-function fmtShares(n){ return fmt(n,2)+' 份'; } // 1,234.56 份
-
-// 抽屉里用简称
-function getProductName(code){
-  return getShortName(code);
-}
-
+function fmtMoney(n){ return '¥'+fmt(n,0); }
+function getProductName(code){ return SHORT_NAMES[code]||(PRODUCTS.find(p=>p.code===code)?.name)||code; }
 function getTargetEquity(pe){
   const r=PE_EQUITY_TABLE.find(r=>pe>=r.lo&&pe<r.hi);
   return r?r.target:null;
 }
-
-// 从_lastResults取净值（页面数据加载完后始终有效）
 function getNavByCode(code){
   const f=_lastResults.find(r=>r.code===code);
-  if(!f)return null;
-  return f.estVal?parseFloat(f.estVal):(f.offVal?parseFloat(f.offVal):null);
+  return f?(f.estVal?parseFloat(f.estVal):(f.offVal?parseFloat(f.offVal):null)):null;
 }
-
-// 计算当前权益暴露（只用_lastResults里有净值的产品）
 function calcCurrentEquity(holdings){
   let total=0,eq=0;
   PRODUCTS.forEach(p=>{
@@ -773,13 +756,28 @@ function calcCurrentEquity(holdings){
   return total>0?{equity:eq/total*100,total}:null;
 }
 
-// ── 存储 ──
+// ── 智能档位推算 (v7.5 方法论核心算法) ──
+function getBucketBounds(pct) {
+  // 根据用户设定的宏观网格进行档位嗅探
+  const bounds = [0, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 100];
+  let lower = 65, upper = 70; // 默认防错
+  for (let i = 0; i < bounds.length - 1; i++) {
+    if (pct >= bounds[i] && pct < bounds[i+1]) {
+      lower = bounds[i];
+      upper = bounds[i+1];
+      break;
+    }
+  }
+  // 严格执行 v7.5 提案：当前档位下沿 -2.5% 触发买入，上沿 +2.5% 触发卖出
+  return { buyPct: lower - 2.5, sellPct: upper + 2.5, lowerBound: lower, upperBound: upper };
+}
+
 function loadPe(){
   const s=localStorage.getItem(STORE_PE);
-  return s?{value:parseFloat(s),date:localStorage.getItem(STORE_PE_DATE)}:null;
+  return s ? JSON.parse(s) : null;
 }
-function savePe(v){
-  localStorage.setItem(STORE_PE,String(v));
+function savePe(dataObj){
+  localStorage.setItem(STORE_PE, JSON.stringify(dataObj));
   localStorage.setItem(STORE_PE_DATE,new Date().toLocaleDateString('zh-CN',{timeZone:'Asia/Shanghai'}));
 }
 function loadHoldings(){
@@ -788,38 +786,69 @@ function loadHoldings(){
 }
 function saveHoldingsData(h){localStorage.setItem(STORE_HOLDINGS,JSON.stringify(h));}
 
+// ── 核心：无状态动态插值 ──
+function getCurrentPE() {
+    const peData = loadPe();
+    if(!peData) return null;
+    
+    let v = peData.value;
+    let isDynamic = false;
+    const bounds = getBucketBounds(peData.value);
+    
+    // 当存在所有参数及实时大盘时，做线性插值推算
+    if(window._rt_csi300_price && peData.buyPrice && peData.sellPrice) {
+        const p_now = window._rt_csi300_price;
+        const price_range = peData.sellPrice - peData.buyPrice;
+        if(price_range > 0) {
+            const pct_range = bounds.sellPct - bounds.buyPct;
+            v = bounds.buyPct + ((p_now - peData.buyPrice) / price_range) * pct_range;
+            isDynamic = true;
+        }
+    }
+    return { value: v, isDynamic: isDynamic, rawData: peData, bounds: bounds };
+}
+
 // ── PE状态条 ──
-// updatePeBar在refreshData完成后由renderAll调用，确保_lastResults有数据
 function updatePeBar(){
-  const pe=loadPe();
+  const currentPE = getCurrentPE();
   const display=document.getElementById('peDisplay');
   const status=document.getElementById('peStatus');
   const marker=document.getElementById('peTrackMarker');
   const planBtn=document.getElementById('planBtn');
   const eqDiv=document.getElementById('peEquityInfo');
+  
+  const loEl=document.getElementById('peTrackLo');
+  const hiEl=document.getElementById('peTrackHi');
 
-  if(!pe){
+  if(!currentPE){
     display.textContent='--.--%'; display.className='pe-value pe-normal';
     status.textContent='未输入PE'; status.className='pe-status normal';
     planBtn.className='pe-plan-btn neutral'; planBtn.textContent='待机预案';
-    if(marker)marker.style.left='0%'; if(eqDiv)eqDiv.style.display='none';
+    if(marker)marker.style.display='none'; 
+    if(loEl)loEl.style.display='none';
+    if(hiEl)hiEl.style.display='none';
+    if(eqDiv)eqDiv.style.display='none';
     return;
   }
 
-  const v=pe.value;
-  display.textContent=v.toFixed(2)+'%';
-  // bar以死区中值为中心，±15范围，当前PE滑块动态偏移
-  const PE_MID=(PE_LO+PE_HI)/2; // 67.0%
-  const RANGE=10;
-  const peMin=PE_MID-RANGE, peMax=PE_MID+RANGE;
-  const toPos=pe=>Math.min(Math.max((pe-peMin)/(peMax-peMin)*100,0),100);
-  if(marker)marker.style.left=toPos(v)+'%';
-  const loEl=document.getElementById('peTrackLo');
-  const hiEl=document.getElementById('peTrackHi');
-  if(loEl)loEl.style.left=toPos(PE_LO)+'%';
-  if(hiEl)hiEl.style.left=toPos(PE_HI)+'%';
+  const v = currentPE.value;
+  const bounds = currentPE.bounds;
+  display.innerHTML = `${v.toFixed(2)}%` + (currentPE.isDynamic ? `<span style="font-size:10px;color:var(--accent);font-weight:600;margin-left:4px;vertical-align:top">实时</span>` : '');
 
-  // 权益偏离显示（此时_lastResults已有数据）
+  // 动态构建标尺：让可视范围是死区宽度的 2 倍
+  const PE_MID = (bounds.buyPct + bounds.sellPct) / 2;
+  const span = (bounds.sellPct - bounds.buyPct) * 2; 
+  const peMin = PE_MID - span / 2;
+  const peMax = PE_MID + span / 2;
+  const toPos = pe => Math.min(Math.max((pe - peMin) / (peMax - peMin) * 100, 0), 100);
+
+  if(marker){
+    marker.style.display='block';
+    marker.style.left=toPos(v)+'%';
+  }
+  if(loEl) { loEl.style.display='block'; loEl.style.left=toPos(bounds.buyPct)+'%'; }
+  if(hiEl) { hiEl.style.display='block'; hiEl.style.left=toPos(bounds.sellPct)+'%'; }
+
   if(eqDiv){
     const holdings=loadHoldings();
     const eq=calcCurrentEquity(holdings);
@@ -827,7 +856,6 @@ function updatePeBar(){
     if(eq&&target!=null){
       const diff=eq.equity-target;
       const sign=diff>0?'+':'';
-      // 颜色：超配橙警告，欠配蓝提示，方向错误红色
       const wrongDir=(v>=65&&diff>2)||(v<65&&diff<-2);
       const col=wrongDir?'#f87171':(diff>0?'#f59e0b':'#60a5fa');
       eqDiv.innerHTML=`目标<b>${target}%</b> 实际<b style="color:${col}">${eq.equity.toFixed(1)}%</b> <span style="color:${col}">${sign}${diff.toFixed(1)}%</span>`;
@@ -837,12 +865,13 @@ function updatePeBar(){
     }
   }
 
-  if(v<=PE_LO){
+  // 严格利用自动推算的买卖边界
+  if(v <= bounds.buyPct){
     display.className='pe-value pe-danger-dn';
     status.textContent='▲ 增权信号'; status.className='pe-status triggered-buy';
     planBtn.className='pe-plan-btn buy'; planBtn.textContent='▲ 增权预案';
     if(marker)marker.style.background='#3b82f6';
-  } else if(v>=PE_HI){
+  } else if(v >= bounds.sellPct){
     display.className='pe-value pe-danger-up';
     status.textContent='▼ 降权信号'; status.className='pe-status triggered-sell';
     planBtn.className='pe-plan-btn sell'; planBtn.textContent='▼ 降权预案';
@@ -855,28 +884,40 @@ function updatePeBar(){
   }
 }
 
-// ── PE弹窗 ──
+// ── PE 弹窗逻辑 ──
 function openPeModal(){
-  const pe=loadPe();
-  const input=document.getElementById('peModalInput');
-  if(pe)input.value=pe.value;
+  const peData=loadPe();
+  if(peData) {
+    document.getElementById('peModalInputPct').value = peData.value || '';
+    document.getElementById('peModalBuyPrice').value = peData.buyPrice || '';
+    document.getElementById('peModalSellPrice').value = peData.sellPrice || '';
+  }
   document.getElementById('peModal').style.display='flex';
-  setTimeout(()=>input.focus(),100);
+  setTimeout(()=>document.getElementById('peModalInputPct').focus(),100);
 }
 function closePeModal(){document.getElementById('peModal').style.display='none';}
+
 function confirmPe(){
-  const v=parseFloat(document.getElementById('peModalInput').value);
-  if(isNaN(v)||v<0||v>100){alert('请输入0-100之间的PE百分位');return;}
-  savePe(v); updatePeBar(); closePeModal();
+  const pct = parseFloat(document.getElementById('peModalInputPct').value);
+  const buyPrice = parseFloat(document.getElementById('peModalBuyPrice').value);
+  const sellPrice = parseFloat(document.getElementById('peModalSellPrice').value);
+
+  if(isNaN(pct)){alert('请输入昨收PE百分位！');return;}
+  
+  savePe({ 
+    value: pct, 
+    buyPrice: isNaN(buyPrice) ? null : buyPrice, 
+    sellPrice: isNaN(sellPrice) ? null : sellPrice 
+  });
+  updatePeBar(); 
+  closePeModal();
 }
-document.getElementById('peModalInput').addEventListener('keydown',e=>{if(e.key==='Enter')confirmPe();});
 
 // ── 持仓抽屉 ──
 function openHoldingDrawer(){
   const holdings=loadHoldings();
   const body=document.getElementById('holdingDrawerBody');
 
-  // 汇总（基于已加载的_lastResults）
   let totalVal=0,totalEq=0;
   const rows=funds.map(code=>PRODUCTS.find(p=>p.code===code)).filter(Boolean).map(p=>{
     const shares=holdings[p.code]||0;
@@ -886,11 +927,11 @@ function openHoldingDrawer(){
     return{p,shares,nav,val,eqVal:val!=null?val*p.equity:null};
   });
 
-  const pe=loadPe();
-  const targetEq=pe?getTargetEquity(pe.value):null;
+  const currentPE = getCurrentPE();
+  const targetEq=currentPE?getTargetEquity(currentPE.value):null;
   const actualEqPct=totalVal>0?totalEq/totalVal*100:null;
   const diff=actualEqPct!=null&&targetEq!=null?actualEqPct-targetEq:null;
-  const wrongDir=diff!=null&&pe?((pe.value>=65&&diff>2)||(pe.value<65&&diff<-2)):false;
+  const wrongDir=diff!=null&&currentPE?((currentPE.value>=65&&diff>2)||(currentPE.value<65&&diff<-2)):false;
   const diffCol=diff==null?'var(--t3)':wrongDir?'#f87171':(diff>0?'#f59e0b':'#60a5fa');
 
   body.innerHTML=`
@@ -937,10 +978,6 @@ function openHoldingDrawer(){
     <div style="margin-top:16px;display:flex;gap:8px">
       <button onclick="exportHoldings()" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bd2);background:transparent;color:var(--t2);font-size:12px;cursor:pointer">📤 导出备份</button>
       <button onclick="importHoldings()" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bd2);background:transparent;color:var(--t2);font-size:12px;cursor:pointer">📥 导入备份</button>
-    </div>
-    <div style="margin-top:8px;font-size:11px;color:var(--t3);text-align:center">定期导出备份，防止数据丢失</div>
-    <div style="margin-top:10px">
-      <button onclick="cleanOldHoldings()" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(240,68,68,.3);background:rgba(240,68,68,.08);color:#f87171;font-size:12px;cursor:pointer">🗑️ 清除旧产品残留数据</button>
     </div>`;
 
   openDrawer('holdingDrawer');
@@ -953,16 +990,6 @@ function saveHoldings(){
     h[p.code]=isNaN(v)?0:v;
   });
   saveHoldingsData(h);closeAllDrawers();alert('✅ 持仓已保存');
-}
-
-function cleanOldHoldings(){
-  const valid=new Set(PRODUCTS.map(p=>p.code));
-  const h=loadHoldings();
-  const old=Object.keys(h).filter(k=>!valid.has(k));
-  if(!old.length){alert('✅ 无旧数据，无需清理');return;}
-  if(!confirm(`发现旧产品：${old.join(', ')}，确认清除？`))return;
-  old.forEach(k=>delete h[k]);
-  saveHoldingsData(h);openHoldingDrawer();
 }
 
 function exportHoldings(){
@@ -979,7 +1006,7 @@ function importHoldings(){
     reader.onload=ev=>{
       try{
         const data=JSON.parse(ev.target.result);
-        if(data.holdings){saveHoldingsData(data.holdings);if(data.pe)savePe(data.pe.value);closeAllDrawers();updatePeBar();alert('✅ 导入成功');}
+        if(data.holdings){saveHoldingsData(data.holdings);if(data.pe)savePe(data.pe);closeAllDrawers();updatePeBar();alert('✅ 导入成功');}
         else alert('❌ 格式错误');
       }catch(err){alert('❌ 解析失败：'+err.message);}
     };reader.readAsText(e.target.files[0]);
@@ -990,42 +1017,36 @@ function importHoldings(){
 let _planMode='neutral';
 
 function openPlanDrawer(){
-  const pe=loadPe();
-  if(!pe){alert('请先输入今日PE百分位');openPeModal();return;}
-  _planMode=pe.value<=PE_LO?'buy':(pe.value>=PE_HI?'sell':'neutral');
+  const currentPE = getCurrentPE();
+  if(!currentPE){
+      alert('请先输入夜间定锚数据！');openPeModal();return;
+  }
+  _planMode=currentPE.value<=currentPE.bounds.buyPct?'buy':(currentPE.value>=currentPE.bounds.sellPct?'sell':'neutral');
   renderPlanDrawer();openDrawer('planDrawer');
 }
 
 function renderPlanDrawer(){
   const holdings=loadHoldings();
   const body=document.getElementById('planDrawerBody');
-  const title=document.getElementById('planDrawerTitle');
   const confirmBtn=document.getElementById('planConfirmBtn');
   confirmBtn.style.display='none';
 
-  const pe=loadPe();
-  const peVal=pe?pe.value:null;
+  const currentPE = getCurrentPE();
+  const peVal = currentPE ? currentPE.value : null;
   const eqResult=calcCurrentEquity(holdings);
   const currentEq=eqResult?eqResult.equity:null;
   const totalVal=eqResult?eqResult.total:null;
 
-  // 触发后目标档位
-  const BUY_TARGET=34.0;   // 跌破64.5% → 60-65%档
-  const SELL_TARGET=25.0;  // 涨破70.5% → 70-75%档
+  const BUY_TARGET=34.0;
+  const SELL_TARGET=25.0;
 
-  // 需要调整的权益金额
   const currentEqVal=totalVal&&currentEq?totalVal*currentEq/100:null;
   const buyNeededEq=currentEqVal!=null?Math.max(0,totalVal*BUY_TARGET/100-currentEqVal):null;
   const sellNeededEq=currentEqVal!=null?Math.max(0,currentEqVal-totalVal*SELL_TARGET/100):null;
 
-  // 买入：卖兴全X元→买A500C，兴全equity=0，A500C equity=1
-  // 需增权益 = 买入A500C金额（1:1），兴全到账 = 卖出额×0.995（已有数据，0摩擦忽略）
   const xqNav=getNavByCode('003949')||1.0;
-  const a500Nav=getNavByCode('022439')||1.0;
-  const buyAmt=buyNeededEq; // 卖兴全金额 = 需增权益金额（因A500C equity=1）
-  const xqShares=holdings['003949']||0;
+  const buyAmt=buyNeededEq; 
 
-  // 读取已保存的卖出预案比例
   const STORE_SELL_PLAN='jy_sell_plan_v1';
   const savedPlan=JSON.parse(localStorage.getItem(STORE_SELL_PLAN)||'{}');
 
@@ -1036,7 +1057,6 @@ function renderPlanDrawer(){
       · 总市值 <b style="color:var(--t1)">${totalVal!=null?fmtMoney(totalVal):'--'}</b>
     </div>
 
-    <!-- 买入预案 -->
     <div style="margin-bottom:20px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
         <span style="font-size:11px;font-weight:600;color:#60a5fa;background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.3);border-radius:6px;padding:2px 8px">▲ 增权</span>
@@ -1062,7 +1082,6 @@ function renderPlanDrawer(){
       </div>
     </div>
 
-    <!-- 卖出预案 -->
     <div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <span style="font-size:11px;font-weight:600;color:#f59e0b;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.3);border-radius:6px;padding:2px 8px">▼ 降权</span>
@@ -1100,7 +1119,6 @@ function renderPlanDrawer(){
       </div>
     </div>`;
 
-  // 有已保存比例则自动计算
   if(Object.keys(savedPlan).length) calcSellPreview();
 }
 
@@ -1111,7 +1129,6 @@ function saveSellPlan(){
     if(v)plan[p.code]=v;
   });
   localStorage.setItem('jy_sell_plan_v1',JSON.stringify(plan));
-  // 确保抽屉关闭（手机端兼容）
   document.getElementById('drawerMask').classList.remove('open');
   document.querySelectorAll('.drawer').forEach(d=>d.classList.remove('open'));
 }
@@ -1140,9 +1157,6 @@ function calcSellPreview(){
     return;
   }
 
-  // 按比例分配各产品需减少的权益金额配额，再除以equity系数得实际卖出额
-  // 权益计算用卖出全额（0.5%费率不影响权益计算）
-  // 兴全到账 = sum(各产品卖出额 × (1-fee))，A500C/中证500C fee=0，其余fee=0.5%
   const FEE=0.005;
   let afterEqVal=currentEqVal;
   let totalXqAmt=0;
@@ -1155,10 +1169,10 @@ function calcSellPreview(){
     const nav=getNavByCode(p.code)||1.0;
     const maxSell=(holdings[p.code]||0)*nav;
     const actualSell=Math.min(sellAmt,maxSell);
-    const fee=p.equity<1?FEE:0; // 枷锁层0.5%，可调度层0摩擦
+    const fee=p.equity<1?FEE:0; 
     const xqAmt=actualSell*(1-fee);
 
-    afterEqVal-=actualSell*p.equity; // 权益减少按卖出全额
+    afterEqVal-=actualSell*p.equity; 
     totalXqAmt+=xqAmt;
 
     const el=document.getElementById('sell_calc_'+p.code);
@@ -1178,32 +1192,6 @@ function calcSellPreview(){
         <div style="font-family:'Outfit',sans-serif;font-weight:600;font-size:14px;color:var(--t1)">${fmt(totalXqAmt/xqNav,2)} <span style="color:var(--t3);font-weight:400;font-size:12px">份</span></div></div>
     </div>`;
 }
-function confirmPlan(){
-  if(!confirm('确认已在基金平台完成操作？将同步更新本地持仓份额。'))return;
-  const h=loadHoldings();
-  if(_planMode==='buy'){
-    const sellAmt=parseFloat(document.getElementById('sell_003949')?.value)||0;
-    const xqNav=getNavByCode('003949')||1.0;
-    const a500Nav=getNavByCode('022439')||1.0;
-    h['003949']=Math.max(0,(h['003949']||0)-(sellAmt/xqNav));
-    h['022439']=(h['022439']||0)+(sellAmt/a500Nav);
-  } else if(_planMode==='sell'){
-    const xqNav=getNavByCode('003949')||1.0;
-    let totalAmt=0;
-    PRODUCTS.filter(p=>p.code!=='003949').forEach(p=>{
-      const chk=document.getElementById('chk_'+p.code);
-      if(chk&&chk.checked){
-        const amt=parseFloat(document.getElementById('sell_'+p.code)?.value)||0;
-        const nav=getNavByCode(p.code)||1.0;
-        h[p.code]=Math.max(0,(h[p.code]||0)-(amt/nav));
-        totalAmt+=amt;
-      }
-    });
-    h['003949']=(h['003949']||0)+(totalAmt/xqNav);
-  }
-  saveHoldingsData(h);closeAllDrawers();
-  alert('✅ 持仓已更新！建议立即导出备份。');
-}
 
 // ── 抽屉控制 ──
 function openDrawer(id){
@@ -1215,14 +1203,7 @@ function closeAllDrawers(){
   document.querySelectorAll('.drawer').forEach(d=>d.classList.remove('open'));
 }
 
-// ── 删除确认 ──
-function delFund(code){
-  if(!confirm(`确认删除「${NAMES[code]||code}」？`))return;
-  funds=funds.filter(c=>c!==code);saveFunds();refreshData();
-}
-
 // ── 启动 ──
-// updatePeBar在renderAll里调用（数据加载完后），页面初始化时先用已存PE渲染文字部分
 updatePeBar();
 refreshData();
 setInterval(fetchIndices,10000);
