@@ -59,7 +59,7 @@
       </div>
       <div class="chb-actions">
         <button class="chb-btn" id="miniRefBtn" onclick="refreshData()">↻ 刷新</button>
-        <button class="chb-btn" id="cycleBtn" onclick="cycleMiniMode()" style="display:none">盘中</button>
+        <button class="chb-btn" id="cycleBtn" onclick="cycleMiniMode()" style="display:none">估算</button>
         <button class="chb-btn" id="colBtn" onclick="toggleAllCollapse()">收窄</button>
       </div>
     </div>
@@ -136,7 +136,7 @@
     </div>
     <div class="drawer-body" id="planDrawerBody"></div>
     <div class="drawer-footer">
-      <button style="flex:1;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:600;font-family:var(--f-zh);cursor:pointer" onclick="closeAllDrawers()">保存预案</button>
+      <button style="flex:1;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:600;font-family:var(--f-zh);cursor:pointer" onclick="saveAndClosePlan()">保存预案</button>
     </div>
   </div>
 
