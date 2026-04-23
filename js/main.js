@@ -203,8 +203,17 @@ async function refreshData() {
       return;
     }
     
-    const allCodes = Array.from(new Set([...funds, ...PRODUCTS.map(p => p.code)]));
-    const results = await Promise.all(allCodes.map(fetchSingleFund));
+    // 【优化：只请求必要数据】
+    const coreCodes = new Set(funds);
+
+    // 仅补充“引擎必须但未在关注列表”的品种
+    PRODUCTS.forEach(p => {
+        if (p.equity > 0 && !coreCodes.has(p.code)) {
+            coreCodes.add(p.code);
+        }
+    });
+
+    const results = await Promise.all([...coreCodes].map(fetchSingleFund));
     
     renderAll(results);
     
