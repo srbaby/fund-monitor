@@ -430,7 +430,14 @@ function togglePrioritySell(code) {
   } else {
     window._prioritySellCode = code;
   }
-  
+
+  // ✅ 持久化
+  if (window._prioritySellCode) {
+    localStorage.setItem('jy_priority_sell_v1', window._prioritySellCode);
+  } else {
+    localStorage.removeItem('jy_priority_sell_v1');
+  }
+
   document.querySelectorAll('.pri-btn').forEach(btn => {
     const isPri = btn.dataset.code === window._prioritySellCode;
     btn.innerHTML = isPri ? '★ 优先' : '☆ 设为优先';
@@ -438,7 +445,7 @@ function togglePrioritySell(code) {
     btn.style.borderColor = isPri ? '#f59e0b' : 'var(--bd2)';
     btn.style.background = isPri ? 'rgba(245,158,11,0.1)' : 'transparent';
   });
-  
+
   if(typeof calcSellPreview === 'function') calcSellPreview();
 }
 
@@ -446,7 +453,7 @@ function openPlanDrawer() {
   const currentPE = getCurrentPE();
   if(!currentPE) { alert('请先定锚！'); openPeModal(); return; }
   
-  window._prioritySellCode = null;
+  window._prioritySellCode = localStorage.getItem('jy_priority_sell_v1');
   _planMode = currentPE.value <= currentPE.bounds.buyPct ? 'buy' : (currentPE.value >= currentPE.bounds.sellPct ? 'sell' : 'neutral');
   renderPlanDrawer(); 
   openDrawer('planDrawer');
