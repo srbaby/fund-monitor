@@ -1,1075 +1,161 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta name="referrer" content="no-referrer">
-<meta name="apple-mobile-web-app-title" content="基金看板">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Jany基金看板</title>
-<link rel="icon" href="favicon.png">
-<link rel="apple-touch-icon" href="favicon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-<style>
-/* ════════ CSS 设计令牌 (Design Tokens) ════════ */
-:root{
-  --bg:#0a0e14;--bg2:#111720;--bg3:#1a2130;--bg4:#1f2a3d;
-  --bd:rgba(255,255,255,0.07);--bd2:rgba(255,255,255,0.13);
-  --t1:#e8edf5;--t2:#9aaabb;--t3:#6b7f96;
-  --accent:#3b82f6;
-  --up:#f04444;--up-bg:rgba(240,68,68,0.12);--up-bd:rgba(240,68,68,0.3);
-  --dn:#22c55e;--dn-bd:rgba(34,197,94,0.3);
-  --flat:#e8edf5;
-  --sat:env(safe-area-inset-top,0px);
-  --sab:env(safe-area-inset-bottom,0px);
-  --f-num: 'Outfit', sans-serif;         /* 全局数字字体 */
-  --f-zh: 'Noto Sans SC', sans-serif;    /* 全局中文字体 */
-}
-
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{max-width:100%;overflow-x:hidden;position:relative}
-body{background:var(--bg);color:var(--t1);font-family:var(--f-zh),'PingFang SC',-apple-system,sans-serif;font-size:14px;min-height:100vh;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
-.up{color:var(--up)}.down{color:var(--dn)}.flat{color:var(--flat)}
-
-.header{position:sticky;top:0;z-index:200;padding:calc(var(--sat) + 12px) 16px 12px;background:rgba(10,14,20,0.95);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;width:100%}
-.hd-left{display:flex;align-items:center;gap:10px;min-width:0}
-.hd-title{font-size:16px;font-weight:600}
-.hd-sub{font-size:11px;color:var(--t2);margin-top:2px;display:flex;align-items:center;gap:5px}
-.mkt-dot{width:6px;height:6px;border-radius:50%;background:var(--flat);flex-shrink:0}
-.mkt-dot.open{background:var(--dn);animation:pulse 2s infinite}
-@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,.5)}70%{box-shadow:0 0 0 6px transparent}100%{box-shadow:0 0 0 0 transparent}}
-.hd-right{text-align:right;flex-shrink:0;margin-left:12px}
-.hd-time{font-family:var(--f-num);font-size:20px;font-weight:600;line-height:1}
-.hd-date{font-size:10px;color:var(--t3);margin-top:3px}
-
-.idx-bar{width:100%;background:var(--bg2);border-bottom:1px solid var(--bd);display:grid;grid-template-columns:repeat(3,1fr)}
-.idx-cell{padding:10px 8px;border-right:1px solid var(--bd);border-bottom:1px solid var(--bd);overflow:hidden;position:relative}
-.idx-cell::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;opacity:0}
-.idx-cell.up::after{background:var(--up);opacity:1}
-.idx-cell.down::after{background:var(--dn);opacity:1}
-.idx-cell.flat::after{background:var(--flat);opacity:1}
-.idx-cell:nth-child(3n){border-right:none}
-.idx-cell:nth-child(n+4){border-bottom:none}
-.idx-lbl{font-size:10px;color:var(--t2);font-weight:500;margin-bottom:5px;white-space:nowrap}
-.idx-row{display:flex;align-items:baseline;gap:6px}
-.idx-chg{font-family:var(--f-num);font-size:16px;font-weight:700;line-height:1}
-.idx-price{font-family:var(--f-num);font-size:11px;font-weight:400;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-
-.card-header-bar{display:none;align-items:center;padding:6px 12px 6px 16px;background:var(--bg2);border-bottom:1px solid var(--bd);gap:8px;position:sticky;top:calc(var(--sat) + 56px);z-index:100}
-.chb-title{font-size:11px;color:var(--t3);font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chb-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
-.chb-btn{padding:4px 10px;border-radius:8px;border:1px solid var(--bd2);background:transparent;color:var(--t2);font-size:11px;font-family:var(--f-zh);cursor:pointer;white-space:nowrap}
-.chb-btn:active{background:var(--bg3)}
-
-.toolbar{background:var(--bg2);border-top:1px solid var(--bd);padding:10px 12px;display:flex;align-items:center;gap:8px;overflow:hidden}
-body.collapsed-mode .toolbar{position:fixed;bottom:0;left:0;right:0;padding:10px 12px calc(var(--sab) + 10px);z-index:150;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
-body.collapsed-mode main{padding-bottom:calc(var(--sab) + 68px)}
-.search-wrap{flex:1;min-width:0;display:flex;align-items:center;background:var(--bg3);border:1px solid var(--bd2);border-radius:10px;padding:0 12px;gap:8px}
-.search-wrap input{flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--t1);font-family:var(--f-num);font-size:14px;padding:9px 0;letter-spacing:1px}
-.search-wrap input::placeholder{color:var(--t3);font-family:var(--f-zh);font-size:13px;letter-spacing:0}
-.si{color:var(--t3);font-size:14px;flex-shrink:0}
-.tbtn{padding:8px 12px;border-radius:10px;border:none;font-size:13px;font-weight:500;font-family:var(--f-zh);cursor:pointer;white-space:nowrap;flex-shrink:0;transition:opacity .15s}
-.tbtn:active{opacity:.7}
-.tbtn-p{background:var(--accent);color:#fff}
-
-main{padding:12px;width:100%}
-.card-view{display:flex;flex-direction:column;gap:10px}
-.fund-card{background:var(--bg2);border:1px solid var(--bd);border-radius:12px;overflow:hidden;position:relative;width:100%}
-.fund-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--flat)}
-.fund-card.up-card::before{background:var(--up)}
-.fund-card.down-card::before{background:var(--dn)}
-.card-top{display:flex;align-items:center;padding:10px 12px 10px 6px;gap:6px}
-.card-info{flex:1;min-width:0}
-.card-name{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.card-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
-.drag-handle{color:var(--t3);cursor:grab;font-size:20px;padding:4px 6px;line-height:1;touch-action:none;user-select:none;flex-shrink:0}
-.del-btn{font-size:11px;color:var(--t3);background:transparent;border:1px solid var(--bd2);border-radius:6px;padding:4px 10px;cursor:pointer}
-.del-btn:active{color:var(--up);border-color:var(--up-bd)}
-
-.data-half.stale{opacity:0.35;filter:grayscale(1)}
-.data-half.stale .dh-pct{color:var(--t3)!important}
-.card-data{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--bd)}
-.data-half{padding:12px 12px 14px 14px;overflow:hidden}
-.data-half:first-child{border-right:1px solid var(--bd)}
-.dh-label{font-size:11px;color:var(--t2);font-weight:500;margin-bottom:4px}
-.dh-pct{font-family:var(--f-num);font-size:26px;font-weight:600;line-height:1;letter-spacing:-.5px;border-radius:6px;padding:2px 4px;margin-left:-4px;white-space:nowrap;overflow:hidden}
-.dh-nav{font-size:12px;color:var(--t2);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dh-nav .nv{color:var(--t1);font-weight:500;font-family:var(--f-num)}
-.dh-time{font-size:11px;color:var(--t2);margin-top:3px}
-
-.fund-card.collapsed .card-data{display:none}
-.fund-card.collapsed .card-top{padding:5px 10px 5px 6px;gap:4px}
-.fund-card.collapsed .card-name{font-size:13px}
-.fund-card.collapsed .del-btn{display:none}
-.inline-pct{display:none;font-family:var(--f-num);font-size:14px;font-weight:600;flex-shrink:0;white-space:nowrap}
-.fund-card.collapsed .inline-pct{display:block}
-
-.sk{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:sk 1.4s infinite;border-radius:4px;display:inline-block}
-@keyframes sk{to{background-position:-200% 0}}
-.empty-state{text-align:center;padding:60px 20px;color:var(--t3)}
-.empty-icon{font-size:40px;margin-bottom:12px;opacity:.4}
-.sortable-ghost{opacity:.2;background:var(--bg4);border:1px dashed var(--accent)}
-
-@keyframes flashUp{0%{background:rgba(240,68,68,.28)}100%{background:transparent}}
-@keyframes flashDown{0%{background:rgba(34,197,94,.28)}100%{background:transparent}}
-.flash-up{animation:flashUp .8s ease-out}
-.flash-down{animation:flashDown .8s ease-out}
-
-.table-view{display:none}
-.fund-table{width:100%;border-collapse:collapse;background:var(--bg2);border:1px solid var(--bd);border-radius:12px;overflow:hidden}
-.fund-table th{padding:14px 20px;text-align:left;font-size:11px;font-weight:500;color:var(--t3);letter-spacing:.8px;text-transform:uppercase;background:var(--bg3);border-bottom:1px solid var(--bd)}
-.fund-table td{padding:16px 20px;border-bottom:1px solid var(--bd);vertical-align:middle}
-.fund-table tr:last-child td{border-bottom:none}
-.fund-table tbody tr:hover td{background:var(--bg3)}
-.tbl-drag{color:var(--t3);cursor:grab;font-size:18px;margin-right:10px;display:inline-block;vertical-align:middle;user-select:none}
-.tbl-name{font-size:15px;font-weight:600}
-.tbl-code{font-family:var(--f-num);font-size:11px;color:var(--t3);margin-top:4px}
-.tbl-pct{font-family:var(--f-num);font-size:22px;font-weight:600;border-radius:6px;padding:2px 4px;margin-left:-4px}
-.tbl-nav{font-size:13px;color:var(--t2);margin-top:5px}
-.tbl-nav .nv{color:var(--t1);font-weight:500;font-family:var(--f-num)}
-.tbl-time{font-size:11px;color:var(--t2);margin-top:4px}
-.tbl-del{font-size:12px;color:var(--t3);background:transparent;border:1px solid var(--bd2);border-radius:6px;padding:5px 12px;cursor:pointer}
-.tbl-del:hover{color:var(--up);border-color:var(--up-bd);background:var(--up-bg)}
-
-.pe-bar{background:var(--bg2);border-bottom:1px solid var(--bd);padding:8px 16px;display:flex;flex-direction:column;gap:6px}
-.pe-bar-top{display:flex;align-items:center;gap:8px;width:100%}
-.pe-bar-left{display:flex;align-items:center;gap:8px;flex-shrink:0}
-.pe-bar-bottom{display:flex;align-items:center;gap:10px;width:100%}
-.pe-label{font-size:11px;color:var(--t3);white-space:nowrap}
-.pe-value{font-family:var(--f-num);font-size:20px;font-weight:700;line-height:1}
-.pe-value.pe-danger-up{color:#f59e0b}
-.pe-value.pe-danger-dn{color:#3b82f6}
-.pe-value.pe-normal{color:var(--t1)}
-.pe-status{font-size:11px;padding:3px 8px;border-radius:6px;font-weight:500;white-space:nowrap}
-.pe-status.triggered-buy{background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid rgba(59,130,246,.3)}
-.pe-status.triggered-sell{background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid rgba(245,158,11,.3)}
-.pe-status.normal{background:var(--bg3);color:var(--t3);border:1px solid var(--bd)}
-
-.pe-track{flex:1;max-width:200px;height:10px;background:var(--bg3);border-radius:5px;position:relative}
-.pe-track-marker{position:absolute;top:50%;width:10px;height:10px;border-radius:50%;background:var(--t1);border:2px solid var(--bg2);transform:translate(-50%,-50%);transition:left .3s,background .3s;animation:peMarkerPulse 2s infinite;z-index:2}
-@keyframes peMarkerPulse{0%{box-shadow:0 0 0 0 rgba(232,237,245,.6)}70%{box-shadow:0 0 0 5px transparent}100%{box-shadow:0 0 0 0 transparent}}
-.pe-track-lo{position:absolute;top:0;bottom:0;width:3px;background:#3b82f6;border-radius:2px;transition:left .3s;z-index:1}
-.pe-track-hi{position:absolute;top:0;bottom:0;width:3px;background:#f59e0b;border-radius:2px;transition:left .3s;z-index:1}
-
-.pe-input-btn{font-size:11px;color:var(--t3);background:transparent;border:1px solid var(--bd2);border-radius:6px;padding:4px 10px;cursor:pointer;white-space:nowrap;flex-shrink:0}
-.pe-input-btn:active{background:var(--bg3)}
-.pe-plan-btn{font-size:12px;font-weight:500;padding:6px 14px;border-radius:8px;border:none;cursor:pointer;white-space:nowrap;flex-shrink:0;font-family:var(--f-zh)}
-.pe-plan-btn.buy{background:rgba(59,130,246,.2);color:#60a5fa;border:1px solid rgba(59,130,246,.35)}
-.pe-plan-btn.sell{background:rgba(245,158,11,.2);color:#f59e0b;border:1px solid rgba(245,158,11,.35)}
-.pe-plan-btn.neutral{background:var(--bg3);color:var(--t3);border:1px solid var(--bd2)}
-
-.drawer-mask{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;opacity:0;pointer-events:none;transition:opacity .25s}
-.drawer-mask.open{opacity:1;pointer-events:all}
-.drawer{position:fixed;bottom:0;left:0;right:0;z-index:501;background:var(--bg2);border-radius:16px 16px 0 0;border-top:1px solid var(--bd2);max-height:90vh;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .3s cubic-bezier(.32,0,.67,0)}
-.drawer.open{transform:translateY(0)}
-.drawer-handle{width:36px;height:4px;background:var(--bd2);border-radius:2px;margin:12px auto 0}
-.drawer-header{padding:12px 16px 10px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--bd);flex-shrink:0}
-.drawer-title{font-size:15px;font-weight:600}
-.drawer-close{font-size:20px;color:var(--t3);background:none;border:none;cursor:pointer;padding:4px 8px;line-height:1}
-.drawer-body{overflow-y:auto;padding:16px;flex:1;-webkit-overflow-scrolling:touch}
-.drawer-footer{padding:12px 16px calc(var(--sab) + 12px);border-top:1px solid var(--bd);flex-shrink:0;display:flex;gap:8px}
-
-.pe-modal{position:fixed;inset:0;z-index:600;display:flex;align-items:center;justify-content:center;padding:20px}
-.pe-modal-mask{position:absolute;inset:0;background:rgba(0,0,0,.6)}
-.pe-modal-box{position:relative;background:var(--bg2);border-radius:16px;padding:24px;width:100%;max-width:320px;border:1px solid var(--bd2)}
-.pe-modal-title{font-size:15px;font-weight:600;margin-bottom:6px}
-.pe-modal-sub{font-size:12px;color:var(--t3);margin-bottom:16px}
-.pe-modal-input, .pe-modal-select{width:100%;background:var(--bg3);border:1px solid var(--bd2);border-radius:10px;color:var(--t1);font-family:var(--f-num);font-weight:600;padding:12px 16px;outline:none;}
-.pe-modal-select{font-family:var(--f-zh);font-size:14px;appearance:none;cursor:pointer}
-.pe-modal-input:focus, .pe-modal-select:focus{border-color:var(--accent)}
-.pe-modal-btns{display:flex;gap:8px;margin-top:20px}
-.pe-modal-cancel{flex:1;padding:10px;border-radius:10px;border:1px solid var(--bd2);background:transparent;color:var(--t2);font-size:14px;font-family:var(--f-zh);cursor:pointer}
-.pe-modal-confirm{flex:2;padding:10px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:600;font-family:var(--f-zh);cursor:pointer}
-
-.holding-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--bd)}
-.holding-row:last-child{border-bottom:none}
-.holding-input{width:110px;background:var(--bg3);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);font-family:var(--f-num);font-size:13px;padding:6px 8px;text-align:right;outline:none}
-
-@media(prefers-color-scheme:light){
-  :root{--bg:#f0f4f8;--bg2:#ffffff;--bg3:#f0f4f8;--bg4:#e2e8f0;--bd:rgba(0,0,0,0.08);--bd2:rgba(0,0,0,0.14);--t1:#1a202c;--t2:#4a5568;--t3:#718096;--accent:#2563eb;--flat:#1a202c;--up:#dc2626;--up-bg:rgba(220,38,38,0.08);--up-bd:rgba(220,38,38,0.3);--dn:#16a34a;--dn-bd:rgba(22,163,74,0.3)}
-  .header{background:rgba(240,244,248,0.95)}
-  .toolbar{background:rgba(255,255,255,0.95)}
-  .card-header-bar{background:rgba(240,244,248,0.95)}
-}
-
-@media(min-width:768px){
-  .drawer{left:50%;transform:translateX(-50%) translateY(100%);max-width:480px;border-radius:16px 16px 0 0}
-  .drawer.open{transform:translateX(-50%) translateY(0)}
-  .idx-bar{grid-template-columns:repeat(6,1fr)}
-  .idx-cell{border-bottom:none}
-  .idx-cell:nth-child(3n){border-right:1px solid var(--bd)}
-  .idx-cell:nth-child(6){border-right:none}
-  .card-header-bar{display:flex!important;position:static;padding:10px 24px}
-  #cycleBtn, #colBtn{display:none!important}
-  main{padding:20px 24px 20px;max-width:1200px;margin:0 auto}
-  .card-view{display:none!important}
-  .table-view{display:block}
-}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-title" content="基金看板">
+  <title>Jany基金看板</title>
+  <link rel="icon" href="favicon.png">
+  <link rel="apple-touch-icon" href="favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/main.css">
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 </head>
 <body>
-
-<header class="header">
-  <div class="hd-left">
-    <img src="favicon.png" style="width:32px;height:32px;border-radius:8px;flex-shrink:0">
-    <div>
-      <div class="hd-title">Jany基金看板</div>
-      <div class="hd-sub"><span class="mkt-dot" id="mktDot"></span><span id="mktLabel">检测中</span></div>
-    </div>
-  </div>
-  <div class="hd-right">
-    <div class="hd-time" id="liveTime">--:--:--</div>
-    <div class="hd-date" id="liveDate">----/--/--</div>
-  </div>
-</header>
-
-<div class="idx-bar" id="idxBar">
-  <div class="idx-cell"><div class="idx-lbl">沪深300</div><div class="idx-row"><span class="sk" style="width:44px;height:16px"></span></div></div>
-  <div class="idx-cell"><div class="idx-lbl">中证A500</div><div class="idx-row"><span class="sk" style="width:44px;height:16px"></span></div></div>
-  <div class="idx-cell"><div class="idx-lbl">中证500</div><div class="idx-row"><span class="sk" style="width:44px;height:16px"></span></div></div>
-  <div class="idx-cell"><div class="idx-lbl">红利低波</div><div class="idx-row"><span class="sk" style="width:44px;height:16px"></span></div></div>
-  <div class="idx-cell"><div class="idx-lbl">国债指数</div><div class="idx-row"><span class="sk" style="width:44px;height:16px"></span></div></div>
-  <div class="idx-cell"><div class="idx-lbl">恒生指数</div><div class="idx-row"><span class="sk" style="width:44px;height:16px"></span></div></div>
-</div>
-
-<div class="pe-bar" id="peBar">
-  <div class="pe-bar-top">
-    <div class="pe-bar-left">
-      <span class="pe-label">PE</span>
-      <span class="pe-value pe-normal" id="peDisplay">--.--%</span>
-      <span class="pe-status normal" id="peStatus">待机</span>
-    </div>
-    <div style="flex:1"></div>
-    <button class="pe-input-btn" onclick="openPeModal()">定锚</button>
-    <button class="pe-input-btn" onclick="openHoldingDrawer()">持仓</button>
-    <button class="pe-plan-btn neutral" id="planBtn" onclick="openPlanDrawer()">待机预案</button>
-  </div>
-  <div class="pe-bar-bottom">
-    <div class="pe-track" id="peTrack" title="高精度二次抛物线追踪">
-      <div class="pe-track-lo" id="peTrackLo" style="display:none;"></div>
-      <div class="pe-track-hi" id="peTrackHi" style="display:none;"></div>
-      <div class="pe-track-marker" id="peTrackMarker" style="display:none;"></div>
-    </div>
-    <div id="peEquityInfo" style="display:none;font-size:11px;color:var(--t3);gap:4px;align-items:center;flex-shrink:0;white-space:nowrap;margin-left:auto"></div>
-  </div>
-</div>
-
-<div class="pe-modal" id="peModal" style="display:none">
-  <div class="pe-modal-mask" onclick="closePeModal()"></div>
-  <div class="pe-modal-box">
-    <div class="pe-modal-title">高精定锚 (Lagrange Curve)</div>
-    <div class="pe-modal-sub">通过3个精准坐标系拟合历史估值抛物线</div>
-    
-    <div style="display:flex; flex-direction:column; gap:14px">
+  <header class="header">
+    <div class="hd-left">
+      <img src="favicon.png" style="width:32px;height:32px;border-radius:8px;flex-shrink:0" alt="">
       <div>
-        <div style="font-size:11px;color:var(--t3);margin-bottom:4px">1. 明确当前所处档位 (锁定绝对死区)</div>
-        <select class="pe-modal-select" id="peModalBucket">
-          <option value="80,100">80% 以上 (极度泡沫)</option>
-          <option value="75,80">75% - 80% (疯狂期)</option>
-          <option value="70,75">70% - 75% (平稳撤军)</option>
-          <option value="65,70" selected>65% - 70% (高位警戒)</option>
-          <option value="60,65">60% - 65% (常态偏高)</option>
-          <option value="55,60">55% - 60% (印钞带上沿)</option>
-          <option value="50,55">50% - 55% (物理重心)</option>
-          <option value="45,50">45% - 50% (吸筹带)</option>
-          <option value="40,45">40% - 45% (深水激活)</option>
-          <option value="35,40">35% - 40% (活塞预警)</option>
-          <option value="30,35">30% - 35% (破窗I)</option>
-          <option value="0,30">30% 以下 (破窗II)</option>
-        </select>
+        <div class="hd-title">Jany基金看板</div>
+        <div class="hd-sub"><span class="mkt-dot" id="mktDot"></span><span id="mktLabel">检测中</span></div>
       </div>
+    </div>
+    <div class="hd-right">
+      <div class="hd-time" id="liveTime">--:--:--</div>
+      <div class="hd-date" id="liveDate">----/--/--</div>
+    </div>
+  </header>
 
-      <div style="display:flex; gap:10px">
-        <div style="flex:1">
-          <div style="font-size:11px;color:var(--t3);margin-bottom:4px">2. 基准 PE (%)</div>
-          <input class="pe-modal-input" id="peModalInputPct" type="number" step="0.01" style="font-size:18px; padding:8px" placeholder="67.93">
-        </div>
-        <div style="flex:1">
-          <div style="font-size:11px;color:var(--t3);margin-bottom:4px">基准点位 (即今日收盘)</div>
-          <input class="pe-modal-input" id="peModalPriceAnchor" type="number" step="0.01" style="font-size:18px; padding:8px" placeholder="4799.63">
-        </div>
+  <div class="idx-bar" id="idxBar"></div>
+
+  <div class="pe-bar" id="peBar">
+    <div class="pe-bar-top">
+      <div class="pe-bar-left">
+        <span class="pe-label">PE</span>
+        <span class="pe-value pe-normal" id="peDisplay">--.--%</span>
+        <span class="pe-status normal" id="peStatus">待机</span>
       </div>
+      <div style="flex:1"></div>
+      <button class="pe-input-btn" onclick="openPeModal()">定锚</button>
+      <button class="pe-input-btn" onclick="openHoldingDrawer()">持仓</button>
+      <button class="pe-plan-btn neutral" id="planBtn" onclick="openPlanDrawer()">待机预案</button>
+    </div>
+    <div class="pe-bar-bottom">
+      <div class="pe-track" id="peTrack" title="高精度二次抛抛物线追踪">
+        <div class="pe-track-lo" id="peTrackLo" style="display:none;"></div>
+        <div class="pe-track-hi" id="peTrackHi" style="display:none;"></div>
+        <div class="pe-track-marker" id="peTrackMarker" style="display:none;"></div>
+      </div>
+      <div id="peEquityInfo" style="display:none;font-size:11px;color:var(--t3);gap:4px;align-items:center;flex-shrink:0;white-space:nowrap;margin-left:auto"></div>
+    </div>
+  </div>
+
+  <main>
+    <div class="card-header-bar" id="cardHeaderBar">
+      <div style="flex:1; display:flex; align-items:baseline; min-width:0;">
+        <span class="chb-title" style="flex:none; padding-right:12px;">关注基金</span>
+        <span id="todayProfit" style="font-family:var(--f-num); font-size:15px; font-weight:700; white-space:nowrap;"></span>
+      </div>
+      <div class="chb-actions">
+        <button class="chb-btn" id="miniRefBtn" onclick="refreshData()">↻ 刷新</button>
+        <button class="chb-btn" id="cycleBtn" onclick="cycleMiniMode()" style="display:none">盘中估算</button>
+        <button class="chb-btn" id="colBtn" onclick="toggleAllCollapse()">收窄</button>
+      </div>
+    </div>
+    <div class="card-view" id="cardView"><div class="empty-state"><div class="empty-icon">💰</div><div>数据加载中...</div></div></div>
+    <div class="table-view" id="tableView"><table class="fund-table"><thead><tr><th>代码 / 名称</th><th>盘中估算</th><th>官方数据</th><th>操作</th></tr></thead><tbody id="fundTbody"><tr><td colspan="4" style="text-align:center;padding:50px;color:var(--t3)">数据加载中...</td></tr></tbody></table></div>
+    <div class="toolbar">
+      <div class="search-wrap"><span class="si">⌕</span><input id="codeInput" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="输入6位基金代码" maxlength="6" style="font-size:16px"/></div>
+      <button class="tbtn tbtn-p" onclick="addFund()">添加</button>
+    </div>
+  </main>
+
+  <div class="pe-modal" id="peModal" style="display:none">
+    <div class="pe-modal-mask" onclick="closePeModal()"></div>
+    <div class="pe-modal-box">
+      <div class="pe-modal-title">高精定锚 (Lagrange Curve)</div>
+      <div class="pe-modal-sub">通过3个精准坐标系拟合历史估值抛物线</div>
       
-      <div style="display:flex; gap:10px">
-        <div style="flex:1; background:rgba(59,130,246,.08); border:1px solid rgba(59,130,246,.25); padding:10px; border-radius:10px">
-          <div style="font-size:11px;color:#3b82f6;margin-bottom:4px;font-weight:600">📉 跌破触发点位</div>
-          <input class="pe-modal-input" id="peModalBuyPrice" type="number" style="margin-bottom:0; font-size:18px; padding:6px; width:100%; border:none; background:transparent; color:var(--t1)" placeholder="4634">
+      <div style="display:flex; flex-direction:column; gap:14px">
+        <div>
+          <div style="font-size:11px;color:var(--t3);margin-bottom:4px">1. 明确当前所处档位 (锁定绝对死区)</div>
+          <select class="pe-modal-select" id="peModalBucket">
+            <option value="80,100">80% 以上 (极度泡沫)</option>
+            <option value="75,80">75% - 80% (疯狂期)</option>
+            <option value="70,75">70% - 75% (平稳撤军)</option>
+            <option value="65,70" selected>65% - 70% (高位警戒)</option>
+            <option value="60,65">60% - 65% (常态偏高)</option>
+            <option value="55,60">55% - 60% (印钞带上沿)</option>
+            <option value="50,55">50% - 55% (物理重心)</option>
+            <option value="45,50">45% - 50% (吸筹带)</option>
+            <option value="40,45">40% - 45% (深水激活)</option>
+            <option value="35,40">35% - 40% (活塞预警)</option>
+            <option value="30,35">30% - 35% (破窗I)</option>
+            <option value="0,30">30% 以下 (破窗II)</option>
+          </select>
         </div>
-        <div style="flex:1; background:rgba(245,158,11,.08); border:1px solid rgba(245,158,11,.25); padding:10px; border-radius:10px">
-          <div style="font-size:11px;color:#f59e0b;margin-bottom:4px;font-weight:600">📈 涨破触发点位</div>
-          <input class="pe-modal-input" id="peModalSellPrice" type="number" style="margin-bottom:0; font-size:18px; padding:6px; width:100%; border:none; background:transparent; color:var(--t1)" placeholder="4955">
-        </div>
-      </div>
-    </div>
 
-    <div class="pe-modal-btns">
-      <button class="pe-modal-cancel" onclick="closePeModal()">取消</button>
-      <button class="pe-modal-confirm" onclick="confirmPe()">开启抛物线追踪</button>
-    </div>
-  </div>
-</div>
-
-<div class="drawer-mask" id="drawerMask" onclick="closeAllDrawers()"></div>
-<div class="drawer" id="planDrawer">
-  <div class="drawer-handle"></div>
-  <div class="drawer-header"><span class="drawer-title" id="planDrawerTitle">待机预案</span><button class="drawer-close" onclick="closeAllDrawers()">×</button></div>
-  <div class="drawer-body" id="planDrawerBody"></div>
-  <div class="drawer-footer">
-    <button style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--bd2);background:transparent;color:var(--t2);font-size:14px;font-family:var(--f-zh);cursor:pointer" onclick="closeAllDrawers()">取消</button>
-    <button style="flex:2;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:600;font-family:var(--f-zh);cursor:pointer" id="planConfirmBtn" onclick="confirmPlan()">确认已执行，更新持仓</button>
-  </div>
-</div>
-
-<div class="drawer" id="holdingDrawer">
-  <div class="drawer-handle"></div>
-  <div class="drawer-header"><span class="drawer-title">编辑持仓份额</span><button class="drawer-close" onclick="closeAllDrawers()">×</button></div>
-  <div class="drawer-body" id="holdingDrawerBody"></div>
-  <div class="drawer-footer">
-    <button style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--bd2);background:transparent;color:var(--t2);font-size:14px;font-family:var(--f-zh);cursor:pointer" onclick="closeAllDrawers()">取消</button>
-    <button style="flex:2;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:600;font-family:var(--f-zh);cursor:pointer" onclick="saveHoldings()">保存持仓</button>
-  </div>
-</div>
-
-<main>
-  <div class="card-header-bar" id="cardHeaderBar">
-    <span class="chb-title">基金名称</span>
-    <div class="chb-actions">
-      <button class="chb-btn" id="miniRefBtn" onclick="refreshData()">↻ 刷新</button>
-      <button class="chb-btn" id="cycleBtn" onclick="cycleMiniMode()" style="display:none">盘中估算</button>
-      <button class="chb-btn" id="colBtn" onclick="toggleAllCollapse()">收窄</button>
-    </div>
-  </div>
-  <div class="card-view" id="cardView"><div class="empty-state"><div class="empty-icon">💰</div><div>数据加载中...</div></div></div>
-  <div class="table-view" id="tableView"><table class="fund-table"><thead><tr><th>代码 / 名称</th><th>盘中估算</th><th>官方数据</th><th>操作</th></tr></thead><tbody id="fundTbody"><tr><td colspan="4" style="text-align:center;padding:50px;color:var(--t3)">数据加载中...</td></tr></tbody></table></div>
-  <div class="toolbar">
-    <div class="search-wrap"><span class="si">⌕</span><input id="codeInput" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="输入6位基金代码" maxlength="6" style="font-size:16px"/></div>
-    <button class="tbtn tbtn-p" onclick="addFund()">添加</button>
-  </div>
-</main>
-
-<script>
-// ══════════════════════════════════════
-// 全局系统配置 (归集所有核心变量，改这里即可全局生效)
-// ══════════════════════════════════════
-const SYS_CONFIG = {
-  FEE: 0.005,              // 全局默认摩擦费率 (0.5%)
-  DEAD_ZONE: 2.5,          // PE动态死区缓冲范围 (±2.5%)
-  CODE_XQ: '003949',       // 兴全中长债 (防守底仓代码)
-  CODE_A500: '022439',     // 华泰柏瑞A500C (进攻主宽基)
-  CODE_ZZ500: '000500',    // 中证500C (未完全解耦时的兜底变量)
-  REFRESH_IDX: 10000,      // 纯净大盘指数刷新间隔 (毫秒)
-  REFRESH_API: 60000       // 天天/东财API轮询间隔 (毫秒)
-};
-
-const DAYS=['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
-let _mktOpen=null;
-function updateClock(){
-  const n=new Date();
-  document.getElementById('liveTime').textContent=
-    [n.getHours(),n.getMinutes(),n.getSeconds()].map(v=>String(v).padStart(2,'0')).join(':');
-  document.getElementById('liveDate').textContent=
-    `${n.getFullYear()}/${String(n.getMonth()+1).padStart(2,'0')}/${String(n.getDate()).padStart(2,'0')} ${DAYS[n.getDay()]}`;
-  const d=n.getDay(),t=n.getHours()*60+n.getMinutes();
-  const weekend=d===0||d===6;
-  const open=!weekend&&((t>=570&&t<690)||(t>=780&&t<900));
-  if(open!==_mktOpen){
-    _mktOpen=open;
-    document.getElementById('mktDot').className='mkt-dot'+(open?' open':'');
-    document.getElementById('mktLabel').textContent=weekend?'休市·周末':open?'交易中':
-      t<570?'盘前':t<900?(t<690?'午间休市':'盘后'):'已收盘';
-  }
-}
-setInterval(updateClock,1000);updateClock();
-
-const INDICES=[{id:'000300',lbl:'沪深300'},{id:'000510',lbl:'中证A500'},{id:'000905',lbl:'中证500'},{id:'H30269',lbl:'红利低波'},{id:'000012',lbl:'国债指数'},{id:'HSI',lbl:'恒生指数'}];
-const idxPrev={};
-window._rt_csi300_price = null; 
-window._rt_csi300_yest = null; 
-
-function fetchIndices(){
-  return new Promise(resolve=>{
-    const cb='_idx_'+Date.now();let done=false;
-    const s=document.createElement('script');
-    const fin=()=>{if(!done){done=true; s.remove(); resolve();}};
-    window[cb]=function(data){
-      fin();delete window[cb];
-      const diff=data?.data?.diff;if(!diff)return;
-      const map={};diff.forEach(d=>{map[d.f12]=d;});
-      
-      if(map['000300'] && map['000300'].f2 && map['000300'].f18) {
-        window._rt_csi300_price = parseFloat(map['000300'].f2);
-        window._rt_csi300_yest = parseFloat(map['000300'].f18);
-        if(document.getElementById('peModal').style.display !== 'flex') updatePeBar();
-      }
-
-      document.getElementById('idxBar').innerHTML=INDICES.map(idx=>{
-        const d=map[idx.id];
-        if(!d||!d.f2)return`<div class="idx-cell" data-id="${idx.id}"><div class="idx-lbl">${idx.lbl}</div><div class="idx-row"><div class="idx-chg flat">—</div></div></div>`;
-        const price=typeof d.f2==='number'?d.f2.toFixed(2):String(d.f2);
-        const pct=d.f3??0;
-        const cls=pct>0?'up':pct<0?'down':'flat';
-        const sign=pct>0?'+':'';
-        const old=idxPrev[idx.id];
-        const flash=old&&old!==price?(parseFloat(price)>parseFloat(old)?'flash-up':'flash-down'):'';
-        idxPrev[idx.id]=price;
-        return`<div class="idx-cell ${cls} ${flash}" data-id="${idx.id}">
-          <div class="idx-lbl">${idx.lbl}</div>
-          <div class="idx-row">
-            <div class="idx-chg ${cls}">${sign}${typeof pct==='number'?pct.toFixed(2):pct}%</div>
-            <div class="idx-price">${price}</div>
+        <div style="display:flex; gap:10px">
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--t3);margin-bottom:4px">2. 基准 PE (%)</div>
+            <input class="pe-modal-input" id="peModalInputPct" type="number" step="0.01" style="font-size:18px; padding:8px" placeholder="67.93">
           </div>
-        </div>`;
-      }).join('');
-    };
-    s.src=`https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f12,f14,f18&secids=1.000300,1.000510,1.000905,2.H30269,1.000012,116.HSI,124.HSI,100.HSI&cb=${cb}&_=${Date.now()}`;
-    s.onerror=fin;setTimeout(fin,5000);document.head.appendChild(s);
-  });
-}
-
-const DEFAULT_CODES=[SYS_CONFIG.CODE_XQ,'160622','110027','011554','007466','004496',SYS_CONFIG.CODE_A500,'007028'];
-const NAMES={[SYS_CONFIG.CODE_XQ]:'兴全稳泰债券A','160622':'鹏华丰利债券LOF','110027':'易方达安心回报A','011554':'海富通欣利混合A','007466':'华泰柏瑞红利低波联接A','004496':'前海开源多元策略A','110020':'易方达沪深300联接A',[SYS_CONFIG.CODE_A500]:'华泰柏瑞A500联接C','007028':'易方达中证500联接A'};
-const STORE='fm_v20';
-let funds=[];
-function loadFunds(){const c=localStorage.getItem(STORE);funds=(c&&c!=='[]')?JSON.parse(c):[...DEFAULT_CODES];}
-function saveFunds(){localStorage.setItem(STORE,JSON.stringify(funds));}
-
-window.jsonpResolvers={};
-window.jsonpgz=function(data){if(data?.fundcode&&window.jsonpResolvers[data.fundcode]){window.jsonpResolvers[data.fundcode](data);delete window.jsonpResolvers[data.fundcode];}};
-function fetchEst(code){return new Promise(resolve=>{let done=false;const s=document.createElement('script');const fin=v=>{if(!done){done=true;delete window.jsonpResolvers[code]; s.remove(); resolve(v);}};window.jsonpResolvers[code]=fin;s.src=`https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`;s.onerror=()=>fin(null);setTimeout(()=>fin(null),3000);document.head.appendChild(s);});}
-
-const offQ=[];let offBusy=false;
-function fetchOff(code){return new Promise(r=>{offQ.push({code,resolve:r});drainOff();});}
-function drainOff(){if(offBusy||!offQ.length)return;offBusy=true;const{code,resolve}=offQ.shift();let done=false;const s=document.createElement('script');const fin=v=>{if(!done){done=true;window.apidata=undefined; s.remove(); resolve(v);offBusy=false;setTimeout(drainOff,30);}};s.src=`https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz&code=${code}&page=1&per=1&v=${Date.now()}`;s.onload=()=>{try{const html=window.apidata?.content;if(html){const tr=html.match(/<tbody>\s*<tr>(.*?)<\/tr>/i);if(tr){const tds=tr[1].match(/<td[^>]*>(.*?)<\/td>/g).map(td=>td.replace(/<[^>]+>/g,'').trim());if(tds.length>=4){const date=tds[0],nav=tds[1];let pct=null;if(tds[3]&&tds[3]!=='---')pct=parseFloat(tds[3].replace('%',''));fin({nav:Number(nav).toFixed(4),pct:pct!=null?pct.toFixed(2):null,date});return;}}}fin(null);}catch(e){fin(null);}};s.onerror=()=>fin(null);setTimeout(()=>fin(null),3000);document.head.appendChild(s);}
-
-async function fetchSingleFund(code){const[est,off]=await Promise.all([fetchEst(code),fetchOff(code)]);if(!est&&!off)return{code,error:true};return{code,error:false,name:est?.name||NAMES[code]||`基金 ${code}`,estPct:est?.gszzl!=null&&est.gszzl!==''?parseFloat(est.gszzl):null,estVal:est?.gsz||null,estTime:est?.gztime||null,offPct:off?.pct!=null?parseFloat(off.pct):null,offVal:off?.nav||est?.dwjz||null,offDate:off?.date||est?.jzrq||null};}
-
-const prevData={};let allCollapsed=false;let miniMode=0;const miniLabels=['盘中估算','官方数据','估算|官方'];let cardSortable=null,tblSortable=null;let _lastResults=[];
-function fp(v){if(v==null)return{cls:'flat',txt:'--'};return{cls:v>0?'up':v<0?'down':'flat',txt:(v>0?'+':'')+v.toFixed(2)+'%'};}
-function todayDateStr(){const d=new Date();const y=d.getFullYear();const m=String(d.getMonth()+1).padStart(2,'0');const day=String(d.getDate()).padStart(2,'0');return`${y}-${m}-${day}`;}
-function toggleAllCollapse(){allCollapsed=!allCollapsed;document.getElementById('colBtn').textContent=allCollapsed?'展开':'收窄';document.getElementById('cycleBtn').style.display=allCollapsed?'':'none';document.body.classList.toggle('collapsed-mode',allCollapsed);if(_lastResults.length)renderAll(_lastResults);}
-function cycleMiniMode(){miniMode=(miniMode+1)%3;document.getElementById('cycleBtn').textContent=miniLabels[miniMode];if(_lastResults.length)renderAll(_lastResults);}
-function calcFlash(results){const fl={};results.forEach(f=>{if(f.error){fl[f.code]={ef:'',of2:''};return;}const pr=prevData[f.code];fl[f.code]={ef:pr&&pr.estPct!==f.estPct&&f.estPct!=null?(f.estPct>(pr.estPct||0)?'flash-up':'flash-down'):'',of2:pr&&pr.offPct!==f.offPct&&f.offPct!=null?(f.offPct>(pr.offPct||0)?'flash-up':'flash-down'):''};});results.forEach(f=>{if(!f.error)prevData[f.code]={estPct:f.estPct,offPct:f.offPct};});return fl;}
-function renderAll(results){_lastResults=results;updatePeBar();const fl=calcFlash(results);const today=todayDateStr();const now=new Date(),wd=now.getDay(),hm=now.getHours()*60+now.getMinutes();const tradingDay=wd>=1&&wd<=5&&hm>=540;const uiResults=funds.map(code=>results.find(r=>r.code===code)).filter(Boolean);renderCards(uiResults,fl,today,tradingDay);renderTable(uiResults,fl,today,tradingDay);if(uiResults.length)document.getElementById('cardHeaderBar').style.display='flex';else document.getElementById('cardHeaderBar').style.display='none';}
-function inlinePctHtml(ep,op,stale,ef,of2){if(miniMode===0)return`<span class="inline-pct ${ep.cls} ${ef}">${ep.txt}</span>`;if(miniMode===1)return`<span class="inline-pct ${stale?'flat':op.cls} ${of2}">${op.txt}</span>`;return`<span class="inline-pct"><span class="${ep.cls} ${ef}">${ep.txt}</span><span style="color:var(--t3);margin:0 3px">|</span><span class="${stale?'flat':op.cls} ${of2}">${op.txt}</span></span>`;}
-function renderCards(results,fl,today,tradingDay){const html=results.map(f=>{if(f.error)return`<div class="fund-card" data-code="${f.code}"><div class="card-top"><span class="drag-handle">⠿</span><div class="card-info"><div class="card-name" style="color:var(--t3)">${NAMES[f.code]||f.code}</div></div><div class="card-actions"><button class="del-btn" onclick="delFund('${f.code}')">删除</button></div></div><div style="padding:10px 16px 14px;font-size:12px;color:var(--t3);border-top:1px solid var(--bd)">⚠ 获取超时，请刷新</div></div>`;const ep=fp(f.estPct),op=fp(f.offPct);const cc=f.estPct!=null?(f.estPct>0?'up-card':f.estPct<0?'down-card':''):'';const{ef,of2}=(fl||{})[f.code]||{ef:'',of2:''};const estDateToday=f.estTime&&f.estTime.slice(0,10)===today;const isStale=(estDateToday||tradingDay)&&(!f.offDate||f.offDate.slice(0,10)<today);const sh='';const inlinePct=inlinePctHtml(ep,op,isStale,ef,of2);return`<div class="fund-card ${cc}${allCollapsed?' collapsed':''}" data-code="${f.code}"><div class="card-top"><span class="drag-handle">⠿</span><div class="card-info"><div class="card-name">${f.name}${sh}</div></div>${inlinePct}<div class="card-actions"><button class="del-btn" onclick="delFund('${f.code}')">删除</button></div></div><div class="card-data"><div class="data-half"><div class="dh-label">盘中估算</div><div class="dh-pct ${ep.cls} ${ef}">${ep.txt}</div><div class="dh-nav">净值 <span class="nv">${f.estVal||'--'}</span></div><div class="dh-time">${f.estTime||'--'}</div></div><div class="data-half${isStale?' stale':''}"><div class="dh-label">官方数据</div><div class="dh-pct ${op.cls} ${of2}">${op.txt}</div><div class="dh-nav">净值 <span class="nv">${f.offVal||'--'}</span></div><div class="dh-time">${f.offDate||'--'}</div></div></div></div>`;}).join('');document.getElementById('cardView').innerHTML=html||`<div class="empty-state"><div class="empty-icon">📭</div><div>暂无关注基金</div></div>`;}
-function renderTable(results,fl,today,tradingDay){const html=results.map(f=>{if(f.error)return`<tr data-code="${f.code}"><td><span class="tbl-drag">⠿</span><div style="display:inline-block;vertical-align:top"><div class="tbl-name" style="color:var(--t3)">${NAMES[f.code]||f.code}</div><div class="tbl-code">${f.code}</div></div></td><td colspan="2" style="color:var(--t3);font-size:12px">⚠ 获取超时</td><td><button class="tbl-del" onclick="delFund('${f.code}')">删除</button></td></tr>`;const ep=fp(f.estPct),op=fp(f.offPct);const{ef,of2}=(fl||{})[f.code]||{ef:'',of2:''};const estDateToday=f.estTime&&f.estTime.slice(0,10)===today;const tblStale=(estDateToday||tradingDay)&&(!f.offDate||f.offDate.slice(0,10)<today);const sh='';return`<tr data-code="${f.code}"><td><span class="tbl-drag">⠿</span><div style="display:inline-block;vertical-align:top"><div class="tbl-name">${f.name}${sh}</div><div class="tbl-code">${f.code}</div></div></td><td><div class="tbl-pct ${ep.cls} ${ef}">${ep.txt}</div><div class="tbl-nav">净值 <span class="nv">${f.estVal||'--'}</span></div><div class="tbl-time">${f.estTime||'--'}</div></td><td style="${tblStale?'opacity:0.35;filter:grayscale(1)':''}"><div class="tbl-pct ${op.cls} ${of2}">${op.txt}</div><div class="tbl-nav">净值 <span class="nv">${f.offVal||'--'}</span></div><div class="tbl-time">${f.offDate||'--'}</div></td><td><button class="tbl-del" onclick="delFund('${f.code}')">删除</button></td></tr>`;}).join('');document.getElementById('fundTbody').innerHTML=html;}
-
-async function refreshData(){
-  const miniRefBtn=document.getElementById('miniRefBtn');
-  if(miniRefBtn){miniRefBtn.textContent='↻';miniRefBtn.disabled=true;}
-  loadFunds();
-  fetchIndices();
-  
-  if(!funds.length){
-    document.getElementById('cardView').innerHTML=`<div class="empty-state"><div class="empty-icon">📭</div><div>暂无关注基金，输入代码添加</div></div>`;
-    document.getElementById('fundTbody').innerHTML=`<tr><td colspan="4" style="text-align:center;padding:50px;color:var(--t3)">暂无关注基金</td></tr>`;
-    if(miniRefBtn){miniRefBtn.textContent='↻ 刷新';miniRefBtn.disabled=false;}
-  }
-  
-  const allCodes = Array.from(new Set([...funds, ...PRODUCTS.map(p=>p.code)]));
-  const results=await Promise.all(allCodes.map(fetchSingleFund));
-  
-  renderAll(results);
-  if(miniRefBtn){miniRefBtn.textContent='↻ 刷新';miniRefBtn.disabled=false;}
-  
-  if(cardSortable)cardSortable.destroy();
-  if(tblSortable)tblSortable.destroy();
-  const onEnd=evt=>{const o=Array.from(evt.to.children).map(el=>el.dataset.code).filter(Boolean);if(o.length===funds.length){funds=o;saveFunds();}};
-  cardSortable=Sortable.create(document.getElementById('cardView'),{handle:'.drag-handle',animation:200,ghostClass:'sortable-ghost',onEnd});
-  tblSortable=Sortable.create(document.getElementById('fundTbody'),{handle:'.tbl-drag',animation:200,ghostClass:'sortable-ghost',onEnd});
-}
-
-function addFund(){const input=document.getElementById('codeInput');const code=input.value.trim();if(/^\d{6}$/.test(code)&&!funds.includes(code)){funds.push(code);saveFunds();input.value='';refreshData();}else input.value='';}
-function delFund(code){if(!confirm(`确认删除「${NAMES[code]||code}」？`))return;funds=funds.filter(c=>c!==code);saveFunds();refreshData();}
-document.getElementById('codeInput').addEventListener('keydown',e=>{if(e.key==='Enter')addFund();});
-
-// ══════════════════════════════════════
-// 调仓预案模块
-// ══════════════════════════════════════
-const PRODUCTS=[{code:SYS_CONFIG.CODE_XQ,name:'兴全中长债',equity:0.00},{code:'160622',name:'鹏华丰利',equity:0.15},{code:'007466',name:'华泰红利',equity:0.55},{code:'011554',name:'海富通欣利',equity:0.40},{code:'110027',name:'易方达回报',equity:0.20},{code:'004496',name:'前海多元',equity:0.75},{code:SYS_CONFIG.CODE_A500,name:'A500C',equity:1.00},{code:SYS_CONFIG.CODE_ZZ500,name:'中证500C',equity:1.00}];
-const SHORT_NAMES={[SYS_CONFIG.CODE_XQ]:'兴全中长债','160622':'鹏华丰利','007466':'华泰红利','011554':'海富通欣利','110027':'易方达回报','004496':'前海多元','110020':'易方达沪深300',[SYS_CONFIG.CODE_A500]:'A500C','007028':'易方达中证500联接',[SYS_CONFIG.CODE_ZZ500]:'中证500C'};
-const PE_EQUITY_TABLE=[{lo:80,hi:999,target:20},{lo:75,hi:80,target:22},{lo:70,hi:75,target:25},{lo:65,hi:70,target:29},{lo:60,hi:65,target:34},{lo:55,hi:60,target:40},{lo:50,hi:55,target:46},{lo:45,hi:50,target:52},{lo:40,hi:45,target:57},{lo:35,hi:40,target:61},{lo:30,hi:35,target:70},{lo:0,hi:30,target:80}];
-const DEFAULT_HOLDINGS={[SYS_CONFIG.CODE_XQ]:66432.56,'160622':110301.46,'007466':63243.39,'011554':73105.15,'110027':41234.41,'004496':12154.72,[SYS_CONFIG.CODE_A500]:0,[SYS_CONFIG.CODE_ZZ500]:0};
-const STORE_PE='jy_pe_v2_lagrange', STORE_PE_DATE='jy_pe_date_v2', STORE_HOLDINGS='jy_holdings_v1';
-
-function fmt(n, decimals=0){if(n==null||isNaN(n))return '--';return n.toLocaleString('zh-CN',{minimumFractionDigits:decimals,maximumFractionDigits:decimals});}
-function fmtMoney(n){return '¥'+fmt(n,0);}
-function getProductName(code){return SHORT_NAMES[code]||(PRODUCTS.find(p=>p.code===code)?.name)||code;}
-
-function getNavByCode(code){
-  const f = _lastResults.find(r=>r.code===code);
-  if(!f) return null;
-  
-  const offD = f.offDate ? f.offDate.slice(0, 10) : '';
-  const estD = f.estTime ? f.estTime.slice(0, 10) : '';
-
-  if (f.offVal && (!estD || offD >= estD)) { return parseFloat(f.offVal); }
-  if (f.estVal) { return parseFloat(f.estVal); }
-  return f.offVal ? parseFloat(f.offVal) : null;
-}
-
-function calcCurrentEquity(holdings){
-  let total=0,eq=0;
-  const activeProducts = funds.map(code=>PRODUCTS.find(p=>p.code===code)).filter(Boolean);
-  
-  activeProducts.forEach(p=>{
-    const shares=holdings[p.code]||0;
-    if(!shares)return;
-    const nav=getNavByCode(p.code);
-    if(nav == null)return; 
-    const val=shares*nav;
-    total+=val;eq+=val*p.equity;
-  });
-  return total>0?{equity:eq/total*100,total}:null;
-}
-
-function loadPe(){const s=localStorage.getItem(STORE_PE);return s?JSON.parse(s):null;}
-function savePe(dataObj){localStorage.setItem(STORE_PE,JSON.stringify(dataObj));localStorage.setItem(STORE_PE_DATE,new Date().toLocaleDateString('zh-CN',{timeZone:'Asia/Shanghai'}));}
-function loadHoldings(){const c=localStorage.getItem(STORE_HOLDINGS);return c?{...DEFAULT_HOLDINGS,...JSON.parse(c)}:{...DEFAULT_HOLDINGS};}
-function saveHoldingsData(h){localStorage.setItem(STORE_HOLDINGS,JSON.stringify(h));}
-
-function getCurrentPE() {
-    const peData = loadPe();
-    if(!peData || !peData.bucketStr) return null;
-    
-    let v = peData.peYest;
-    let isDynamic = false;
-
-    const [loStr, hiStr] = peData.bucketStr.split(',');
-    const buyPct = parseFloat(loStr) - SYS_CONFIG.DEAD_ZONE; 
-    const sellPct = parseFloat(hiStr) + SYS_CONFIG.DEAD_ZONE; 
-
-    if(window._rt_csi300_price && peData.priceAnchor && peData.priceBuy && peData.priceSell) {
-        const x = window._rt_csi300_price;          
-        
-        const x1 = peData.priceBuy;    const y1 = buyPct;
-        const x2 = peData.priceAnchor; const y2 = peData.peYest;  
-        const x3 = peData.priceSell;   const y3 = sellPct;
-
-        if (x === x2) {
-            v = y2;
-            isDynamic = true;
-        } 
-        else if (x1 !== x2 && x2 !== x3 && x1 !== x3) {
-            v = y1 * ((x - x2) * (x - x3)) / ((x1 - x2) * (x1 - x3)) +
-                y2 * ((x - x1) * (x - x3)) / ((x2 - x1) * (x2 - x3)) +
-                y3 * ((x - x1) * (x - x2)) / ((x3 - x1) * (x3 - x2));
-            isDynamic = true;
-        } 
-        else {
-            const range = x3 - x1;
-            if (range > 0) {
-                v = y1 + ((x - x1) / range) * (y3 - y1);
-                isDynamic = true;
-            }
-        }
-    }
-    return { value: v, isDynamic: isDynamic, rawData: peData, bounds: {buyPct, sellPct} };
-}
-
-function getDynamicTarget(mode) {
-    const currentPE = getCurrentPE();
-    if (!currentPE || !currentPE.rawData || !currentPE.rawData.bucketStr) return null;
-    const lo = parseFloat(currentPE.rawData.bucketStr.split(',')[0]);
-    const currentIndex = PE_EQUITY_TABLE.findIndex(x => lo >= x.lo && lo < x.hi);
-    if (currentIndex === -1) return null;
-
-    if (mode === 'buy') {
-        return PE_EQUITY_TABLE[Math.min(currentIndex + 1, PE_EQUITY_TABLE.length - 1)].target;
-    } else if (mode === 'sell') {
-        return PE_EQUITY_TABLE[Math.max(currentIndex - 1, 0)].target;
-    } else {
-        return PE_EQUITY_TABLE[currentIndex].target;
-    }
-}
-
-function updatePeBar(){
-  const currentPE = getCurrentPE();
-  const display=document.getElementById('peDisplay');
-  const status=document.getElementById('peStatus');
-  const marker=document.getElementById('peTrackMarker');
-  const planBtn=document.getElementById('planBtn');
-  const eqDiv=document.getElementById('peEquityInfo');
-  
-  const loEl=document.getElementById('peTrackLo');
-  const hiEl=document.getElementById('peTrackHi');
-
-  if(!currentPE){
-    display.textContent='--.--%'; display.className='pe-value pe-normal';
-    status.textContent='未输入PE'; status.className='pe-status normal';
-    planBtn.className='pe-plan-btn neutral'; planBtn.textContent='待机预案';
-    if(marker)marker.style.display='none'; 
-    if(loEl)loEl.style.display='none';
-    if(hiEl)hiEl.style.display='none';
-    if(eqDiv)eqDiv.style.display='none';
-    return;
-  }
-
-  const v = currentPE.value;
-  const bounds = currentPE.bounds;
-  display.innerHTML = `<span style="font-family:var(--f-num)">${v.toFixed(2)}%</span>` + (currentPE.isDynamic ? `<span style="font-size:10px;color:var(--accent);font-weight:600;margin-left:4px;vertical-align:top">实时</span>` : '');
-
-  const PE_MID = (bounds.buyPct + bounds.sellPct) / 2;
-  const span = (bounds.sellPct - bounds.buyPct) * 2; 
-  const peMin = PE_MID - span / 2;
-  const peMax = PE_MID + span / 2;
-  const toPos = pe => Math.min(Math.max((pe - peMin) / (peMax - peMin) * 100, 0), 100);
-
-  if(marker){
-    marker.style.display='block';
-    marker.style.left=toPos(v)+'%';
-  }
-  if(loEl) { loEl.style.display='block'; loEl.style.left=toPos(bounds.buyPct)+'%'; }
-  if(hiEl) { hiEl.style.display='block'; hiEl.style.left=toPos(bounds.sellPct)+'%'; }
-
-  if(eqDiv){
-    const holdings=loadHoldings();
-    const eq=calcCurrentEquity(holdings);
-    
-    let target = null;
-    if (currentPE.rawData && currentPE.rawData.bucketStr) {
-        const lo = parseFloat(currentPE.rawData.bucketStr.split(',')[0]); 
-        const r = PE_EQUITY_TABLE.find(x => lo >= x.lo && lo < x.hi);
-        if (r) target = r.target;
-    }
-
-    if(eq&&target!=null){
-      const diff=eq.equity-target;
-      const sign=diff>0?'+':'';
-      const wrongDir=(v>=65&&diff>2)||(v<65&&diff<-2);
-      const col=wrongDir?'#f87171':(diff>0?'#f59e0b':'#60a5fa');
-      eqDiv.innerHTML=`目标<b style="font-family:var(--f-num)">${target}%</b> 实际<b style="color:${col};font-family:var(--f-num)">${eq.equity.toFixed(2)}%</b> <span style="color:${col};font-family:var(--f-num)">${sign}${diff.toFixed(2)}%</span>`;
-      eqDiv.style.display='flex';
-    } else {
-      eqDiv.style.display='none';
-    }
-  }
-
-  if(v <= bounds.buyPct){
-    display.className='pe-value pe-danger-dn';
-    status.textContent='▲ 增权信号'; status.className='pe-status triggered-buy';
-    planBtn.className='pe-plan-btn buy'; planBtn.textContent='▲ 增权预案';
-    if(marker)marker.style.background='#3b82f6';
-  } else if(v >= bounds.sellPct){
-    display.className='pe-value pe-danger-up';
-    status.textContent='▼ 降权信号'; status.className='pe-status triggered-sell';
-    planBtn.className='pe-plan-btn sell'; planBtn.textContent='▼ 降权预案';
-    if(marker)marker.style.background='#f59e0b';
-  } else {
-    display.className='pe-value pe-normal';
-    status.textContent='待机'; status.className='pe-status normal';
-    planBtn.className='pe-plan-btn neutral'; planBtn.textContent='待机预案';
-    if(marker)marker.style.background='var(--t1)';
-  }
-}
-
-function openPeModal(){
-  const peData=loadPe();
-  if(peData) {
-    document.getElementById('peModalBucket').value = peData.bucketStr || '50,55';
-    document.getElementById('peModalInputPct').value = peData.peYest || '';
-    document.getElementById('peModalPriceAnchor').value = peData.priceAnchor || '';
-    document.getElementById('peModalBuyPrice').value = peData.priceBuy || '';
-    document.getElementById('peModalSellPrice').value = peData.priceSell || '';
-  }
-  document.getElementById('peModal').style.display='flex';
-}
-function closePeModal(){document.getElementById('peModal').style.display='none';}
-
-function confirmPe(){
-  const bucketStr = document.getElementById('peModalBucket').value;
-  const peYest = parseFloat(document.getElementById('peModalInputPct').value);
-  const priceAnchor = parseFloat(document.getElementById('peModalPriceAnchor').value);
-  const priceBuy = parseFloat(document.getElementById('peModalBuyPrice').value);
-  const priceSell = parseFloat(document.getElementById('peModalSellPrice').value);
-
-  if(isNaN(peYest) || isNaN(priceAnchor)){alert('请填写完整的【基准PE】与【基准点位】！');return;}
-  
-  savePe({ 
-    bucketStr: bucketStr,
-    peYest: peYest, 
-    priceAnchor: priceAnchor, 
-    priceBuy: isNaN(priceBuy) ? null : priceBuy, 
-    priceSell: isNaN(priceSell) ? null : priceSell 
-  });
-  updatePeBar(); 
-  closePeModal();
-}
-
-function openHoldingDrawer(){
-  const holdings=loadHoldings();
-  const body=document.getElementById('holdingDrawerBody');
-
-  let totalVal=0,totalEq=0;
-  const activeProducts = funds.map(code=>PRODUCTS.find(p=>p.code===code)).filter(Boolean);
-
-  const rows = activeProducts.map(p=>{
-    const shares=holdings[p.code]||0;
-    const nav=getNavByCode(p.code);
-    const val=(nav!=null)?shares*nav:null;
-    if(val!=null){totalVal+=val;totalEq+=val*p.equity;}
-    return{p,shares,nav,val,eqVal:val!=null?val*p.equity:null};
-  });
-
-  const currentPE = getCurrentPE();
-  let targetEq = null;
-  if (currentPE && currentPE.rawData && currentPE.rawData.bucketStr) {
-      const lo = parseFloat(currentPE.rawData.bucketStr.split(',')[0]); 
-      const r = PE_EQUITY_TABLE.find(x => lo >= x.lo && lo < x.hi);
-      if (r) targetEq = r.target;
-  }
-
-  const actualEqPct=totalVal>0?totalEq/totalVal*100:null;
-  const diff=actualEqPct!=null&&targetEq!=null?actualEqPct-targetEq:null;
-  const wrongDir=diff!=null&&currentPE?((currentPE.value>=65&&diff>2)||(currentPE.value<65&&diff<-2)):false;
-  const diffCol=diff==null?'var(--t3)':wrongDir?'#f87171':(diff>0?'#f59e0b':'#60a5fa');
-
-  body.innerHTML=`
-    <div style="background:var(--bg3);border-radius:10px;padding:12px;margin-bottom:14px;border:1px solid var(--bd)">
-      <div style="font-size:11px;color:var(--t3);margin-bottom:8px;font-weight:500">📊 权益校对汇总</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-        <div><div style="font-size:10px;color:var(--t3)">持仓总市值</div>
-          <div style="font-family:var(--f-num);font-size:15px;font-weight:600">${totalVal>0?fmtMoney(totalVal):'--'}</div></div>
-        <div><div style="font-size:10px;color:var(--t3)">实际权益</div>
-          <div style="font-family:var(--f-num);font-size:15px;font-weight:600;color:${diffCol}">${actualEqPct!=null?actualEqPct.toFixed(2)+'%':'--'}</div></div>
-        <div><div style="font-size:10px;color:var(--t3)">目标权益</div>
-          <div style="font-family:var(--f-num);font-size:15px;font-weight:600;color:var(--accent)">${targetEq!=null?targetEq+'%':'输入PE'}</div></div>
-      </div>
-      ${diff!=null?`<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--bd);font-size:11px">
-        偏离：<span style="font-family:var(--f-num);font-weight:600;color:${diffCol}">${diff>0?'+':''}${diff.toFixed(2)}%</span>
-        ${wrongDir?'<span style="color:#f87171;margin-left:6px">⚠️ 方向警告</span>':''}
-      </div>`:''}
-    </div>
-    <div style="font-size:11px;color:var(--t3);margin-bottom:10px">明细（份额×估值=市值，→权益贡献）</div>
-    <div style="background:var(--bg3);border-radius:10px;overflow:hidden;margin-bottom:14px;border:1px solid var(--bd)">
-      ${rows.map(({p,shares,nav,val,eqVal})=>`
-      <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--bd);font-size:12px">
-        <div><div style="font-weight:500">${p.name}</div>
-          <div style="font-size:10px;color:var(--t3)"><span style="font-family:var(--f-num)">${shares.toFixed(2)}</span> 份 × <span style="font-family:var(--f-num)">${nav?nav.toFixed(4):'--'}</span></div></div>
-        <div style="text-align:right;font-family:var(--f-num);color:var(--t2)">${val!=null?fmtMoney(val):'--'}</div>
-        <div style="text-align:right;font-size:10px;color:var(--t3)">×<span style="font-family:var(--f-num)">${Math.round(p.equity*100)}%</span></div>
-        <div style="text-align:right;font-family:var(--f-num);font-weight:500;color:var(--accent)">${eqVal!=null?fmtMoney(eqVal):'--'}</div>
-      </div>`).join('')}
-      <div style="display:grid;grid-template-columns:1fr auto;padding:10px 12px;font-size:12px;font-weight:600">
-        <div>权益合计</div>
-        <div style="font-family:var(--f-num);color:var(--accent)">${totalEq>0?fmtMoney(totalEq):'--'}</div>
-      </div>
-    </div>
-    ${activeProducts.map(p=>`
-    <div class="holding-row">
-      <div class="holding-name">
-        <div style="font-size:13px;font-weight:500">${getProductName(p.code)}</div>
-        <div style="font-size:11px;color:var(--t3)">${p.code}·权益<span style="font-family:var(--f-num)">${Math.round(p.equity*100)}%</span></div>
-      </div>
-      <input class="holding-input" id="hi_${p.code}" type="number" step="0.01" style="font-size:16px"
-        value="${(holdings[p.code]||0).toFixed(2)}" placeholder="0">
-      <span class="holding-unit">份</span>
-    </div>`).join('')}
-    <div style="margin-top:16px;display:flex;gap:8px">
-      <button onclick="exportHoldings()" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bd2);background:transparent;color:var(--t2);font-size:12px;cursor:pointer">📤 导出备份</button>
-      <button onclick="importHoldings()" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bd2);background:transparent;color:var(--t2);font-size:12px;cursor:pointer">📥 导入备份</button>
-    </div>`;
-
-  openDrawer('holdingDrawer');
-}
-
-function saveHoldings(){
-  const h=loadHoldings();
-  const activeProducts = funds.map(code=>PRODUCTS.find(p=>p.code===code)).filter(Boolean);
-  activeProducts.forEach(p=>{
-    const v=parseFloat(document.getElementById('hi_'+p.code)?.value||'0');
-    h[p.code]=isNaN(v)?0:v;
-  });
-  saveHoldingsData(h);closeAllDrawers();alert('✅ 持仓已保存');
-}
-
-function exportHoldings(){
-  const data=JSON.stringify({holdings:loadHoldings(),pe:loadPe(),exported:new Date().toISOString()},null,2);
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([data],{type:'application/json'}));
-  a.download=`基金持仓备份_${new Date().toLocaleDateString('zh-CN').replace(/\//g,'-')}.json`;
-  a.click();
-}
-
-function importHoldings(){
-  const input=document.createElement('input');input.type='file';input.accept='.json';
-  input.onchange=e=>{
-    const reader=new FileReader();
-    reader.onload=ev=>{
-      try{
-        const data=JSON.parse(ev.target.result);
-        if(data.holdings){saveHoldingsData(data.holdings);if(data.pe)savePe(data.pe);closeAllDrawers();updatePeBar();alert('✅ 导入成功');}
-        else alert('❌ 格式错误');
-      }catch(err){alert('❌ 解析失败：'+err.message);}
-    };reader.readAsText(e.target.files[0]);
-  };input.click();
-}
-
-let _planMode='neutral';
-
-function openPlanDrawer(){
-  const currentPE = getCurrentPE();
-  if(!currentPE){
-      alert('请先定锚！');openPeModal();return;
-  }
-  _planMode=currentPE.value<=currentPE.bounds.buyPct?'buy':(currentPE.value>=currentPE.bounds.sellPct?'sell':'neutral');
-  renderPlanDrawer();openDrawer('planDrawer');
-}
-
-function renderPlanDrawer(){
-  const holdings=loadHoldings();
-  const body=document.getElementById('planDrawerBody');
-  const confirmBtn=document.getElementById('planConfirmBtn');
-  confirmBtn.style.display = (_planMode === 'neutral') ? 'none' : 'block';
-
-  const currentPE = getCurrentPE();
-  const peVal = currentPE ? currentPE.value : null;
-  const eqResult=calcCurrentEquity(holdings);
-  const currentEq=eqResult?eqResult.equity:null;
-  const totalVal=eqResult?eqResult.total:null;
-
-  const BUY_TARGET = getDynamicTarget('buy') || 34.0;
-  const SELL_TARGET = getDynamicTarget('sell') || 25.0;
-
-  const currentEqVal=totalVal&&currentEq?totalVal*currentEq/100:null;
-  const buyNeededEq=currentEqVal!=null?Math.max(0,totalVal*BUY_TARGET/100-currentEqVal):null;
-  const diffEqPct = currentEq != null ? Math.max(0, currentEq - SELL_TARGET).toFixed(2) : null;
-
-  const xqNav=getNavByCode(SYS_CONFIG.CODE_XQ)||1.0;
-  const buyAmt=buyNeededEq; 
-
-  const STORE_SELL_PLAN='jy_sell_plan_v1';
-  const savedPlan=JSON.parse(localStorage.getItem(STORE_SELL_PLAN)||'{}');
-
-  const activeProducts = funds.map(code=>PRODUCTS.find(p=>p.code===code)).filter(Boolean);
-
-  body.innerHTML=`
-    <div style="background:var(--bg3);border-radius:10px;padding:10px 12px;margin-bottom:16px;border:1px solid var(--bd);font-size:12px;color:var(--t2)">
-      当前PE <b style="color:var(--t1);font-family:var(--f-num)">${peVal!=null?peVal.toFixed(2)+'%':'--'}</b>
-      · 当前权益 <b style="color:var(--t1);font-family:var(--f-num)">${currentEq!=null?currentEq.toFixed(2)+'%':'--'}</b>
-      · 总市值 <b style="color:var(--t1);font-family:var(--f-num)">${totalVal!=null?fmtMoney(totalVal):'--'}</b>
-    </div>
-
-    <div style="margin-bottom:20px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-        <span style="font-size:11px;font-weight:600;color:#60a5fa;background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.3);border-radius:6px;padding:2px 8px">▲ 增权</span>
-      </div>
-      <div style="background:rgba(59,130,246,.05);border:1px solid rgba(59,130,246,.15);border-radius:10px;padding:12px">
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
-          <div><div style="font-size:10px;color:var(--t3)">当前权益</div>
-            <div style="font-family:var(--f-num);font-size:15px;font-weight:600">${currentEq!=null?currentEq.toFixed(2)+'%':'--'}</div></div>
-          <div><div style="font-size:10px;color:var(--t3)">触发后目标</div>
-            <div style="font-family:var(--f-num);font-size:15px;font-weight:600;color:#60a5fa">${BUY_TARGET}%</div></div>
-          <div><div style="font-size:10px;color:var(--t3)">需调配金额</div>
-            <div style="font-family:var(--f-num);font-size:15px;font-weight:600;color:#60a5fa">${buyAmt!=null?fmtMoney(buyAmt):'--'}</div></div>
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--t3);margin-bottom:4px">基准点位 (即今日收盘)</div>
+            <input class="pe-modal-input" id="peModalPriceAnchor" type="number" step="0.01" style="font-size:18px; padding:8px" placeholder="4799.63">
+          </div>
         </div>
         
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg3);border-radius:8px">
-          <div style="font-size:13px;font-weight:500">卖 兴全中长债</div>
-          <div style="text-align:right">
-            <div style="font-family:var(--f-num);font-variant-numeric:tabular-nums;font-size:13px;font-weight:500;color:var(--t1)">${buyAmt!=null?fmt(buyAmt/xqNav,2):'--'} <span style="font-size:12px;font-weight:400;color:var(--t3);font-family:var(--f-zh)">份</span></div>
+        <div style="display:flex; gap:10px">
+          <div style="flex:1; background:rgba(59,130,246,.08); border:1px solid rgba(59,130,246,.25); padding:10px; border-radius:10px">
+            <div style="font-size:11px;color:#3b82f6;margin-bottom:4px;font-weight:600">📉 跌破触发点位</div>
+            <input class="pe-modal-input" id="peModalBuyPrice" type="number" style="margin-bottom:0; font-size:18px; padding:6px; width:100%; border:none; background:transparent; color:var(--t1)" placeholder="4634">
+          </div>
+          <div style="flex:1; background:rgba(245,158,11,.08); border:1px solid rgba(245,158,11,.25); padding:10px; border-radius:10px">
+            <div style="font-size:11px;color:#f59e0b;margin-bottom:4px;font-weight:600">📈 涨破触发点位</div>
+            <input class="pe-modal-input" id="peModalSellPrice" type="number" style="margin-bottom:0; font-size:18px; padding:6px; width:100%; border:none; background:transparent; color:var(--t1)" placeholder="4955">
           </div>
         </div>
       </div>
+
+      <div class="pe-modal-btns">
+        <button class="pe-modal-cancel" onclick="closePeModal()">取消</button>
+        <button class="pe-modal-confirm" onclick="confirmPe()">开启抛物线追踪</button>
+      </div>
     </div>
+  </div>
 
-    <div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <span style="font-size:11px;font-weight:600;color:#f59e0b;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.3);border-radius:6px;padding:2px 8px">▼ 降权</span>
-        <button onclick="saveSellPlan()" style="font-size:11px;padding:3px 10px;border-radius:6px;border:1px solid var(--bd2);background:transparent;color:var(--t2);cursor:pointer">保存</button>
-      </div>
-      <div style="background:rgba(240,68,68,.04);border:1px solid rgba(240,68,68,.12);border-radius:10px;padding:12px">
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
-          <div><div style="font-size:10px;color:var(--t3)">当前权益</div>
-            <div style="font-family:var(--f-num);font-size:15px;font-weight:600">${currentEq!=null?currentEq.toFixed(2)+'%':'--'}</div></div>
-          <div><div style="font-size:10px;color:var(--t3)">触发后目标</div>
-            <div style="font-family:var(--f-num);font-size:15px;font-weight:600;color:#f87171">${SELL_TARGET}%</div></div>
-          <div><div style="font-size:10px;color:var(--t3)">需减权益比例</div>
-            <div style="font-family:var(--f-num);font-size:15px;font-weight:600;color:#f59e0b">${diffEqPct!=null?diffEqPct+'%':'--'}</div></div>
-        </div>
-        <div style="font-size:11px;color:var(--t3);margin-bottom:10px">填比例（整数，空=不参与），各产品默认${SYS_CONFIG.FEE*100}%摩擦</div>
-        ${activeProducts.filter(p=>p.equity>0).map(p=>{
-          const shares=holdings[p.code]||0;
-          const nav=getNavByCode(p.code)||null;
-          const val=nav?shares*nav:null;
-          const saved=savedPlan[p.code]||'';
-          return`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg3);border-radius:8px;margin-bottom:6px">
-            <div style="flex:1;min-width:0">
-              <div style="font-size:12px;font-weight:500">${getProductName(p.code)}</div>
-              <div style="font-size:10px;color:var(--t3);font-family:var(--f-num)">${val!=null?fmtMoney(val):'--'} <span style="font-family:var(--f-zh)">· 权益</span>${Math.round(p.equity*100)}%</div>
-            </div>
-            <div style="text-align:right;min-width:120px;font-size:11px;color:var(--t3)" id="sell_calc_${p.code}">
-              <div style="font-family:var(--f-num);font-size:13px;font-weight:500;color:var(--t3)">-- <span style="font-size:11px;font-weight:400;color:var(--t3);font-family:var(--f-zh)">份</span></div>
-              <div style="font-size:11px;color:var(--t3);font-family:var(--f-num);margin-top:2px">-- 元</div>
-            </div>
-            <input type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="比例"
-              style="width:50px;font-size:16px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);font-family:var(--f-num);font-size:14px;padding:5px 6px;text-align:center;outline:none"
-              id="ratio_${p.code}" value="${saved}" type="tel" inputmode="numeric" pattern="[0-9]*" oninput="calcSellPreview()" onchange="calcSellPreview()" onkeyup="calcSellPreview()">
-          </div>`;
-        }).join('')}
-        <div style="margin-top:10px;padding:10px;background:var(--bg3);border-radius:8px" id="sell_preview_result">
-          <span style="font-size:12px;color:var(--t3)">填写比例后显示操作结果</span>
-        </div>
-      </div>
-    </div>`;
-
-  if(Object.keys(savedPlan).length) calcSellPreview();
-}
-
-function saveSellPlan(){
-  const plan={};
-  const activeProducts = funds.map(code=>PRODUCTS.find(p=>p.code===code)).filter(Boolean);
-  activeProducts.filter(p=>p.equity>0).forEach(p=>{
-    const v=document.getElementById('ratio_'+p.code)?.value||'';
-    if(v)plan[p.code]=v;
-  });
-  localStorage.setItem('jy_sell_plan_v1',JSON.stringify(plan));
-  document.getElementById('drawerMask').classList.remove('open');
-  document.querySelectorAll('.drawer').forEach(d=>d.classList.remove('open'));
-}
-
-function calcSellPreview(){
-  const holdings=loadHoldings();
-  const eqResult=calcCurrentEquity(holdings);
-  if(!eqResult)return;
-  const TARGET_EQ = getDynamicTarget('sell') || 25.0;
-  const {equity:currentEq,total:totalVal}=eqResult;
-  const currentEqVal=totalVal*currentEq/100;
-  const targetEqVal=totalVal*TARGET_EQ/100;
-  const sellNeededEq=Math.max(0,currentEqVal-targetEqVal);
-
-  const sellProducts=funds.map(code=>PRODUCTS.find(p=>p.code===code)).filter(p=>p&&p.equity>0);
-  let totalRatio=0;
-  const ratios={};
-  sellProducts.forEach(p=>{
-    const v=parseFloat(document.getElementById('ratio_'+p.code)?.value)||0;
-    ratios[p.code]=v; totalRatio+=v;
-  });
-
-  if(!totalRatio){
-    document.getElementById('sell_preview_result').innerHTML='<span style="font-size:12px;color:var(--t3)">填写比例后显示操作结果</span>';
-    sellProducts.forEach(p=>{
-      const el2=document.getElementById('sell_calc_'+p.code);
-      if(el2)el2.innerHTML=`<div style="font-family:var(--f-num);font-size:13px;font-weight:500;color:var(--t3)">-- <span style="font-size:11px;font-weight:400;color:var(--t3);font-family:var(--f-zh)">份</span></div><div style="font-size:11px;color:var(--t3);font-family:var(--f-num);margin-top:2px">-- 元</div>`;
-    });
-    return;
-  }
-
-  let afterEqVal=currentEqVal;
-  let totalCashOut=0;
-  let totalFriction=0;
-
-  sellProducts.forEach(p=>{
-    const el2=document.getElementById('sell_calc_'+p.code);
-    if(!ratios[p.code]){
-      if(el2)el2.innerHTML=`<div style="font-family:var(--f-num);font-size:13px;font-weight:500;color:var(--t3)">-- <span style="font-size:11px;font-weight:400;color:var(--t3);font-family:var(--f-zh)">份</span></div><div style="font-size:11px;color:var(--t3);font-family:var(--f-num);margin-top:2px">-- 元</div>`;
-      return;
-    }
-    
-    const eqQuota=sellNeededEq*(ratios[p.code]/totalRatio);
-    const sellAmt=eqQuota/p.equity;
-    const nav=getNavByCode(p.code)||1.0;
-    const maxSell=(holdings[p.code]||0)*nav;
-    const actualSell=Math.min(sellAmt,maxSell);
-    
-    const feeAmt=actualSell*SYS_CONFIG.FEE;
-    const cashOut=actualSell-feeAmt;
-    const eqContribution=actualSell*p.equity;
-    
-    const eqDropPct = (eqContribution / totalVal) * 100;
-
-    afterEqVal-=eqContribution; 
-    totalCashOut+=cashOut;
-    totalFriction+=feeAmt;
-
-    const el=document.getElementById('sell_calc_'+p.code);
-    if(el)el.innerHTML=`
-      <div style="font-family:var(--f-num);font-size:13px;font-weight:500;color:var(--t1)">${fmt(actualSell/nav,2)} <span style="font-size:11px;font-weight:400;color:var(--t3);font-family:var(--f-zh)">份</span></div>
-      <div style="font-size:11px;color:var(--t3);font-family:var(--f-num);margin-top:2px">${fmtMoney(actualSell)} &nbsp; <span style="color:#f59e0b;font-weight:600;font-family:var(--f-zh)">降权 <span style="font-family:var(--f-num)">${eqDropPct.toFixed(2)}%</span></span></div>
-    `;
-  });
-
-  const afterEqPct=afterEqVal/totalVal*100;
-
-  document.getElementById('sell_preview_result').innerHTML=`
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px">
-      <div><div style="color:var(--t3);font-size:10px">操作后权益</div>
-        <div style="font-family:var(--f-num);font-weight:700;font-size:16px;color:#22c55e">${afterEqPct.toFixed(2)}%</div></div>
-      <div><div style="color:var(--t3);font-size:10px">转出到账金额</div>
-        <div style="font-family:var(--f-num);font-weight:600;font-size:15px;color:var(--t1)">${fmtMoney(totalCashOut)}</div></div>
-      <div><div style="color:var(--t3);font-size:10px">摩擦总计</div>
-        <div style="font-family:var(--f-num);font-weight:600;font-size:15px;color:#f87171">${fmtMoney(totalFriction)}</div></div>
-    </div>`;
-}
-
-function confirmPlan(){
-  if(!confirm('确认已在基金平台完成操作？将同步更新本地持仓份额。'))return;
-  const h=loadHoldings();
+  <div class="drawer-mask" id="drawerMask" onclick="closeAllDrawers()"></div>
   
-  if(_planMode==='buy'){
-    const eqResult = calcCurrentEquity(h);
-    if(!eqResult) return;
-    const TARGET_EQ = getDynamicTarget('buy') || 34.0;
-    const {total:totalVal, equity:currentEq} = eqResult;
-    const currentEqVal = totalVal * currentEq / 100;
-    const buyNeededEq = Math.max(0, totalVal * TARGET_EQ / 100 - currentEqVal);
+  <div class="drawer" id="planDrawer">
+    <div class="drawer-handle"></div>
+    <div class="drawer-header">
+      <span class="drawer-title" id="planDrawerTitle">待机预案</span>
+      <button class="drawer-close" onclick="closeAllDrawers()">×</button>
+    </div>
+    <div class="drawer-body" id="planDrawerBody"></div>
+    <div class="drawer-footer">
+      <button style="flex:1;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:600;font-family:var(--f-zh);cursor:pointer" onclick="closeAllDrawers()">关闭预案 (请手动前往持仓修改份额)</button>
+    </div>
+  </div>
 
-    if (buyNeededEq > 0) {
-       const xqNav = getNavByCode(SYS_CONFIG.CODE_XQ) || 1.0;
-       const maxSellXq = (h[SYS_CONFIG.CODE_XQ] || 0) * xqNav;
-       const actualSellXq = Math.min(buyNeededEq, maxSellXq); 
-       
-       h[SYS_CONFIG.CODE_XQ] = Math.max(0, (h[SYS_CONFIG.CODE_XQ] || 0) - (actualSellXq / xqNav));
-    }
-  } else if(_planMode==='sell'){
-    const eqResult = calcCurrentEquity(h);
-    if(!eqResult) return;
-    const TARGET_EQ = getDynamicTarget('sell') || 25.0;
-    const {equity:currentEq, total:totalVal} = eqResult;
-    const currentEqVal = totalVal * currentEq / 100;
-    const targetEqVal = totalVal * TARGET_EQ / 100;
-    const sellNeededEq = Math.max(0, currentEqVal - targetEqVal);
+  <div class="drawer" id="holdingDrawer">
+    <div class="drawer-handle"></div>
+    <div class="drawer-header">
+      <span class="drawer-title">编辑持仓份额</span>
+      <button class="drawer-close" onclick="closeAllDrawers()">×</button>
+    </div>
+    <div class="drawer-body" id="holdingDrawerBody"></div>
+    <div class="drawer-footer">
+      <button style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--bd2);background:transparent;color:var(--t2);font-size:14px;font-family:var(--f-zh);cursor:pointer" onclick="closeAllDrawers()">取消</button>
+      <button style="flex:2;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:600;font-family:var(--f-zh);cursor:pointer" onclick="saveHoldings()">保存持仓</button>
+    </div>
+  </div>
 
-    const sellProducts = funds.map(code=>PRODUCTS.find(p=>p.code===code)).filter(p=>p&&p.equity>0);
-    let totalRatio = 0;
-    const ratios = {};
-    sellProducts.forEach(p => {
-      const v = parseFloat(document.getElementById('ratio_'+p.code)?.value) || 0;
-      ratios[p.code] = v;
-      totalRatio += v;
-    });
-
-    if(totalRatio > 0) {
-      sellProducts.forEach(p => {
-        if(!ratios[p.code]) return;
-        const eqQuota = sellNeededEq * (ratios[p.code] / totalRatio);
-        const sellAmt = eqQuota / p.equity;
-        const nav = getNavByCode(p.code) || 1.0;
-        const maxSell = (h[p.code] || 0) * nav;
-        const actualSell = Math.min(sellAmt, maxSell);
-
-        h[p.code] = Math.max(0, (h[p.code] || 0) - (actualSell / nav));
-      });
-    }
-  }
-  
-  saveHoldingsData(h);
-  closeAllDrawers();
-  alert('✅ 持仓已自动同步更新！建议立即导出备份。');
-}
-
-function openDrawer(id){document.getElementById('drawerMask').classList.add('open');document.getElementById(id).classList.add('open');}
-function closeAllDrawers(){document.getElementById('drawerMask').classList.remove('open');document.querySelectorAll('.drawer').forEach(d=>d.classList.remove('open'));}
-function delFund(code){if(!confirm(`确认删除「${NAMES[code]||code}」？`))return;funds=funds.filter(c=>c!==code);saveFunds();refreshData();}
-
-updatePeBar();
-refreshData();
-setInterval(()=>{ if(!document.hidden) fetchIndices(); }, SYS_CONFIG.REFRESH_IDX);
-setInterval(()=>{ if(!document.hidden) refreshData(); }, SYS_CONFIG.REFRESH_API);
-document.addEventListener('visibilitychange', () => { if(!document.hidden){ fetchIndices(); refreshData(); } });
-</script>
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/main.js"></script>
 </body>
 </html>
