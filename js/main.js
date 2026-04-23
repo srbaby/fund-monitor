@@ -6,7 +6,7 @@ let idxPrev = {};
 const prevData = {};
 let allCollapsed = false;
 let miniMode = 0;
-const miniLabels = ['盘中估算', '官方数据', '估算|官方'];
+const miniLabels = ['估算', '官方', '全部'];
 let cardSortable = null, tblSortable = null;
 let _planMode = 'neutral';
 let _isFetchingData = false;
