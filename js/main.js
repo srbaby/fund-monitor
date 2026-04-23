@@ -1,5 +1,5 @@
 // ==========================================
-// 1. 全局 UI 状态
+// 1. 全局 UI 状态与缓存
 // ==========================================
 let _mktOpen = null;
 let idxPrev = {};
@@ -10,10 +10,10 @@ const miniLabels = ['估算', '官方', '全部'];
 let cardSortable = null, tblSortable = null;
 let _planMode = 'neutral';
 let _isFetchingData = false;
-window._prioritySellCode = null;
+window._prioritySellCode = localStorage.getItem('jy_priority_sell_v1');
 
 // ==========================================
-// 2. 定时器与基础视图 (顶栏/指数)
+// 2. 定时器与基础视图 (顶栏/指数/PE栏)
 // ==========================================
 function updateClock() {
   const n = new Date();
@@ -61,23 +61,77 @@ function renderIndices(map) {
   }).join('');
 }
 
-// ==========================================
-// 3. UI 交互控制调度
-// ==========================================
-function toggleAllCollapse() { 
-  allCollapsed = !allCollapsed; 
-  document.getElementById('colBtn').textContent = allCollapsed ? '展开' : '收窄'; 
-  document.getElementById('cycleBtn').style.display = allCollapsed ? '' : 'none'; 
-  document.body.classList.toggle('collapsed-mode', allCollapsed); 
-  if(_lastResults.length) renderAll(_lastResults); 
+function updatePeBar() {
+  const currentPE = getCurrentPE();
+  const display = document.getElementById('peDisplay');
+  const status = document.getElementById('peStatus');
+  const marker = document.getElementById('peTrackMarker');
+  const planBtn = document.getElementById('planBtn');
+  const eqDiv = document.getElementById('peEquityInfo');
+  const loEl = document.getElementById('peTrackLo');
+  const hiEl = document.getElementById('peTrackHi');
+
+  if(!currentPE) {
+    display.textContent = '--.--%'; display.className = 'pe-value pe-normal';
+    status.textContent = '未输入PE'; status.className = 'pe-status normal';
+    planBtn.className = 'pe-plan-btn neutral'; planBtn.textContent = '预案';
+    if(marker) marker.style.display = 'none'; 
+    if(loEl) loEl.style.display = 'none'; 
+    if(hiEl) hiEl.style.display = 'none'; 
+    if(eqDiv) eqDiv.style.display = 'none';
+    return;
+  }
+
+  const v = currentPE.value;
+  const bounds = currentPE.bounds;
+  display.innerHTML = `<span style="font-family:var(--f-num)">${v.toFixed(2)}%</span>` + 
+                      (currentPE.isDynamic ? `<span style="font-size:10px;color:var(--accent);font-weight:600;margin-left:4px;vertical-align:top">实时</span>` : '');
+
+  const PE_MID = (bounds.buyPct + bounds.sellPct) / 2;
+  const span = (bounds.sellPct - bounds.buyPct) * 2; 
+  const peMin = PE_MID - span / 2;
+  const peMax = PE_MID + span / 2;
+  const toPos = pe => Math.min(Math.max((pe - peMin) / (peMax - peMin) * 100, 0), 100);
+
+  if(marker) { marker.style.display = 'block'; marker.style.left = toPos(v) + '%'; }
+  if(loEl) { loEl.style.display = 'block'; loEl.style.left = toPos(bounds.buyPct) + '%'; }
+  if(hiEl) { hiEl.style.display = 'block'; hiEl.style.left = toPos(bounds.sellPct) + '%'; }
+
+  if(eqDiv) {
+    const holdings = loadHoldings();
+    const eqData = calcCurrentEquity(holdings);
+    let target = getDynamicTarget('neutral');
+    
+    if(eqData && target != null) {
+      const diff = eqData.equity - target;
+      const sign = diff > 0 ? '+' : '';
+      const wrongDir = (v >= 65 && diff > 2) || (v < 65 && diff < -2);
+      const col = wrongDir ? '#f87171' : (diff > 0 ? '#f59e0b' : '#60a5fa');
+      eqDiv.innerHTML = `目标<b style="font-family:var(--f-num)">${target}%</b> 实际<b style="color:${col};font-family:var(--f-num)">${eqData.equity.toFixed(2)}%</b> <span style="color:${col};font-family:var(--f-num)">${sign}${diff.toFixed(2)}%</span>`;
+      eqDiv.style.display = 'flex';
+    } else {
+      eqDiv.style.display = 'none';
+    }
+  }
+
+  if(v <= bounds.buyPct) { 
+    display.className = 'pe-value pe-danger-dn'; status.textContent = '▲ 增权信号'; status.className = 'pe-status triggered-buy'; 
+    planBtn.className = 'pe-plan-btn buy'; planBtn.textContent = '增权'; 
+    if(marker) marker.style.background = '#3b82f6'; 
+  } else if(v >= bounds.sellPct) { 
+    display.className = 'pe-value pe-danger-up'; status.textContent = '▼ 降权信号'; status.className = 'pe-status triggered-sell'; 
+    planBtn.className = 'pe-plan-btn sell'; planBtn.textContent = '降权'; 
+    if(marker) marker.style.background = '#f59e0b'; 
+  } else { 
+    display.className = 'pe-value pe-normal'; status.textContent = '待机'; status.className = 'pe-status normal'; 
+    planBtn.className = 'pe-plan-btn neutral'; planBtn.textContent = '预案'; 
+    if(marker) marker.style.background = 'var(--t1)'; 
+  }
 }
 
-function cycleMiniMode() { 
-  miniMode = (miniMode + 1) % 3; 
-  document.getElementById('cycleBtn').textContent = miniLabels[miniMode]; 
-  if(_lastResults.length) renderAll(_lastResults); 
-}
-
+// ==========================================
+// 3. 渲染派发枢纽 (分发给 UI 层)
+// ==========================================
 function calcFlash(results) { 
   const fl = {}; 
   results.forEach(f => { 
@@ -103,8 +157,8 @@ function renderAll(results) {
   const resultMap = new Map(results.map(r => [r.code, r]));
   const uiResults = funds.map(code => resultMap.get(code)).filter(Boolean);
   
-  renderCards(uiResults, fl, today, tradingDay);
-  renderTable(uiResults, fl, today, tradingDay);
+  renderCards(uiResults, fl, today, tradingDay); // 调 ui.js
+  renderTable(uiResults, fl, today, tradingDay); // 调 ui.js
   renderTodayProfit(uiResults, mktState, today);
   
   document.getElementById('cardHeaderBar').style.display = uiResults.length ? 'flex' : 'none';
@@ -165,18 +219,11 @@ function renderTodayProfit(results, mktState, todayStr) {
         const pctText = pctVal !== null ? `(${sign}${pctVal.toFixed(2)}%)` : '';
         
         if (allUpdated) {
-            // 【UI专业升级】：上下折叠排布策略，绝对释放横向空间
-            rightBlock = `
-            <span style="display:inline-flex; flex-direction:column; justify-content:center; align-items:flex-start; margin-left:6px;">
-                <span style="font-size:9px; color:#d97706; font-weight:500; font-family:var(--f-zh); line-height:1.2; margin-bottom:1px;">已更新</span>
-                <span style="font-size:11px; font-weight:600; line-height:1.2; color:var(--t2);">${pctText}</span>
-            </span>`;
+            rightBlock = `<span style="display:inline-flex; flex-direction:column; justify-content:center; align-items:flex-start; margin-left:6px;"><span style="font-size:9px; color:#d97706; font-weight:500; font-family:var(--f-zh); line-height:1.2; margin-bottom:1px;">已更新</span><span style="font-size:11px; font-weight:600; line-height:1.2; color:var(--t2);">${pctText}</span></span>`;
         } else {
-            // 盘中保持中心轴对齐，简单干净
             rightBlock = `<span style="font-size:13px; font-weight:600; margin-left:6px;">${pctText}</span>`;
         }
     }
-    
     profitEl.innerHTML = `<span class="${cls}" style="display:flex; align-items:center;">${sign}${totalProfit.toFixed(2)}</span>${rightBlock}`;
   } else {
     profitEl.innerHTML = '';
@@ -184,7 +231,7 @@ function renderTodayProfit(results, mktState, todayStr) {
 }
 
 // ==========================================
-// 4. 用户行为与列表控制
+// 4. 数据获取与核心调度
 // ==========================================
 async function refreshData() {
   if (_isFetchingData) return;
@@ -203,16 +250,8 @@ async function refreshData() {
       return;
     }
     
-    // 【优化：只请求必要数据】
     const coreCodes = new Set(funds);
-
-    // 仅补充“引擎必须但未在关注列表”的品种
-    PRODUCTS.forEach(p => {
-        if (p.equity > 0 && !coreCodes.has(p.code)) {
-            coreCodes.add(p.code);
-        }
-    });
-
+    PRODUCTS.forEach(p => { if (p.equity > 0 && !coreCodes.has(p.code)) coreCodes.add(p.code); });
     const results = await Promise.all([...coreCodes].map(fetchSingleFund));
     
     renderAll(results);
@@ -233,118 +272,41 @@ async function refreshData() {
   }
 }
 
+// ==========================================
+// 5. 交互层与存储绑定
+// ==========================================
+function toggleAllCollapse() { 
+  allCollapsed = !allCollapsed; 
+  document.getElementById('colBtn').textContent = allCollapsed ? '展开' : '收窄'; 
+  document.getElementById('cycleBtn').style.display = allCollapsed ? '' : 'none'; 
+  document.body.classList.toggle('collapsed-mode', allCollapsed); 
+  if(_lastResults.length) renderAll(_lastResults); 
+}
+
+function cycleMiniMode() { 
+  miniMode = (miniMode + 1) % 3; 
+  document.getElementById('cycleBtn').textContent = miniLabels[miniMode]; 
+  if(_lastResults.length) renderAll(_lastResults); 
+}
+
 function addFund() { 
   const input = document.getElementById('codeInput'); 
   const code = input.value.trim(); 
   if(/^\d{6}$/.test(code) && !funds.includes(code)) { 
-    funds.push(code); 
-    saveFunds(); 
-    input.value = ''; 
-    refreshData(); 
-  } else {
-    input.value = ''; 
-  }
+    funds.push(code); saveFunds(); input.value = ''; refreshData(); 
+  } else { input.value = ''; }
 }
-
 function delFund(code) { 
   if(!confirm(`确认删除「${NAMES[code] || code}」？`)) return; 
-  funds = funds.filter(c => c !== code); 
-  saveFunds(); 
-  refreshData(); 
+  funds = funds.filter(c => c !== code); saveFunds(); refreshData(); 
 }
 
 document.getElementById('codeInput').addEventListener('keydown', e => { if(e.key === 'Enter') addFund(); });
 
-// ==========================================
-// 5. PE 渲染与定锚操作
-// ==========================================
-function updatePeBar() {
-  const currentPE = getCurrentPE();
-  const display = document.getElementById('peDisplay');
-  const status = document.getElementById('peStatus');
-  const marker = document.getElementById('peTrackMarker');
-  const planBtn = document.getElementById('planBtn');
-  const eqDiv = document.getElementById('peEquityInfo');
-  const loEl = document.getElementById('peTrackLo');
-  const hiEl = document.getElementById('peTrackHi');
-
-  if(!currentPE) {
-    display.textContent = '--.--%'; display.className = 'pe-value pe-normal';
-    status.textContent = '未输入PE'; status.className = 'pe-status normal';
-    planBtn.className = 'pe-plan-btn neutral'; planBtn.textContent = '预案';
-    if(marker) marker.style.display = 'none'; 
-    if(loEl) loEl.style.display = 'none'; 
-    if(hiEl) hiEl.style.display = 'none'; 
-    if(eqDiv) eqDiv.style.display = 'none';
-    return;
-  }
-
-  const v = currentPE.value;
-  const bounds = currentPE.bounds;
-  display.innerHTML = `<span style="font-family:var(--f-num)">${v.toFixed(2)}%</span>` + 
-                      (currentPE.isDynamic ? `<span style="font-size:10px;color:var(--accent);font-weight:600;margin-left:4px;vertical-align:top">实时</span>` : '');
-
-  const PE_MID = (bounds.buyPct + bounds.sellPct) / 2;
-  const span = (bounds.sellPct - bounds.buyPct) * 2; 
-  const peMin = PE_MID - span / 2;
-  const peMax = PE_MID + span / 2;
-  const toPos = pe => Math.min(Math.max((pe - peMin) / (peMax - peMin) * 100, 0), 100);
-
-  if(marker) { marker.style.display = 'block'; marker.style.left = toPos(v) + '%'; }
-  if(loEl) { loEl.style.display = 'block'; loEl.style.left = toPos(bounds.buyPct) + '%'; }
-  if(hiEl) { hiEl.style.display = 'block'; hiEl.style.left = toPos(bounds.sellPct) + '%'; }
-
-  if(eqDiv) {
-    const holdings = loadHoldings();
-    const eq = calcCurrentEquity(holdings);
-    let target = null;
-    if (currentPE.rawData && currentPE.rawData.bucketStr) {
-      const lo = parseFloat(currentPE.rawData.bucketStr.split(',')[0]); 
-      const r = PE_EQUITY_TABLE.find(x => lo >= x.lo && lo < x.hi);
-      if (r) target = r.target;
-    }
-    
-    if(eq && target != null) {
-      const diff = eq.equity - target;
-      const sign = diff > 0 ? '+' : '';
-      const wrongDir = (v >= 65 && diff > 2) || (v < 65 && diff < -2);
-      const col = wrongDir ? '#f87171' : (diff > 0 ? '#f59e0b' : '#60a5fa');
-      eqDiv.innerHTML = `目标<b style="font-family:var(--f-num)">${target}%</b> 实际<b style="color:${col};font-family:var(--f-num)">${eq.equity.toFixed(2)}%</b> <span style="color:${col};font-family:var(--f-num)">${sign}${diff.toFixed(2)}%</span>`;
-      eqDiv.style.display = 'flex';
-    } else {
-      eqDiv.style.display = 'none';
-    }
-  }
-
-  // 修改：按钮文字收窄，以匹配定锚和持仓按钮大小
-  if(v <= bounds.buyPct) { 
-    display.className = 'pe-value pe-danger-dn'; 
-    status.textContent = '▲ 增权信号'; 
-    status.className = 'pe-status triggered-buy'; 
-    planBtn.className = 'pe-plan-btn buy'; 
-    planBtn.textContent = '增权'; 
-    if(marker) marker.style.background = '#3b82f6'; 
-  } else if(v >= bounds.sellPct) { 
-    display.className = 'pe-value pe-danger-up'; 
-    status.textContent = '▼ 降权信号'; 
-    status.className = 'pe-status triggered-sell'; 
-    planBtn.className = 'pe-plan-btn sell'; 
-    planBtn.textContent = '降权'; 
-    if(marker) marker.style.background = '#f59e0b'; 
-  } else { 
-    display.className = 'pe-value pe-normal'; 
-    status.textContent = '待机'; 
-    status.className = 'pe-status normal'; 
-    planBtn.className = 'pe-plan-btn neutral'; 
-    planBtn.textContent = '预案'; 
-    if(marker) marker.style.background = 'var(--t1)'; 
-  }
-}
-
 function openPeModal() {
   const peData = loadPe();
   if(peData) {
-    document.getElementById('peModalBucket').value = peData.bucketStr || '50,55';
+    document.getElementById('peModalBucket').value = peData.bucketStr || '65,70';
     document.getElementById('peModalInputPct').value = peData.peYest || '';
     document.getElementById('peModalPriceAnchor').value = peData.priceAnchor || '';
     document.getElementById('peModalBuyPrice').value = peData.priceBuy || '';
@@ -352,7 +314,6 @@ function openPeModal() {
   }
   document.getElementById('peModal').style.display = 'flex';
 }
-
 function closePeModal() { document.getElementById('peModal').style.display = 'none'; }
 
 function confirmPe() {
@@ -361,16 +322,11 @@ function confirmPe() {
   const priceAnchor = parseFloat(document.getElementById('peModalPriceAnchor').value);
   const priceBuy = parseFloat(document.getElementById('peModalBuyPrice').value);
   const priceSell = parseFloat(document.getElementById('peModalSellPrice').value);
-
   if(isNaN(peYest) || isNaN(priceAnchor)) { alert('请填写完整的【基准PE】与【基准点位】！'); return; }
   savePe({ bucketStr, peYest, priceAnchor, priceBuy: isNaN(priceBuy) ? null : priceBuy, priceSell: isNaN(priceSell) ? null : priceSell });
-  updatePeBar(); 
-  closePeModal();
+  updatePeBar(); closePeModal();
 }
 
-// ==========================================
-// 6. 数据存储管理交互
-// ==========================================
 function saveHoldings() {
   const h = loadHoldings();
   const activeProducts = funds.map(code => PRODUCTS.find(p => p.code === code)).filter(Boolean);
@@ -378,45 +334,39 @@ function saveHoldings() {
     const v = parseFloat(document.getElementById('hi_' + p.code)?.value || '0'); 
     h[p.code] = isNaN(v) ? 0 : v; 
   });
-  saveHoldingsData(h); 
-  closeAllDrawers(); 
-  alert('✅ 持仓已保存');
+  saveHoldingsData(h); closeAllDrawers(); alert('✅ 持仓已保存');
 }
 
-function exportHoldings() {
-  const data = JSON.stringify({holdings: loadHoldings(), pe: loadPe(), exported: new Date().toISOString()}, null, 2);
-  const a = document.createElement('a'); 
-  a.href = URL.createObjectURL(new Blob([data], {type: 'application/json'}));
-  a.download = `基金持仓备份_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}.json`; 
-  a.click();
+// --- 替换 exportHoldings 和 importHoldings -------------------
+function exportToken() {
+  const data = {
+    h: loadHoldings(), 
+    p: loadPe(), 
+    s: JSON.parse(localStorage.getItem(STORE_SELL_PLAN) || '{}')
+  };
+  // 将 JSON 编码并转化为 Base64 口令
+  const str = btoa(encodeURIComponent(JSON.stringify(data)));
+  prompt('请复制以下备份口令并妥善保存（建议粘贴至微信收藏）：', str);
 }
 
-function importHoldings() {
-  const input = document.createElement('input'); 
-  input.type = 'file'; 
-  input.accept = '.json';
-  input.onchange = e => {
-    const reader = new FileReader();
-    reader.onload = ev => {
-      try { 
-        const data = JSON.parse(ev.target.result); 
-        if(data.holdings) {
-          saveHoldingsData(data.holdings);
-          if(data.pe) savePe(data.pe);
-          closeAllDrawers();
-          updatePeBar();
-          alert('✅ 导入成功');
-        } else {
-          alert('❌ 格式错误');
-        } 
-      } catch(err) {
-        alert('❌ 解析失败：' + err.message);
-      }
-    }; 
-    reader.readAsText(e.target.files[0]);
-  }; 
-  input.click();
+function importToken() {
+  const str = prompt('请输入你的资产备份口令：');
+  if(!str) return;
+  try {
+    // 解码口令
+    const data = JSON.parse(decodeURIComponent(atob(str)));
+    if(data.h) saveHoldingsData(data.h);
+    if(data.p) savePe(data.p);
+    if(data.s) localStorage.setItem(STORE_SELL_PLAN, JSON.stringify(data.s));
+    closeAllDrawers(); 
+    updatePeBar(); 
+    refreshData();
+    alert('✅ 资产配置口令恢复成功！');
+  } catch(e) {
+    alert('❌ 口令无效或已损坏，请检查复制是否完整！');
+  }
 }
+// -------------------------------------------------------------
 
 function saveSellPlan() {
   const plan = {}; 
@@ -425,76 +375,50 @@ function saveSellPlan() {
     const v = document.getElementById('ratio_' + p.code)?.value || ''; 
     if(v) plan[p.code] = v; 
   });
-  localStorage.setItem('jy_sell_plan_v1', JSON.stringify(plan)); 
+  localStorage.setItem(STORE_SELL_PLAN, JSON.stringify(plan)); 
 }
-
-function saveAndClosePlan() {
-  saveSellPlan();
-  closeAllDrawers();
-}
+function saveAndClosePlan() { saveSellPlan(); closeAllDrawers(); }
 
 function togglePrioritySell(code) {
-  if (window._prioritySellCode === code) {
-    window._prioritySellCode = null;
-  } else {
-    window._prioritySellCode = code;
-  }
-
-  // ✅ 持久化
-  if (window._prioritySellCode) {
-    localStorage.setItem('jy_priority_sell_v1', window._prioritySellCode);
-  } else {
-    localStorage.removeItem('jy_priority_sell_v1');
-  }
+  window._prioritySellCode = (window._prioritySellCode === code) ? null : code;
+  if (window._prioritySellCode) localStorage.setItem('jy_priority_sell_v1', window._prioritySellCode);
+  else localStorage.removeItem('jy_priority_sell_v1');
 
   document.querySelectorAll('.pri-btn').forEach(btn => {
     const isPri = btn.dataset.code === window._prioritySellCode;
-    btn.innerHTML = isPri ? '★ 优先' : '☆ 设为优先';
+    btn.innerHTML = isPri ? '★ 优先' : '☆ 优先';
     btn.style.color = isPri ? '#f59e0b' : 'var(--t3)';
     btn.style.borderColor = isPri ? '#f59e0b' : 'var(--bd2)';
     btn.style.background = isPri ? 'rgba(245,158,11,0.1)' : 'transparent';
   });
-
   if(typeof calcSellPreview === 'function') calcSellPreview();
 }
 
+// --- 缺失的预案抽屉触发器 ---
 function openPlanDrawer() {
   const currentPE = getCurrentPE();
   if(!currentPE) { alert('请先定锚！'); openPeModal(); return; }
   
+  // 恢复优先卖出的本地状态
   window._prioritySellCode = localStorage.getItem('jy_priority_sell_v1');
-  _planMode = currentPE.value <= currentPE.bounds.buyPct ? 'buy' : (currentPE.value >= currentPE.bounds.sellPct ? 'sell' : 'neutral');
+  
+  // 调用 ui.js 里的纯渲染函数生成 HTML
   renderPlanDrawer(); 
+  
+  // 展开抽屉 UI
   openDrawer('planDrawer');
 }
 
+function openDrawer(id) { document.getElementById('drawerMask').classList.add('open'); document.getElementById(id).classList.add('open'); }
+function closeAllDrawers() { document.getElementById('drawerMask').classList.remove('open'); document.querySelectorAll('.drawer').forEach(d => d.classList.remove('open')); }
+
 // ==========================================
-// 7. 抽屉控制与初始化
+// 6. 系统初始化启动
 // ==========================================
-function openDrawer(id) { 
-  document.getElementById('drawerMask').classList.add('open'); 
-  document.getElementById(id).classList.add('open'); 
-}
+updateClock(); setInterval(updateClock, 1000);
+updatePeBar(); refreshData();
 
-function closeAllDrawers() { 
-  document.getElementById('drawerMask').classList.remove('open'); 
-  document.querySelectorAll('.drawer').forEach(d => d.classList.remove('open')); 
-}
-
-// 初始化启动
-updateClock();
-setInterval(updateClock, 1000);
-updatePeBar();
-refreshData();
-
-// 挂载轮询
+// 智能休眠与轮询
 setInterval(() => { if(!document.hidden) fetchIndices(); }, SYS_CONFIG.REFRESH_IDX);
 setInterval(() => { if(!document.hidden) refreshData(); }, SYS_CONFIG.REFRESH_API);
-
-// 挂载页面可见性事件
-document.addEventListener('visibilitychange', () => { 
-  if(!document.hidden) { 
-    fetchIndices(); 
-    refreshData(); 
-  } 
-});
+document.addEventListener('visibilitychange', () => { if(!document.hidden) { fetchIndices(); refreshData(); } });

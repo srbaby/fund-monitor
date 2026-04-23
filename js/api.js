@@ -1,7 +1,12 @@
+// ==========================================
 // 全局状态跨文件共享
+// ==========================================
 window._rt_csi300_price = null; 
 window._rt_csi300_yest = null; 
 window.jsonpResolvers = {};
+
+// 官方净值防刷缓存字典
+const offCache = {}; 
 
 // ==========================================
 // 1. 获取大盘指数 (东方财富 API)
@@ -55,11 +60,54 @@ function fetchEst(code) {
 }
 
 // ==========================================
-// 3. 获取官方净值 (东方财富 HTML 爬取队列)
+// 3. 获取官方净值 (带智能时间窗口的动态 TTL 短路机制)
 // ==========================================
 const offQ = []; let offBusy = false;
+
 function fetchOff(code) {
-  return new Promise(r => { offQ.push({code, resolve: r}); drainOff(); });
+  const now = new Date();
+  const nowTs = now.getTime();
+  const h = now.getHours();
+  const m = now.getMinutes();
+  const day = now.getDay();
+  const timeNum = h * 60 + m; // 当前分钟数 (0-1439)
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+
+  const cached = offCache[code];
+
+  if (cached) {
+    let ttl = 30 * 60 * 1000; // 默认 30 分钟
+    const isTodayData = cached.data && cached.data.date === todayStr;
+
+    if (isTodayData) {
+      // 【终极短路】已刷出今日最新净值，锁定至明天，绝不再发请求
+      ttl = 12 * 60 * 60 * 1000; 
+    } else if (day === 0 || day === 6) {
+      // 【周末短路】官方周末不更新，超长待机
+      ttl = 12 * 60 * 60 * 1000;
+    } else if (timeNum >= 19 * 60 + 30) {
+      // 【盲盒开奖期】交易日 19:30 - 24:00，且还没拿到今日数据：每 5 分钟探测一次
+      ttl = 5 * 60 * 1000;
+    } else {
+      // 【日间静默期】交易日 00:00 - 19:30，绝不可能有今日数据，1小时探测一次即可
+      ttl = 60 * 60 * 1000;
+    }
+
+    // 缓存未过期，直接返回内存数据，阻断真实网络请求
+    if (nowTs - cached.ts < ttl) {
+      return Promise.resolve(cached.data);
+    }
+  }
+
+  return new Promise(r => { 
+    // 拦截请求成功的回调，将结果写入缓存字典
+    const cacheInterceptResolve = (val) => {
+      if (val) offCache[code] = { ts: Date.now(), data: val };
+      r(val);
+    };
+    offQ.push({code, resolve: cacheInterceptResolve}); 
+    drainOff(); 
+  });
 }
 
 function drainOff() {

@@ -98,3 +98,110 @@ function getDynamicTarget(mode) {
   else if (mode === 'sell') return PE_EQUITY_TABLE[Math.max(currentIndex - 1, 0)].target;
   else return PE_EQUITY_TABLE[currentIndex].target;
 }
+
+// ==========================================
+// 4. 交易预案推演纯粹数学引擎 (剥离自 UI 层)
+// ==========================================
+function calcBuyPlanDraft(holdings) {
+  const eqResult = calcCurrentEquity(holdings);
+  if (!eqResult) return null;
+  const { total: totalVal, equity: currentEq } = eqResult;
+  const targetEq = getDynamicTarget('buy') || 34.0;
+
+  const currentEqVal = totalVal * currentEq / 100;
+  const targetEqVal = totalVal * targetEq / 100;
+  const buyAmt = Math.max(0, targetEqVal - currentEqVal);
+
+  const xqNav = getNavByCode(SYS_CONFIG.CODE_XQ) || 1.0;
+  const a500cNav = getNavByCode(SYS_CONFIG.CODE_A500) || 1.0;
+  const zz500cNav = getNavByCode(SYS_CONFIG.CODE_ZZ500) || 1.0;
+
+  const sellXqShares = buyAmt / xqNav;
+
+  // 单品 20% 红线校验
+  const currA500CVal = (holdings[SYS_CONFIG.CODE_A500] || 0) * a500cNav;
+  const maxA500CVal = totalVal * SYS_CONFIG.LIMIT_A500C;
+  const a500cRoom = Math.max(0, maxA500CVal - currA500CVal);
+
+  const allocA500C = Math.min(buyAmt, a500cRoom);
+  const allocZZ500C = buyAmt - allocA500C;
+
+  return { totalVal, currentEq, targetEq, buyAmt, sellXqShares, allocA500C, allocZZ500C, a500cNav, zz500cNav };
+}
+
+function calcSellExecutionDraft(holdings, ratios, priorityCode) {
+  const eqResult = calcCurrentEquity(holdings);
+  if(!eqResult) return { error: true };
+
+  const targetEq = getDynamicTarget('sell') || 25.0;
+  const {equity: currentEq, total: totalVal} = eqResult;
+  const currentEqVal = totalVal * currentEq / 100;
+  const targetEqVal = totalVal * targetEq / 100;
+
+  let sellNeededEq = Math.max(0, currentEqVal - targetEqVal);
+  const sellProducts = funds.map(code => PRODUCTS.find(p => p.code === code)).filter(p => p && p.equity > 0);
+
+  let totalRatio = 0;
+  sellProducts.forEach(p => { if(p.code !== priorityCode) totalRatio += (ratios[p.code] || 0); });
+
+  let afterEqVal = currentEqVal;
+  let totalCashOut = 0;
+  let totalFriction = 0;
+  const results = {};
+  let hasAnySell = false;
+
+  // 1. 优先卖出额度抵扣
+  if (priorityCode) {
+    const pPri = sellProducts.find(p => p.code === priorityCode);
+    if (pPri) {
+      const nav = getNavByCode(pPri.code) || 1.0;
+      const maxSellAmount = (holdings[pPri.code] || 0) * nav;
+      const maxEqContribution = maxSellAmount * pPri.equity;
+      const actualEqToSell = Math.min(sellNeededEq, maxEqContribution);
+      const actualSellAmt = actualEqToSell / pPri.equity;
+
+      results[pPri.code] = { amt: actualSellAmt, nav };
+      sellNeededEq -= actualEqToSell;
+    }
+  }
+
+  // 2. 剩余额度按比例分配
+  sellProducts.forEach(p => {
+    if (p.code === priorityCode) return;
+    const nav = getNavByCode(p.code) || 1.0;
+
+    if (!totalRatio || !(ratios[p.code])) {
+      results[p.code] = { amt: 0, nav };
+      return;
+    }
+
+    const eqQuota = sellNeededEq * (ratios[p.code] / totalRatio);
+    const maxSellAmount = (holdings[p.code] || 0) * nav;
+    const actualSellAmt = Math.min(eqQuota / p.equity, maxSellAmount);
+    results[p.code] = { amt: actualSellAmt, nav };
+  });
+
+  // 3. 计算摩擦、到账、剩余权益
+  sellProducts.forEach(p => {
+    const res = results[p.code] || {amt: 0, nav: getNavByCode(p.code) || 1.0};
+    if (!res.amt) return;
+
+    hasAnySell = true;
+    const feeAmt = res.amt * SYS_CONFIG.FEE;
+    const cashOut = res.amt - feeAmt;
+    const eqDropVal = res.amt * p.equity;
+
+    afterEqVal -= eqDropVal;
+    totalCashOut += cashOut;
+    totalFriction += feeAmt;
+    res.fee = feeAmt;
+    res.cashOut = cashOut;
+    res.eqDropPct = (eqDropVal / totalVal) * 100;
+    res.shares = res.amt / res.nav;
+  });
+
+  const afterEqPct = afterEqVal / totalVal * 100;
+  const diffEqPct = Math.max(0, currentEq - targetEq);
+
+  return { totalVal, currentEq, targetEq, diffEqPct, hasAnySell, totalCashOut, totalFriction, afterEqPct, results };
+}
