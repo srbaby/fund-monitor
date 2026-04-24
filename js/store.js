@@ -10,7 +10,8 @@ let _lastResults = [];
 // 2. 本地存储 (LocalStorage) 抽象
 function loadFunds(){ 
   const c = localStorage.getItem(STORE_CODES); 
-  funds = (c && c !== '[]') ? JSON.parse(c) : [...DEFAULT_CODES]; 
+  // 核心修复：去掉 c !== '[]'，允许用户完全清空列表，不再强制复活 DEFAULT_CODES
+  funds = c ? JSON.parse(c) : [...DEFAULT_CODES]; 
 }
 
 function saveFunds(){ 
