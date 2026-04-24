@@ -157,8 +157,8 @@ function renderAll(results) {
   const resultMap = new Map(results.map(r => [r.code, r]));
   const uiResults = funds.map(code => resultMap.get(code)).filter(Boolean);
   
-  renderCards(uiResults, fl, today, tradingDay); // 调 ui.js
-  renderTable(uiResults, fl, today, tradingDay); // 调 ui.js
+  renderCards(uiResults, fl, today, tradingDay); 
+  renderTable(uiResults, fl, today, tradingDay); 
   renderTodayProfit(uiResults, mktState, today);
   
   document.getElementById('cardHeaderBar').style.display = uiResults.length ? 'flex' : 'none';
@@ -245,8 +245,8 @@ async function refreshData() {
     fetchIndices();
     
     if(!funds.length) {
-      document.getElementById('cardView').innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><div>暂无关注基金，输入代码添加</div></div>`;
-      document.getElementById('fundTbody').innerHTML = `<tr><td colspan="4" style="text-align:center;padding:50px;color:var(--t3)">暂无关注基金</td></tr>`;
+      document.getElementById('cardView').innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><div>暂无关注产品，输入代码添加</div></div>`;
+      document.getElementById('fundTbody').innerHTML = `<tr><td colspan="4" style="text-align:center;padding:50px;color:var(--t3)">暂无关注产品</td></tr>`;
       return;
     }
     
@@ -337,31 +337,39 @@ function saveHoldings() {
   saveHoldingsData(h); closeAllDrawers(); alert('✅ 持仓已保存');
 }
 
-// --- 替换 exportHoldings 和 importHoldings -------------------
+// -------------------------------------------------------------
+// 彻底修复口令导出恢复机制 (修复“幽灵卡片”的核心)
+// -------------------------------------------------------------
 function exportToken() {
   const data = {
+    f: funds, // 核心修复：把首页的自定义产品列表一起打包
     h: loadHoldings(), 
     p: loadPe(), 
     s: JSON.parse(localStorage.getItem(STORE_SELL_PLAN) || '{}')
   };
-  // 将 JSON 编码并转化为 Base64 口令
   const str = btoa(encodeURIComponent(JSON.stringify(data)));
-  prompt('请复制以下备份口令并妥善保存（建议粘贴至微信收藏）：', str);
+  prompt('请复制以下备份口令并妥善保存：', str);
 }
 
 function importToken() {
   const str = prompt('请输入你的资产备份口令：');
   if(!str) return;
   try {
-    // 解码口令
     const data = JSON.parse(decodeURIComponent(atob(str)));
+    
+    // 核心修复：如果在口令里读到了产品列表，直接强制覆盖系统的列表，彻底切断默认产品的强行复活
+    if(data.f && Array.isArray(data.f)) {
+      funds = data.f;
+      saveFunds();
+    }
     if(data.h) saveHoldingsData(data.h);
     if(data.p) savePe(data.p);
     if(data.s) localStorage.setItem(STORE_SELL_PLAN, JSON.stringify(data.s));
+    
     closeAllDrawers(); 
     updatePeBar(); 
     refreshData();
-    alert('✅ 资产配置口令恢复成功！');
+    alert('✅ 资产配置与首页列表全量恢复成功！');
   } catch(e) {
     alert('❌ 口令无效或已损坏，请检查复制是否完整！');
   }
@@ -394,18 +402,11 @@ function togglePrioritySell(code) {
   if(typeof calcSellPreview === 'function') calcSellPreview();
 }
 
-// --- 缺失的预案抽屉触发器 ---
 function openPlanDrawer() {
   const currentPE = getCurrentPE();
   if(!currentPE) { alert('请先定锚！'); openPeModal(); return; }
-  
-  // 恢复优先卖出的本地状态
   window._prioritySellCode = localStorage.getItem('jy_priority_sell_v1');
-  
-  // 调用 ui.js 里的纯渲染函数生成 HTML
   renderPlanDrawer(); 
-  
-  // 展开抽屉 UI
   openDrawer('planDrawer');
 }
 
@@ -418,7 +419,6 @@ function closeAllDrawers() { document.getElementById('drawerMask').classList.rem
 updateClock(); setInterval(updateClock, 1000);
 updatePeBar(); refreshData();
 
-// 智能休眠与轮询
 setInterval(() => { if(!document.hidden) fetchIndices(); }, SYS_CONFIG.REFRESH_IDX);
 setInterval(() => { if(!document.hidden) refreshData(); }, SYS_CONFIG.REFRESH_API);
 document.addEventListener('visibilitychange', () => { if(!document.hidden) { fetchIndices(); refreshData(); } });
