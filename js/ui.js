@@ -23,7 +23,8 @@ function fp(v) {
 function fmt(n, decimals = 0) {
   return (n == null || isNaN(n)) ? '--' : n.toLocaleString('zh-CN', {minimumFractionDigits: decimals, maximumFractionDigits: decimals});
 }
-function fmtMoney(n) { return '¥' + fmt(n, 0); }
+// 修改点：强制全局法币金额精确到 2 位小数
+function fmtMoney(n) { return '¥' + fmt(n, 2); }
 function getProductName(code) { return SHORT_NAMES[code] || (PRODUCTS.find(p => p.code === code)?.name) || code; }
 
 // ---- 时钟与市场状态标签 ----
