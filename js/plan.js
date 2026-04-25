@@ -306,7 +306,7 @@ function togglePrioritySell(code) {
     btn.style.borderColor = isPri ? '#f59e0b' : 'var(--bd2)';
     btn.style.background  = isPri ? 'rgba(245,158,11,0.1)' : 'transparent';
   });
-  if (typeof calcSellPreview === 'function') calcSellPreview();
+  calcSellPreview();
 }
 
 function saveSellPlan() {

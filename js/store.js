@@ -26,7 +26,6 @@ function loadPe() {
 }
 function savePe(dataObj) {
   localStorage.setItem(STORE_PE, JSON.stringify(dataObj));
-  localStorage.setItem(STORE_PE_DATE, new Date().toLocaleDateString('zh-CN', {timeZone: 'Asia/Shanghai'}));
 }
 
 // 持仓份额

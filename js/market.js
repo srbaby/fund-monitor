@@ -57,7 +57,6 @@ function fetchIndices() {
 
       if (map['000300']?.f2 && map['000300']?.f18) {
         window._rt_csi300_price = parseFloat(map['000300'].f2);
-        window._rt_csi300_yest = parseFloat(map['000300'].f18);
         if (typeof updatePeBar === 'function' && document.getElementById('peModal')?.style.display !== 'flex') {
           updatePeBar();
         }
@@ -65,7 +64,7 @@ function fetchIndices() {
       renderIndices(map);
     };
 
-    s.src = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f12,f14,f18&secids=1.000300,1.000510,1.000905,2.H30269,1.000012,116.HSI,124.HSI,100.HSI&cb=${cb}&_=${Date.now()}`;
+    s.src = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f12,f14&secids=1.000300,1.000510,1.000905,2.H30269,1.000012,116.HSI,124.HSI,100.HSI&cb=${cb}&_=${Date.now()}`;
     s.onerror = fin;
     setTimeout(fin, 5000);
     document.head.appendChild(s);

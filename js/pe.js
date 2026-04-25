@@ -2,7 +2,6 @@
 // 职责：Lagrange 计算、PE 栏渲染、定锚弹窗交互
 
 window._rt_csi300_price = null;
-window._rt_csi300_yest = null;
 
 // Lagrange 三点插值，推算实时 PE
 function getCurrentPE() {

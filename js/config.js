@@ -48,7 +48,6 @@ const NAMES = {
   '011554':                '海富通欣利混合A',
   '007466':                '华泰柏瑞红利低波联接A',
   '004496':                '前海开源多元策略A',
-  '110020':                '易方达沪深300联接A',
   [SYS_CONFIG.CODE_A500]:  '华泰柏瑞A500联接C',
   '007028':                '易方达中证500联接A'
 };
@@ -60,7 +59,6 @@ const SHORT_NAMES = {
   '011554':                '海富通欣利',
   '110027':                '易方达回报',
   '004496':                '前海多元',
-  '110020':                '易方达沪深300',
   [SYS_CONFIG.CODE_A500]:  'A500C',
   '007028':                '易方达中证500联接',
   [SYS_CONFIG.CODE_ZZ500]: '中证500C'
@@ -105,6 +103,5 @@ const DEFAULT_HOLDINGS = {
 // ==========================================
 const STORE_CODES    = 'fm_v20';
 const STORE_PE       = 'jy_pe_v2_lagrange';
-const STORE_PE_DATE  = 'jy_pe_date_v2';
 const STORE_HOLDINGS = 'jy_holdings_v1';
 const STORE_SELL_PLAN= 'jy_sell_plan_v1';

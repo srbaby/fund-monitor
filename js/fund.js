@@ -106,7 +106,7 @@ function getNavByCode(code) {
   const estD = f.estTime ? f.estTime.slice(0, 10) : '';
   if (f.offVal && (!estD || offD >= estD)) return parseFloat(f.offVal);
   if (f.estVal) return parseFloat(f.estVal);
-  return f.offVal ? parseFloat(f.offVal) : null;
+  return null;
 }
 
 // ---- 格式化工具 ----
@@ -131,8 +131,8 @@ function calcFlash(results) {
       ef: pr && pr.estPct !== f.estPct && f.estPct != null ? (f.estPct > (pr.estPct || 0) ? 'flash-up' : 'flash-down') : '',
       of2: pr && pr.offPct !== f.offPct && f.offPct != null ? (f.offPct > (pr.offPct || 0) ? 'flash-up' : 'flash-down') : ''
     };
+    prevData[f.code] = {estPct: f.estPct, offPct: f.offPct};
   });
-  results.forEach(f => { if (!f.error) prevData[f.code] = {estPct: f.estPct, offPct: f.offPct}; });
   return fl;
 }
 
@@ -191,7 +191,7 @@ function renderTodayProfit(results, mktState, todayStr) {
 }
 
 // ---- 卡片渲染 ----
-var allCollapsed = false;
+let allCollapsed = false;
 let miniMode = 0;
 const miniLabels = ['估算', '官方', '全部'];
 let cardSortable = null, tblSortable = null;
@@ -205,7 +205,7 @@ function inlinePctHtml(ep, op, stale, ef, of2) {
 }
 
 function buildCardInnerHtml(f, fl, today, tradingDay) {
-  if (f.error) return `<div class="card-top"><span class="drag-handle">⠿</span><div class="card-info"><div class="card-name-box"><div class="card-name" style="color:var(--t3)">${NAMES[f.code] || f.code}</div><div class="card-code">${f.code}</div></div></div><div class="card-actions"><button class="del-btn" onclick="delFund('${f.code}')">删除</button></div></div><div style="padding:10px 16px 14px;font-size:12px;color:var(--t3);border-top:1px solid var(--bd)">⚠ 获取超时，请刷新</div>`;
+  if (f.error) return `<div class="card-top"><span class="drag-handle">⠿</span><div class="card-info"><div class="card-name-box"><div class="card-name" style="color:var(--t3)">${f.name || NAMES[f.code] || f.code}</div><div class="card-code">${f.code}</div></div></div><div class="card-actions"><button class="del-btn" onclick="delFund('${f.code}')">删除</button></div></div><div style="padding:10px 16px 14px;font-size:12px;color:var(--t3);border-top:1px solid var(--bd)">⚠ 获取超时，请刷新</div>`;
 
   const ep = fp(f.estPct), op = fp(f.offPct);
   const {ef, of2} = (fl || {})[f.code] || {ef: '', of2: ''};
@@ -348,7 +348,8 @@ function addFund() {
   } else { input.value = ''; }
 }
 function delFund(code) {
-  if (!confirm(`确认删除「${NAMES[code] || code}」？`)) return;
+  const name = NAMES[code] || _lastResults.find(r => r.code === code)?.name || code;
+  if (!confirm(`确认删除「${name}」？`)) return;
   funds = funds.filter(c => c !== code); saveFunds(); refreshData();
 }
 

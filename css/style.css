@@ -87,16 +87,8 @@ main{padding:12px;width:100%}
 .dh-meta { font-size: 10px; color: var(--t3); white-space: nowrap; display: flex; gap: 8px; opacity: 0.8; }
 .dh-meta b { color: var(--t2); font-family: var(--f-num); }
 
-.fund-card.collapsed .card-data{display:none}
-.fund-card.collapsed .card-top{padding:5px 10px 5px 6px;gap:4px;align-items:center;}
-.fund-card.collapsed .card-name{font-size:13px}
-.fund-card.collapsed .card-code{display:none}
-.fund-card.collapsed .del-btn{display:none}
 .inline-pct{display:none;font-family:var(--f-num);font-size:14px;font-weight:600;flex-shrink:0;white-space:nowrap}
-.fund-card.collapsed .inline-pct{display:block}
 
-.sk{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:sk 1.4s infinite;border-radius:4px;display:inline-block}
-@keyframes sk{to{background-position:-200% 0}}
 .empty-state{text-align:center;padding:60px 20px;color:var(--t3)}
 .empty-icon{font-size:40px;margin-bottom:12px;opacity:.4}
 .sortable-ghost{opacity:.2;background:var(--bg4);border:1px dashed var(--accent)}
@@ -142,11 +134,9 @@ main{padding:12px;width:100%}
 .pe-track-lo{position:absolute;top:0;bottom:0;width:3px;background:#3b82f6;border-radius:2px;transition:left .3s;z-index:1}
 .pe-track-hi{position:absolute;top:0;bottom:0;width:3px;background:#f59e0b;border-radius:2px;transition:left .3s;z-index:1}
 
-/* 【统一尺寸】控制定锚、持仓按钮几何形状 */
 .pe-input-btn{font-size:11px;color:var(--t3);background:transparent;border:1px solid var(--bd2);border-radius:6px;padding:4px 10px;cursor:pointer;white-space:nowrap;flex-shrink:0}
 .pe-input-btn:active{background:var(--bg3)}
 
-/* 【尺寸对齐】完全复制 pe-input-btn 的尺寸体系 */
 .pe-plan-btn{font-size:11px;font-weight:500;padding:4px 10px;border-radius:6px;border:1px solid transparent;cursor:pointer;white-space:nowrap;flex-shrink:0;font-family:var(--f-zh)}
 .pe-plan-btn.buy{background:rgba(59,130,246,.15);color:#60a5fa;border-color:rgba(59,130,246,.3)}
 .pe-plan-btn.sell{background:rgba(245,158,11,.15);color:#f59e0b;border-color:rgba(245,158,11,.3)}
@@ -199,4 +189,13 @@ main{padding:12px;width:100%}
   main{padding:20px 24px 20px;max-width:1200px;margin:0 auto}
   .card-view{display:none!important}
   .table-view{display:block}
+}
+
+@media(max-width:767px){
+  .fund-card .card-data{display:none}
+  .fund-card .card-top{padding:5px 10px 5px 6px;gap:4px;align-items:center;}
+  .fund-card .card-name{font-size:13px}
+  .fund-card .card-code{display:none}
+  .fund-card .del-btn{display:none}
+  .inline-pct{display:block}
 }

@@ -3,14 +3,6 @@
 
 document.getElementById('codeInput').addEventListener('keydown', e => { if (e.key === 'Enter') addFund(); });
 
-// 手机端默认收窄，在 refreshData 渲染卡片之前设置，卡片直接以收窄状态渲染
-if (window.innerWidth < 768) {
-  allCollapsed = true;
-  document.body.classList.add('collapsed-mode');
-  document.getElementById('colBtn').textContent = '展开';
-  document.getElementById('cycleBtn').style.display = '';
-}
-
 updateClock();
 setInterval(updateClock, 1000);
 updatePeBar();
