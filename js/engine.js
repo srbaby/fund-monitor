@@ -180,11 +180,29 @@ function calcTodayProfit(results, holdings, mktState, todayStr) {
     const nav = isOfficialUpdated ? parseFloat(f.offVal) : parseFloat(f.estVal);
     const pct = isOfficialUpdated ? parseFloat(f.offPct) : parseFloat(f.estPct);
 
-    if (!isNaN(nav) && !isNaN(pct)) {
-      const yestNav = nav / (1 + pct / 100);
+    if (!isNaN(nav)) {
+      let yestNav = null;
+      
+      // 判断从接口暴露出来的 baseNav 是否是当前 nav 对应的精确昨日基准
+      // 如果当前看的是官方数据，需保证精确净值的对应日期小于官方发布日期，否则说明精确基准已向后翻滚。
+      // 如果当前看的是估算数据，估算数据的日期必然是今天，只要基准日期小于今天即有效。
+      const isBaseNavValid = f.baseNav && f.baseDate && (
+        (isOfficialUpdated && f.baseDate < offD) ||
+        (!isOfficialUpdated && f.baseDate < todayStr)
+      );
+
+      if (isBaseNavValid) {
+        yestNav = f.baseNav; // 核心修复：命中有效基准时，采用原生的净值求绝对差额
+      } else if (!isNaN(pct)) {
+        yestNav = nav / (1 + pct / 100); // 兜底：退化为百分比反推
+      } else {
+        return;
+      }
+
       const yestVal = shares * yestNav;
       totalYestVal += yestVal;
-      totalProfit  += yestVal * (pct / 100);
+      totalProfit  += shares * (nav - yestNav); // 计算绝对差额，完全消除百分比截断误差
+
       if (!isOfficialUpdated && estD !== todayStr && (mktState === 'PRE_MARKET' || mktState === 'TRADING')) {
         isWaitingForOpen = true;
       }
