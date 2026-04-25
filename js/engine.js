@@ -28,8 +28,8 @@ function getCurrentPE() {
   if (!peData || !peData.bucketStr) return null;
 
   const [loStr, hiStr] = peData.bucketStr.split(',');
-  const buyPct  = parseFloat(loStr) - SYS_CONFIG.DEAD_ZONE;
-  const sellPct = parseFloat(hiStr) + SYS_CONFIG.DEAD_ZONE;
+  const buyPct  = parseFloat(loStr) - SYS_CONFIG.BUFFER_ZONE;
+  const sellPct = parseFloat(hiStr) + SYS_CONFIG.BUFFER_ZONE;
 
   let v = peData.peYest, isDynamic = false;
 

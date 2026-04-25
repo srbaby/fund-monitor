@@ -110,10 +110,11 @@ function updatePeBar() {
   if (eqDiv) {
     const eqData = calcCurrentEquity(loadHoldings());
     const target = getDynamicTarget('neutral');
+    const dev    = SYS_CONFIG.EQUITY_DEV_LIMIT; // 引用配置
     if (eqData && target != null) {
       const diff     = eqData.equity - target;
       const sign     = diff > 0 ? '+' : '';
-      const wrongDir = (v >= 65 && diff > 2) || (v < 65 && diff < -2);
+      const wrongDir = (v >= 65 && diff > dev) || (v < 65 && diff < -dev);
       const col      = wrongDir ? '#f87171' : (diff > 0 ? '#f59e0b' : '#60a5fa');
       eqDiv.innerHTML = `目标<b style="font-family:var(--f-num)">${target}%</b> 实际<b style="color:${col};font-family:var(--f-num)">${eqData.equity.toFixed(2)}%</b> <span style="color:${col};font-family:var(--f-num)">${sign}${diff.toFixed(2)}%</span>`;
       eqDiv.style.display = 'flex';

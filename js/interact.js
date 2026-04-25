@@ -96,7 +96,8 @@ function openHoldingDrawer() {
   const currentPE = getCurrentPE();
   const targetEq  = getDynamicTarget('neutral');
   const diff      = (eqData && targetEq != null) ? eqData.equity - targetEq : null;
-  const wrongDir  = diff != null && currentPE ? ((currentPE.value >= 65 && diff > 2) || (currentPE.value < 65 && diff < -2)) : false;
+  const dev       = SYS_CONFIG.EQUITY_DEV_LIMIT; // 引用配置
+  const wrongDir  = diff != null && currentPE ? ((currentPE.value >= 65 && diff > dev) || (currentPE.value < 65 && diff < -dev)) : false;
   const diffCol   = diff == null ? 'var(--t3)' : wrongDir ? '#f87171' : (diff > 0 ? '#f59e0b' : '#60a5fa');
 
   // 1. 顶部汇总卡片
