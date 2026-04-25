@@ -99,43 +99,62 @@ function openHoldingDrawer() {
   const wrongDir  = diff != null && currentPE ? ((currentPE.value >= 65 && diff > 2) || (currentPE.value < 65 && diff < -2)) : false;
   const diffCol   = diff == null ? 'var(--t3)' : wrongDir ? '#f87171' : (diff > 0 ? '#f59e0b' : '#60a5fa');
 
-  let html = `<div style="background:var(--bg3);border-radius:10px;padding:12px;margin-bottom:14px;border:1px solid var(--bd)">
-    <div style="font-size:11px;color:var(--t3);margin-bottom:8px;font-weight:500">📊 权益校对汇总</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-      <div><div style="font-size:10px;color:var(--t3)">总市值</div><div style="font-family:var(--f-num);font-size:15px;font-weight:600">${eqData ? fmtMoney(eqData.total) : '--'}</div></div>
-      <div><div style="font-size:10px;color:var(--t3)">实际权益</div><div style="font-family:var(--f-num);font-size:15px;font-weight:600;color:${diffCol}">${eqData ? eqData.equity.toFixed(2) + '%' : '--'}</div></div>
-      <div><div style="font-size:10px;color:var(--t3)">目标权益</div><div style="font-family:var(--f-num);font-size:15px;font-weight:600;color:var(--accent)">${targetEq != null ? targetEq + '%' : '输入PE'}</div></div>
+  // 1. 顶部汇总卡片
+  let html = `<div style="background:var(--bg3);border-radius:10px;padding:12px;margin-bottom:16px;border:1px solid var(--bd)">
+    <div style="font-size:11px;color:var(--t3);margin-bottom:10px;font-weight:500;display:flex;align-items:center;gap:4px"><span>📊</span> 权益校对汇总</div>
+    <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:12px">
+      <div><div style="font-size:10px;color:var(--t3);margin-bottom:4px">总市值</div><div style="font-family:var(--f-num);font-size:16px;font-weight:600;color:var(--t1)">${eqData ? fmtMoney(eqData.total) : '--'}</div></div>
+      <div><div style="font-size:10px;color:var(--t3);margin-bottom:4px">实际权益</div><div style="font-family:var(--f-num);font-size:16px;font-weight:600;color:${diffCol}">${eqData ? eqData.equity.toFixed(2) + '%' : '--'}</div></div>
+      <div><div style="font-size:10px;color:var(--t3);margin-bottom:4px">目标权益</div><div style="font-family:var(--f-num);font-size:16px;font-weight:600;color:var(--accent)">${targetEq != null ? targetEq + '%' : '输入PE'}</div></div>
     </div>
-    ${diff != null ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--bd);font-size:11px">偏离：<span style="font-family:var(--f-num);font-weight:600;color:${diffCol}">${diff > 0 ? '+' : ''}${diff.toFixed(2)}%</span>${wrongDir ? '<span style="color:#f87171;margin-left:6px">⚠️ 方向警告</span>' : ''}</div>` : ''}
-  </div>
-  <div style="background:var(--bg3);border-radius:10px;overflow:hidden;margin-bottom:14px;border:1px solid var(--bd)">`;
+    ${diff != null ? `<div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--bd2);font-size:11px;color:var(--t2)">偏离评估：<span style="font-family:var(--f-num);font-weight:600;color:${diffCol}">${diff > 0 ? '+' : ''}${diff.toFixed(2)}%</span>${wrongDir ? '<span style="color:#f87171;margin-left:8px;font-weight:500">⚠️ 方向警告</span>' : ''}</div>` : ''}
+  </div>`;
+
+  // 2. 资产价值明细（使用严格比例网格强制对齐）
+  html += `<div style="margin-bottom:20px">
+    <div style="font-size:11px;color:var(--t3);margin-bottom:8px;font-weight:500">资产价值明细</div>
+    <div style="background:var(--bg3);border-radius:10px;overflow:hidden;border:1px solid var(--bd)">`;
 
   getActiveProducts().forEach(p => {
     const shares = holdings[p.code] || 0;
     const nav    = getNavByCode(p.code);
     const val    = nav ? shares * nav : 0;
-    html += `<div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--bd);font-size:12px">
-      <div><div style="font-weight:500">${p.name}</div><div style="font-size:10px;color:var(--t3)"><span style="font-family:var(--f-num)">${shares.toFixed(2)}</span> 份 × <span style="font-family:var(--f-num)">${nav ? nav.toFixed(4) : '--'}</span></div></div>
-      <div style="text-align:right;font-family:var(--f-num);color:var(--t2)">${val ? fmtMoney(val) : '--'}</div>
+    html += `<div style="display:grid;grid-template-columns: 2.5fr 2.2fr 0.8fr 2.2fr; gap:4px; align-items:center; padding:10px 12px; border-bottom:1px solid var(--bd); font-size:12px">
+      <div style="overflow:hidden">
+        <div style="font-weight:600;color:var(--t1);white-space:nowrap;text-overflow:ellipsis">${p.name}</div>
+        <div style="font-size:10px;color:var(--t3);margin-top:2px;white-space:nowrap"><span style="font-family:var(--f-num)">${shares.toFixed(2)}</span> 份 × <span style="font-family:var(--f-num)">${nav ? nav.toFixed(4) : '--'}</span></div>
+      </div>
+      <div style="text-align:right;font-family:var(--f-num);color:var(--t2);font-weight:500">${val ? fmtMoney(val) : '--'}</div>
       <div style="text-align:right;font-size:10px;color:var(--t3)">×<span style="font-family:var(--f-num)">${Math.round(p.equity * 100)}%</span></div>
-      <div style="text-align:right;font-family:var(--f-num);font-weight:500;color:var(--accent)">${val ? fmtMoney(val * p.equity) : '--'}</div>
+      <div style="text-align:right;font-family:var(--f-num);font-weight:600;color:var(--accent)">${val ? fmtMoney(val * p.equity) : '--'}</div>
     </div>`;
   });
+  html += `</div></div>`;
 
-  html += `</div>`;
+  // 3. 份额表单卡片群（使用独立区块保证输入框绝不对不齐）
+  html += `<div style="margin-bottom:16px">
+    <div style="font-size:11px;color:var(--t3);margin-bottom:8px;font-weight:500">持仓份额管理</div>
+    <div style="display:flex;flex-direction:column;gap:8px">`;
 
   getActiveProducts().forEach(p => {
     const shares = holdings[p.code] || 0;
-    html += `<div class="holding-row">
-      <div class="holding-name"><div style="font-size:13px;font-weight:500">${getProductName(p.code)}</div><div style="font-size:11px;color:var(--t3)">${p.code}·权益<span style="font-family:var(--f-num)">${Math.round(p.equity * 100)}%</span></div></div>
-      <input class="holding-input" id="hi_${p.code}" type="number" step="0.01" style="font-size:16px" value="${shares.toFixed(2)}" placeholder="0">
-      <span class="holding-unit">份</span>
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--bg3);border-radius:10px;border:1px solid var(--bd)">
+      <div>
+        <div style="font-size:14px;font-weight:600;color:var(--t1)">${getProductName(p.code)}</div>
+        <div style="font-size:11px;color:var(--t3);margin-top:2px">${p.code} · 权益 <span style="font-family:var(--f-num)">${Math.round(p.equity * 100)}%</span></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input id="hi_${p.code}" type="number" step="0.01" style="width:120px;height:34px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);text-align:right;font-size:16px;font-family:var(--f-num);padding:0 10px" value="${shares.toFixed(2)}" placeholder="0.00">
+        <span style="font-size:12px;color:var(--t3)">份</span>
+      </div>
     </div>`;
   });
+  html += `</div></div>`;
 
-  html += `<div style="margin-top:16px;display:flex;gap:8px">
-    <button onclick="exportToken()" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bd2);background:transparent;color:var(--t2);font-size:12px;cursor:pointer">🔑 生成备份口令</button>
-    <button onclick="importToken()" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bd2);background:transparent;color:var(--t2);font-size:12px;cursor:pointer">📥 口令恢复</button>
+  // 4. 底部按钮
+  html += `<div style="display:flex;gap:10px;margin-top:20px">
+    <button onclick="exportToken()" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--bd2);background:var(--bg);color:var(--t2);font-size:13px;font-weight:500;cursor:pointer">🔑 导出备份口令</button>
+    <button onclick="importToken()" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--bd2);background:var(--bg);color:var(--t2);font-size:13px;font-weight:500;cursor:pointer">📥 口令恢复</button>
   </div>`;
 
   document.getElementById('holdingDrawerBody').innerHTML = html;
