@@ -191,7 +191,7 @@ function renderTodayProfit(results, mktState, todayStr) {
 }
 
 // ---- 卡片渲染 ----
-let allCollapsed = false;
+var allCollapsed = false;
 let miniMode = 0;
 const miniLabels = ['估算', '官方', '全部'];
 let cardSortable = null, tblSortable = null;
