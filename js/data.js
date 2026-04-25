@@ -101,7 +101,9 @@ async function fetchSingleFund(code) {
     estTime: est?.gztime || null,
     offPct:  off?.pct != null ? parseFloat(off.pct) : null,
     offVal:  off?.nav  || est?.dwjz || null,
-    offDate: off?.date || est?.jzrq || null
+    offDate: off?.date || est?.jzrq || null,
+    baseNav:  est?.dwjz ? parseFloat(est.dwjz) : null,
+    baseDate: est?.jzrq || null
   };
 }
 
