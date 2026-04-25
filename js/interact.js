@@ -110,7 +110,7 @@ function openHoldingDrawer() {
     ${diff != null ? `<div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--bd2);font-size:11px;color:var(--t2)">偏离评估：<span style="font-family:var(--f-num);font-weight:600;color:${diffCol}">${diff > 0 ? '+' : ''}${diff.toFixed(2)}%</span>${wrongDir ? '<span style="color:#f87171;margin-left:8px;font-weight:500">⚠️ 方向警告</span>' : ''}</div>` : ''}
   </div>`;
 
-  // 2. 资产价值明细（使用严格比例网格强制对齐）
+  // 2. 资产价值明细
   html += `<div style="margin-bottom:20px">
     <div style="font-size:11px;color:var(--t3);margin-bottom:8px;font-weight:500">资产价值明细</div>
     <div style="background:var(--bg3);border-radius:10px;overflow:hidden;border:1px solid var(--bd)">`;
@@ -131,7 +131,7 @@ function openHoldingDrawer() {
   });
   html += `</div></div>`;
 
-  // 3. 份额表单卡片群（使用独立区块保证输入框绝不对不齐）
+  // 3. 份额表单卡片群
   html += `<div style="margin-bottom:16px">
     <div style="font-size:11px;color:var(--t3);margin-bottom:8px;font-weight:500">持仓份额管理</div>
     <div style="display:flex;flex-direction:column;gap:8px">`;
@@ -170,19 +170,122 @@ function saveHoldings() {
   saveHoldingsData(h); closeAllDrawers(); alert('✅ 持仓已保存');
 }
 
-// ---- 口令备份 ----
+// ---- 口令备份（核心修改：自定义弹窗一键复制） ----
 function exportToken() {
-  prompt('请复制以下备份口令并妥善保存：', exportSnapshot());
+  const token = exportSnapshot();
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+
+  const mask = document.createElement('div');
+  mask.style.cssText = 'position:absolute;inset:0;background:rgba(0,0,0,.6);';
+  mask.onclick = () => document.body.removeChild(modal);
+
+  const box = document.createElement('div');
+  box.style.cssText = 'position:relative;background:var(--bg2);border-radius:16px;padding:24px;width:100%;max-width:320px;border:1px solid var(--bd2);display:flex;flex-direction:column;gap:12px;';
+
+  const title = document.createElement('div');
+  title.style.cssText = 'font-size:15px;font-weight:600;color:var(--t1);';
+  title.textContent = '🔑 导出备份口令';
+
+  const desc = document.createElement('div');
+  desc.style.cssText = 'font-size:12px;color:var(--t3);line-height:1.4;';
+  desc.textContent = '请查看并复制下方配置口令。';
+
+  const textarea = document.createElement('textarea');
+  textarea.value = token;
+  textarea.readOnly = true;
+  textarea.style.cssText = 'width:100%;height:80px;background:var(--bg3);border:1px solid var(--bd2);border-radius:10px;color:var(--t1);font-family:var(--f-num);font-size:12px;padding:12px;outline:none;resize:none;word-break:break-all;';
+
+  const btnWrap = document.createElement('div');
+  btnWrap.style.cssText = 'display:flex;gap:8px;margin-top:8px;';
+
+  const copyBtn = document.createElement('button');
+  copyBtn.textContent = '保存并确定';
+  copyBtn.style.cssText = 'flex:1;padding:10px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:600;font-family:var(--f-zh);cursor:pointer;';
+  copyBtn.onclick = () => {
+    textarea.select();
+    textarea.setSelectionRange(0, 99999);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(token).then(() => {
+          alert('✅ 口令已复制到剪贴板！');
+          document.body.removeChild(modal);
+        }).catch(() => {
+          document.execCommand('copy');
+          alert('✅ 口令已复制到剪贴板！');
+          document.body.removeChild(modal);
+        });
+      } else {
+        document.execCommand('copy');
+        alert('✅ 口令已复制到剪贴板！');
+        document.body.removeChild(modal);
+      }
+    } catch(e) {
+      alert('❌ 复制失败，请手动长按文本框复制！');
+    }
+  };
+
+  btnWrap.appendChild(copyBtn);
+  box.appendChild(title);
+  box.appendChild(desc);
+  box.appendChild(textarea);
+  box.appendChild(btnWrap);
+  modal.appendChild(mask);
+  modal.appendChild(box);
+  document.body.appendChild(modal);
 }
+
+// ---- 口令恢复（顺带优化的自定义弹窗） ----
 function importToken() {
-  const str = prompt('请输入你的资产备份口令：');
-  if (!str) return;
-  if (importSnapshot(str)) {
-    closeAllDrawers(); updatePeBar(); refreshData();
-    alert('✅ 资产配置与首页列表全量恢复成功！');
-  } else {
-    alert('❌ 口令无效或已损坏，请检查复制是否完整！');
-  }
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+
+  const mask = document.createElement('div');
+  mask.style.cssText = 'position:absolute;inset:0;background:rgba(0,0,0,.6);';
+  mask.onclick = () => document.body.removeChild(modal);
+
+  const box = document.createElement('div');
+  box.style.cssText = 'position:relative;background:var(--bg2);border-radius:16px;padding:24px;width:100%;max-width:320px;border:1px solid var(--bd2);display:flex;flex-direction:column;gap:12px;';
+
+  const title = document.createElement('div');
+  title.style.cssText = 'font-size:15px;font-weight:600;color:var(--t1);';
+  title.textContent = '📥 恢复资产配置';
+
+  const textarea = document.createElement('textarea');
+  textarea.placeholder = '请在此粘贴备份口令...';
+  textarea.style.cssText = 'width:100%;height:80px;background:var(--bg3);border:1px solid var(--bd2);border-radius:10px;color:var(--t1);font-family:var(--f-num);font-size:12px;padding:12px;outline:none;resize:none;word-break:break-all;';
+
+  const btnWrap = document.createElement('div');
+  btnWrap.style.cssText = 'display:flex;gap:8px;margin-top:8px;';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = '取消';
+  cancelBtn.style.cssText = 'flex:1;padding:10px;border-radius:10px;border:1px solid var(--bd2);background:transparent;color:var(--t2);font-size:14px;font-family:var(--f-zh);cursor:pointer;';
+  cancelBtn.onclick = () => document.body.removeChild(modal);
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.textContent = '恢复配置';
+  confirmBtn.style.cssText = 'flex:2;padding:10px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:600;font-family:var(--f-zh);cursor:pointer;';
+  confirmBtn.onclick = () => {
+    const str = textarea.value.trim();
+    if (!str) return;
+    if (importSnapshot(str)) {
+      document.body.removeChild(modal);
+      closeAllDrawers(); updatePeBar(); refreshData();
+      alert('✅ 资产配置与首页列表全量恢复成功！');
+    } else {
+      alert('❌ 口令无效或已损坏，请检查粘贴是否完整！');
+    }
+  };
+
+  btnWrap.appendChild(cancelBtn);
+  btnWrap.appendChild(confirmBtn);
+  box.appendChild(title);
+  box.appendChild(textarea);
+  box.appendChild(btnWrap);
+  modal.appendChild(mask);
+  modal.appendChild(box);
+  document.body.appendChild(modal);
 }
 
 // ---- 预案抽屉 ----
