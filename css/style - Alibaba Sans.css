@@ -1,47 +1,31 @@
-/* ════════ 字体加载 (本地 Outfit) ════════ */
+/* ════════ 字体加载 ════════ */
 @font-face {
-  font-family: 'Outfit';
-  src: url('../fonts/OutfitRegular.woff') format('woff');
+  font-family: 'Alibaba Sans';
+  src: url('../fonts/AlibabaSans-Regular.woff2') format('woff2');
   font-weight: 400;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Outfit';
-  src: url('../fonts/OutfitMedium.woff') format('woff');
+  font-family: 'Alibaba Sans';
+  src: url('../fonts/AlibabaSans-Medium.woff2') format('woff2');
   font-weight: 500;
   font-display: swap;
 }
 
+/* 将 600 和 700 都映射到 Bold，省去多加载一个文件的开销 */
 @font-face {
-  font-family: 'Outfit';
-  src: url('../fonts/OutfitSemiBold.woff') format('woff');
+  font-family: 'Alibaba Sans';
+  src: url('../fonts/AlibabaSans-Bold.woff2') format('woff2');
   font-weight: 600;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Outfit';
-  src: url('../fonts/OutfitBold.woff') format('woff');
+  font-family: 'Alibaba Sans';
+  src: url('../fonts/AlibabaSans-Bold.woff2') format('woff2');
   font-weight: 700;
   font-display: swap;
-}
-
-/* ════════ CSS 设计令牌 (Design Tokens) ════════ */
-:root {
-  --bg:#0a0e14;--bg2:#111720;--bg3:#1a2130;--bg4:#1f2a3d;
-  --bd:rgba(255,255,255,0.07);--bd2:rgba(255,255,255,0.13);
-  --t1:#e8edf5;--t2:#9aaabb;--t3:#6b7f96;
-  --accent:#3b82f6;
-  --up:#f04444;--up-bg:rgba(240,68,68,0.12);--up-bd:rgba(240,68,68,0.3);
-  --dn:#22c55e;--dn-bd:rgba(34,197,94,0.3);
-  --flat:#e8edf5;
-  --sat:env(safe-area-inset-top,0px);
-  --sab:env(safe-area-inset-bottom,0px);
-  
-  /* 核心修改：数字用 Outfit，中文完美回退到系统原生字体 */
-  --f-num: 'Outfit', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;         
-  --f-zh: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;    
 }
 
 /* ════════ CSS 设计令牌 (Design Tokens) ════════ */
