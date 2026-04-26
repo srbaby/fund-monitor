@@ -1,3 +1,33 @@
+/* ════════ 字体加载 ════════ */
+@font-face {
+  font-family: 'Alibaba Sans';
+  src: url('../fonts/AlibabaSans-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Alibaba Sans';
+  src: url('../fonts/AlibabaSans-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-display: swap;
+}
+
+/* 将 600 和 700 都映射到 Bold，省去多加载一个文件的开销 */
+@font-face {
+  font-family: 'Alibaba Sans';
+  src: url('../fonts/AlibabaSans-Bold.woff2') format('woff2');
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Alibaba Sans';
+  src: url('../fonts/AlibabaSans-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-display: swap;
+}
+
 /* ════════ CSS 设计令牌 (Design Tokens) ════════ */
 :root{
   --bg:#0a0e14;--bg2:#111720;--bg3:#1a2130;--bg4:#1f2a3d;
