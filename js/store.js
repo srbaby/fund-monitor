@@ -8,6 +8,12 @@
 let funds        = [];
 let _lastResults = [];
 
+// ---- 纯工具（下沉至此层，供 data/engine/ui 共用）----
+function todayDateStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 // ---- 公共工具 ----
 // name 优先级：用户录入简称 → PRODUCTS 预设名 → SHORT_NAMES → NAMES → 代码
 // equity 优先级：用户录入 → PRODUCTS 预设 → 0
@@ -44,29 +50,33 @@ function savePe(dataObj) {
 // ---- 持仓份额 ----
 // 存储结构 v2：{shares: {code: number}, equity: {code: number}, shortNames: {code: string}}
 // 自动兼容旧结构（纯 {code: number}）：若第一个值为 number 则视为旧版迁移
+// 内存缓存：同一帧内多次调用只解析一次 JSON，写入时清缓存
+let _holdingsCache = null;
+
 function _loadRaw() {
+  if (_holdingsCache) return _holdingsCache;
   const c = localStorage.getItem(STORE_HOLDINGS);
   if (!c) return null;
   const raw = JSON.parse(c);
-  if (raw && typeof Object.values(raw)[0] === 'number') return {shares: raw, equity: {}, shortNames: {}};
-  return raw;
+  _holdingsCache = (raw && typeof Object.values(raw)[0] === 'number')
+    ? {shares: raw, equity: {}, shortNames: {}}
+    : raw;
+  return _holdingsCache;
 }
 
-function loadHoldings() {
-  return _loadRaw()?.shares || {};
-}
-
-function loadHoldingsEquity() {
-  return _loadRaw()?.equity || {};
-}
-
-function loadShortNames() {
-  return _loadRaw()?.shortNames || {};
-}
+function loadHoldings()      { return _loadRaw()?.shares     || {}; }
+function loadHoldingsEquity(){ return _loadRaw()?.equity     || {}; }
+function loadShortNames()    { return _loadRaw()?.shortNames || {}; }
 
 function saveHoldingsData(shares, equity, shortNames) {
+  _holdingsCache = null; // 清缓存
   localStorage.setItem(STORE_HOLDINGS, JSON.stringify({shares, equity, shortNames}));
 }
+
+// ---- 优先卖出品种 ----
+function loadPrioritySell()       { return localStorage.getItem(STORE_PRIORITY_SELL); }
+function savePrioritySell(code)   { localStorage.setItem(STORE_PRIORITY_SELL, code); }
+function clearPrioritySell()      { localStorage.removeItem(STORE_PRIORITY_SELL); }
 
 // ---- 口令备份与恢复（完整带 shortNames） ----
 function exportSnapshot() {
@@ -84,7 +94,7 @@ function importSnapshot(str) {
   try {
     const data = JSON.parse(decodeURIComponent(atob(str)));
     if (data.f && Array.isArray(data.f)) { funds = data.f; saveFunds(); }
-    if (data.h) localStorage.setItem(STORE_HOLDINGS, JSON.stringify(data.h));
+    if (data.h) { _holdingsCache = null; localStorage.setItem(STORE_HOLDINGS, JSON.stringify(data.h)); }
     if (data.p) savePe(data.p);
     if (data.s) localStorage.setItem(STORE_SELL_PLAN, JSON.stringify(data.s));
     return true;
