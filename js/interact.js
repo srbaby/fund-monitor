@@ -100,14 +100,31 @@ function openHoldingDrawer() {
   const diffCol      = diff == null ? 'var(--t3)' : wrongDir ? 'var(--warn)' : (diff > 0 ? 'var(--sell)' : 'var(--buy)');
 
   // 1. 顶部汇总卡片
+  const eqAmt = eqData ? eqData.total * eqData.equity / 100 : null;
+  const totalStr   = eqData ? fmtMoney(eqData.total) : '--';
+  const eqAmtStr   = eqAmt != null ? fmtMoney(eqAmt) : '--';
+  const eqPctStr   = eqData ? eqData.equity.toFixed(2) + '%' : '--';
+  const targetStr  = targetEq != null ? targetEq + '%' : '--';
+  const diffStr    = diff != null ? (diff > 0 ? '+' : '') + diff.toFixed(2) + '%' : '';
+  const warnStr    = wrongDir ? ' ⚠️' : '';
   let html = `<div style="background:var(--bg3);border-radius:10px;padding:12px;margin-bottom:16px;border:1px solid var(--bd)">
-    <div style="font-size:11px;color:var(--t3);margin-bottom:10px;font-weight:500;display:flex;align-items:center;gap:4px"><span>📊</span> 权益校对汇总</div>
-    <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:12px">
-      <div><div style="font-size:10px;color:var(--t3);margin-bottom:4px">总市值</div><div style="font-size:16px;font-weight:600;color:var(--t1);font-family:var(--f-num)">${eqData ? fmtMoney(eqData.total) : '--'}</div></div>
-      <div><div style="font-size:10px;color:var(--t3);margin-bottom:4px">实际权益</div><div style="font-size:16px;font-weight:600;color:${diffCol};font-family:var(--f-num)">${eqData ? eqData.equity.toFixed(2) + '%' : '--'}</div></div>
-      <div><div style="font-size:10px;color:var(--t3);margin-bottom:4px">目标权益</div><div style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--f-num)">${targetEq != null ? targetEq + '%' : '输入PE'}</div></div>
+    <div style="font-size:11px;color:var(--t3);margin-bottom:10px;font-weight:500">📊 权益校对汇总</div>
+    <div style="display:flex;gap:8px">
+      <div style="flex:4">
+        <div style="font-size:10px;color:var(--t3);margin-bottom:4px">总市值</div>
+        <div style="font-size:13px;font-weight:600;color:var(--t1);font-family:var(--f-num)">${totalStr}</div>
+        <div style="font-size:11px;color:var(--t3);margin-top:4px">权益 <span style="color:var(--accent);font-family:var(--f-num)">${eqAmtStr}</span></div>
+      </div>
+      <div style="flex:3">
+        <div style="font-size:10px;color:var(--t3);margin-bottom:4px">实际权益</div>
+        <div style="font-size:16px;font-weight:600;color:${diffCol};font-family:var(--f-num)">${eqPctStr}</div>
+        ${diff != null ? `<div style="font-size:11px;color:var(--t3);margin-top:4px">偏离 <span style="color:${diffCol};font-family:var(--f-num)">${diffStr}</span>${warnStr}</div>` : ''}
+      </div>
+      <div style="flex:2">
+        <div style="font-size:10px;color:var(--t3);margin-bottom:4px">目标权益</div>
+        <div style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--f-num)">${targetStr}</div>
+      </div>
     </div>
-    ${diff != null ? `<div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--bd2);font-size:11px;color:var(--t2)">偏离评估：<span style="font-weight:600;color:${diffCol};font-family:var(--f-num)">${diff > 0 ? '+' : ''}${diff.toFixed(2)}%</span>${wrongDir ? '<span style="color:var(--warn);margin-left:8px;font-weight:500">⚠️ 方向警告</span>' : ''}</div>` : ''}
   </div>`;
 
   // 2. 资产价值明细（含表头行）
@@ -357,17 +374,17 @@ function renderPlanDrawer() {
         <div><div style="font-size:10px;color:var(--t3)">需调配金额</div><div style="font-size:15px;font-weight:600;color:var(--buy);font-family:var(--f-num)">${fmtMoney(buyData.buyAmt)}</div></div>
       </div>
       <div style="font-size:11px;color:var(--t3);margin-bottom:8px">资金筹集 (卖出 ${getProductName(SYS_CONFIG.CODE_XQ)})</div>
-      <div style="padding:10px 12px;background:var(--bg3);border-radius:8px;border:1px solid rgba(240,68,68,0.3);display:flex;justify-content:space-between;align-items:center">
+      <div style="padding:10px 12px;background:var(--bg3);border-radius:8px;border:1px solid rgba(240,68,68,0.3);display:flex;gap:8px;align-items:center">
         <div style="font-size:14px;font-weight:600">卖出份数</div>
         <div style="font-size:15px;font-weight:700;color:var(--up);font-family:var(--f-num)">${fmt(buyData.sellXqShares, 2)} 份</div>
       </div>
       <div style="font-size:11px;color:var(--t3);margin:16px 0 8px">目标分配 (优先A500C，溢出至中证500C)</div>
       <div style="display:flex;flex-direction:column;gap:6px">
-        <div style="padding:10px 12px;background:var(--bg3);border-radius:8px;border:1px solid rgba(59,130,246,0.3);display:flex;justify-content:space-between;align-items:center">
+        <div style="padding:10px 12px;background:var(--bg3);border-radius:8px;border:1px solid rgba(59,130,246,0.3);display:flex;gap:8px;align-items:center">
           <div><div style="font-size:14px;font-weight:600">买入 A500C</div><div style="font-size:10px;color:var(--t3);font-family:var(--f-num)">~${fmt(buyData.allocA500C / buyData.a500cNav, 2)} 份</div></div>
           <div style="font-size:15px;font-weight:700;color:var(--buy);font-family:var(--f-num)">${fmtMoney(buyData.allocA500C)}</div>
         </div>
-        ${buyData.allocZZ500C > 1 ? `<div style="padding:10px 12px;background:var(--bg3);border-radius:8px;border:1px solid var(--buy-bd);display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:14px;font-weight:600">买入 中证500C</div><div style="font-size:10px;color:var(--t3);font-family:var(--f-num)">~${fmt(buyData.allocZZ500C / buyData.zz500cNav, 2)} 份</div></div><div style="font-size:15px;font-weight:700;color:var(--buy);font-family:var(--f-num)">${fmtMoney(buyData.allocZZ500C)}</div></div>` : ''}
+        ${buyData.allocZZ500C > 1 ? `<div style="padding:10px 12px;background:var(--bg3);border-radius:8px;border:1px solid var(--buy-bd);display:flex;gap:8px;align-items:center"><div><div style="font-size:14px;font-weight:600">买入 中证500C</div><div style="font-size:10px;color:var(--t3);font-family:var(--f-num)">~${fmt(buyData.allocZZ500C / buyData.zz500cNav, 2)} 份</div></div><div style="font-size:15px;font-weight:700;color:var(--buy);font-family:var(--f-num)">${fmtMoney(buyData.allocZZ500C)}</div></div>` : ''}
       </div>
     </div>
   </div>
@@ -381,9 +398,9 @@ function renderPlanDrawer() {
   equityProducts.forEach(p => {
     const isPri = window._prioritySellCode === p.code;
     html += `<div style="padding:10px 12px;background:var(--bg3);border-radius:10px;margin-bottom:8px;border:1px solid var(--bd);display:flex;flex-direction:column;gap:6px">
-      <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:14px;font-weight:600">${p.name}</div><div id="sell_calc_shares_${p.code}" style="font-weight:600;color:var(--t3);font-family:var(--f-num)">-- 份</div></div>
-      <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:10px;color:var(--t3)">持仓: <span style="font-family:var(--f-num)">${(holdings[p.code] || 0).toFixed(2)}</span> 份 · 权益系数 <span style="font-family:var(--f-num)">${Math.round(p.equity * 100)}%</span></div><div id="sell_calc_fiat_${p.code}" style="font-size:11px;color:var(--t3);font-family:var(--f-num)">-- 元</div></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
+      <div style="display:flex;gap:8px;align-items:center"><div style="font-size:14px;font-weight:600">${p.name}</div><div id="sell_calc_shares_${p.code}" style="font-weight:600;color:var(--t3);font-family:var(--f-num)">-- 份</div></div>
+      <div style="display:flex;gap:8px;align-items:center"><div style="font-size:10px;color:var(--t3)">持仓: <span style="font-family:var(--f-num)">${(holdings[p.code] || 0).toFixed(2)}</span> 份 · 权益系数 <span style="font-family:var(--f-num)">${Math.round(p.equity * 100)}%</span></div><div id="sell_calc_fiat_${p.code}" style="font-size:11px;color:var(--t3);font-family:var(--f-num)">-- 元</div></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:2px">
         <button class="pri-btn" data-code="${p.code}" onclick="togglePrioritySell('${p.code}')" style="font-size:11px;height:24px;width:72px;border-radius:6px;border:1px solid ${isPri ? 'var(--sell)' : 'var(--bd2)'};background:${isPri ? 'var(--sell-bg)' : 'transparent'};color:${isPri ? 'var(--sell)' : 'var(--t3)'};cursor:pointer">${isPri ? '★ 优先' : '☆ 优先'}</button>
         <div style="display:flex;align-items:center;gap:6px"><span style="font-size:11px;color:var(--t3)">减仓权重</span><input type="tel" style="width:52px;height:24px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);text-align:center;font-family:var(--f-num)" id="ratio_${p.code}" value="${savedPlan[p.code] || ''}" oninput="calcSellPreview()"></div>
       </div>
