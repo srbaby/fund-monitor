@@ -17,9 +17,14 @@ function getMarketState() {
   return 'POST_MARKET';
 }
 
-function todayDateStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+// ---- 权益方向警告判断（三处调用统一入口）----
+// peVal: 当前PE百分位；diff: 实际权益 - 目标权益
+// 高估区（PE >= 阈值）权益偏高超限 或 低估区权益偏低超限，均视为方向错误
+function isEquityWrongDir(peVal, diff) {
+  if (peVal == null || diff == null) return false;
+  const dev = SYS_CONFIG.EQUITY_DEV_LIMIT;
+  const thr = SYS_CONFIG.PE_HIGH_THRESHOLD;
+  return (peVal >= thr && diff > dev) || (peVal < thr && diff < -dev);
 }
 
 // ---- Lagrange 三点插值，推算实时 PE ----
@@ -120,10 +125,10 @@ function calcSellExecutionDraft(holdings, ratios, priorityCode) {
   if (priorityCode) {
     const pPri = sellProducts.find(p => p.code === priorityCode);
     if (pPri) {
-      const nav             = getNavByCode(pPri.code) || 1.0;
+      const nav               = getNavByCode(pPri.code) || 1.0;
       const maxEqContribution = (holdings[pPri.code] || 0) * nav * pPri.equity;
-      const actualEqToSell  = Math.min(sellNeededEq, maxEqContribution);
-      results[pPri.code]    = {amt: actualEqToSell / pPri.equity, nav};
+      const actualEqToSell    = Math.min(sellNeededEq, maxEqContribution);
+      results[pPri.code]      = {amt: actualEqToSell / pPri.equity, nav};
       sellNeededEq -= actualEqToSell;
     }
   }
@@ -182,26 +187,26 @@ function calcTodayProfit(results, holdings, mktState, todayStr) {
 
     if (!isNaN(nav)) {
       let yestNav = null;
-      
-      // 判断从接口暴露出来的 baseNav 是否是当前 nav 对应的精确昨日基准
-      // 如果当前看的是官方数据，需保证精确净值的对应日期小于官方发布日期，否则说明精确基准已向后翻滚。
-      // 如果当前看的是估算数据，估算数据的日期必然是今天，只要基准日期小于今天即有效。
+
+      // 判断 baseNav 是否是当前 nav 对应的精确昨日基准：
+      // 官方数据：基准日期必须早于官方发布日期，否则已向后翻滚；
+      // 估算数据：基准日期早于今天即有效。
       const isBaseNavValid = f.baseNav && f.baseDate && (
         (isOfficialUpdated && f.baseDate < offD) ||
         (!isOfficialUpdated && f.baseDate < todayStr)
       );
 
       if (isBaseNavValid) {
-        yestNav = f.baseNav; // 核心修复：命中有效基准时，采用原生的净值求绝对差额
+        yestNav = f.baseNav;
       } else if (!isNaN(pct)) {
-        yestNav = nav / (1 + pct / 100); // 兜底：退化为百分比反推
+        yestNav = nav / (1 + pct / 100); // 兜底：百分比反推
       } else {
         return;
       }
 
       const yestVal = shares * yestNav;
       totalYestVal += yestVal;
-      totalProfit  += shares * (nav - yestNav); // 计算绝对差额，完全消除百分比截断误差
+      totalProfit  += shares * (nav - yestNav);
 
       if (!isOfficialUpdated && estD !== todayStr && (mktState === 'PRE_MARKET' || mktState === 'TRADING')) {
         isWaitingForOpen = true;
