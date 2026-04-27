@@ -5,7 +5,7 @@
 // ============================================================
 
 // ---- 模块状态 ----
-let _mktOpen      = null;          // 上次市场状态，用于避免重复更新标签
+let _mktState     = null;          // 上次市场状态，用于避免重复更新标签
 let allCollapsed  = true;          // 桌面端收窄状态（默认 true 但桌面 CSS 隐藏按钮）
 let mobileExpanded = false;        // 手机端展开状态（默认收窄）
 let miniMode      = 0;             // 手机收窄模式：0=估算 1=官方 2=全部
@@ -23,7 +23,6 @@ function fp(v) {
 function fmt(n, decimals = 0) {
   return (n == null || isNaN(n)) ? '--' : n.toLocaleString('zh-CN', {minimumFractionDigits: decimals, maximumFractionDigits: decimals});
 }
-// 修改点：强制全局法币金额精确到 2 位小数
 function fmtMoney(n) { return '¥' + fmt(n, 2); }
 function getProductName(code) { return SHORT_NAMES[code] || (PRODUCTS.find(p => p.code === code)?.name) || code; }
 
@@ -33,8 +32,8 @@ function updateClock() {
   document.getElementById('liveTime').textContent = [n.getHours(), n.getMinutes(), n.getSeconds()].map(v => String(v).padStart(2, '0')).join(':');
   document.getElementById('liveDate').textContent = `${n.getFullYear()}/${String(n.getMonth()+1).padStart(2,'0')}/${String(n.getDate()).padStart(2,'0')} ${DAYS[n.getDay()]}`;
   const state = getMarketState();
-  if (state !== _mktOpen) {
-    _mktOpen = state;
+  if (state !== _mktState) {
+    _mktState = state;
     document.getElementById('mktDot').className = 'mkt-dot' + (state === 'TRADING' ? ' open' : '');
     const labels = {WEEKEND: '休市·周末', BEFORE_PRE: '盘前', PRE_MARKET: '盘前集合', TRADING: '交易中', MID_BREAK: '午休', POST_MARKET: '已收盘'};
     document.getElementById('mktLabel').textContent = labels[state] || '待机';
@@ -110,12 +109,11 @@ function updatePeBar() {
   if (eqDiv) {
     const eqData = calcCurrentEquity(loadHoldings());
     const target = getDynamicTarget('neutral');
-    const dev    = SYS_CONFIG.EQUITY_DEV_LIMIT; // 引用配置
     if (eqData && target != null) {
       const diff     = eqData.equity - target;
       const sign     = diff > 0 ? '+' : '';
-      const wrongDir = (v >= 65 && diff > dev) || (v < 65 && diff < -dev);
-      const col      = wrongDir ? '#f87171' : (diff > 0 ? '#f59e0b' : '#60a5fa');
+      const wrongDir = isEquityWrongDir(v, diff);
+      const col      = wrongDir ? 'var(--warn)' : (diff > 0 ? 'var(--sell)' : 'var(--buy)');
       eqDiv.innerHTML = `目标<b class="num">${target}%</b> 实际<b class="num" style="color:${col}">${eqData.equity.toFixed(2)}%</b> <span class="num" style="color:${col}">${sign}${diff.toFixed(2)}%</span>`;
       eqDiv.style.display = 'flex';
     } else {
@@ -126,11 +124,11 @@ function updatePeBar() {
   if (v <= bounds.buyPct) {
     display.className = 'pe-value pe-danger-dn'; status.textContent = '▲ 增权信号'; status.className = 'pe-status triggered-buy';
     planBtn.className = 'pe-plan-btn buy'; planBtn.textContent = '增权';
-    if (marker) marker.style.background = '#3b82f6';
+    if (marker) marker.style.background = 'var(--buy)';
   } else if (v >= bounds.sellPct) {
     display.className = 'pe-value pe-danger-up'; status.textContent = '▼ 降权信号'; status.className = 'pe-status triggered-sell';
     planBtn.className = 'pe-plan-btn sell'; planBtn.textContent = '降权';
-    if (marker) marker.style.background = '#f59e0b';
+    if (marker) marker.style.background = 'var(--sell)';
   } else {
     display.className = 'pe-value pe-normal'; status.textContent = '待机'; status.className = 'pe-status normal';
     planBtn.className = 'pe-plan-btn neutral'; planBtn.textContent = '预案';
