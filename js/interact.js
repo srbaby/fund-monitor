@@ -31,9 +31,7 @@ async function refreshData() {
       return;
     }
 
-    const coreCodes = new Set(funds);
-    PRODUCTS.forEach(p => { if (p.equity > 0 && !coreCodes.has(p.code)) coreCodes.add(p.code); });
-    const results = await Promise.all([...coreCodes].map(fetchSingleFund));
+    const results = await Promise.all(funds.map(fetchSingleFund));
     renderAll(results);
 
     if (cardSortable) cardSortable.destroy();
@@ -91,14 +89,15 @@ function confirmPe() {
 
 // ---- 持仓抽屉 ----
 function openHoldingDrawer() {
-  const holdings  = loadHoldings();
-  const eqData    = calcCurrentEquity(holdings);
-  const currentPE = getCurrentPE();
-  const targetEq  = getDynamicTarget('neutral');
-  const diff      = (eqData && targetEq != null) ? eqData.equity - targetEq : null;
-  const dev       = SYS_CONFIG.EQUITY_DEV_LIMIT; // 引用配置
-  const wrongDir  = diff != null && currentPE ? ((currentPE.value >= 65 && diff > dev) || (currentPE.value < 65 && diff < -dev)) : false;
-  const diffCol   = diff == null ? 'var(--t3)' : wrongDir ? 'var(--warn)' : (diff > 0 ? 'var(--sell)' : 'var(--buy)');
+  const holdings     = loadHoldings();
+  const shortNameMap = loadShortNames();
+  const eqData       = calcCurrentEquity(holdings);
+  const currentPE    = getCurrentPE();
+  const targetEq     = getDynamicTarget('neutral');
+  const diff         = (eqData && targetEq != null) ? eqData.equity - targetEq : null;
+  const dev          = SYS_CONFIG.EQUITY_DEV_LIMIT;
+  const wrongDir     = diff != null && currentPE ? ((currentPE.value >= 65 && diff > dev) || (currentPE.value < 65 && diff < -dev)) : false;
+  const diffCol      = diff == null ? 'var(--t3)' : wrongDir ? 'var(--warn)' : (diff > 0 ? 'var(--sell)' : 'var(--buy)');
 
   // 1. 顶部汇总卡片
   let html = `<div style="background:var(--bg3);border-radius:10px;padding:12px;margin-bottom:16px;border:1px solid var(--bd)">
@@ -111,42 +110,64 @@ function openHoldingDrawer() {
     ${diff != null ? `<div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--bd2);font-size:11px;color:var(--t2)">偏离评估：<span style="font-weight:600;color:${diffCol};font-family:var(--f-num)">${diff > 0 ? '+' : ''}${diff.toFixed(2)}%</span>${wrongDir ? '<span style="color:var(--warn);margin-left:8px;font-weight:500">⚠️ 方向警告</span>' : ''}</div>` : ''}
   </div>`;
 
-  // 2. 资产价值明细
+  // 2. 资产价值明细（含表头行）
+  // 列宽：产品名 / 市值 / 权益% / 权益金额，手机端压缩中间两列
   html += `<div style="margin-bottom:20px">
     <div style="font-size:11px;color:var(--t3);margin-bottom:8px;font-weight:500">资产价值明细</div>
-    <div style="background:var(--bg3);border-radius:10px;overflow:hidden;border:1px solid var(--bd)">`;
+    <div style="background:var(--bg3);border-radius:10px;overflow:hidden;border:1px solid var(--bd)">
+      <div style="display:grid;grid-template-columns:2fr 1.8fr 0.6fr 1.6fr;gap:4px;align-items:center;padding:6px 12px;border-bottom:1px solid var(--bd2);font-size:10px;color:var(--t3);font-weight:500">
+        <div>产品</div>
+        <div style="text-align:right">市值</div>
+        <div style="text-align:right">系数</div>
+        <div style="text-align:right">权益金额</div>
+      </div>`;
 
   getActiveProducts().forEach(p => {
     const shares = holdings[p.code] || 0;
     const nav    = getNavByCode(p.code);
     const val    = nav ? shares * nav : 0;
-    html += `<div style="display:grid;grid-template-columns: 2.5fr 2.2fr 0.8fr 2.2fr; gap:4px; align-items:center; padding:10px 12px; border-bottom:1px solid var(--bd); font-size:12px">
+    html += `<div style="display:grid;grid-template-columns:2fr 1.8fr 0.6fr 1.6fr;gap:4px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--bd);font-size:12px">
       <div style="overflow:hidden">
-        <div style="font-weight:600;color:var(--t1);white-space:nowrap;text-overflow:ellipsis">${p.name}</div>
-        <div style="font-size:10px;color:var(--t3);margin-top:2px;white-space:nowrap"><span class="num">${shares.toFixed(2)}</span> 份 × <span class="num">${nav ? nav.toFixed(4) : '--'}</span></div>
+        <div style="font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
+        <div style="font-size:10px;color:var(--t3);margin-top:2px;white-space:nowrap"><span class="num">${shares.toFixed(2)}</span> × <span class="num">${nav ? nav.toFixed(4) : '--'}</span></div>
       </div>
-      <div style="text-align:right;color:var(--t2);font-weight:500;font-family:var(--f-num)">${val ? fmtMoney(val) : '--'}</div>
-      <div style="text-align:right;font-size:10px;color:var(--t3)">×<span class="num">${Math.round(p.equity * 100)}%</span></div>
-      <div style="text-align:right;font-weight:600;color:var(--accent);font-family:var(--f-num)">${val ? fmtMoney(val * p.equity) : '--'}</div>
+      <div style="text-align:right;color:var(--t2);font-weight:500;font-family:var(--f-num);font-size:11px">${val ? fmtMoney(val) : '--'}</div>
+      <div style="text-align:right;font-size:10px;color:var(--t3);font-family:var(--f-num)">×<span>${Math.round(p.equity * 100)}%</span></div>
+      <div style="text-align:right;font-weight:600;color:var(--accent);font-family:var(--f-num);font-size:11px">${val && p.equity > 0 ? fmtMoney(val * p.equity) : (p.equity === 0 ? '¥0.00' : '--')}</div>
     </div>`;
   });
   html += `</div></div>`;
 
-  // 3. 份额表单卡片群
+  // 3. 持仓录入卡片群：简称 / 代码 / 份额 / 权益系数
   html += `<div style="margin-bottom:16px">
-    <div style="font-size:11px;color:var(--t3);margin-bottom:8px;font-weight:500">持仓份额管理</div>
+    <div style="font-size:11px;color:var(--t3);margin-bottom:8px;font-weight:500">持仓录入 · 简称 / 份额 / 权益系数</div>
     <div style="display:flex;flex-direction:column;gap:8px">`;
 
   getActiveProducts().forEach(p => {
-    const shares = holdings[p.code] || 0;
-    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--bg3);border-radius:10px;border:1px solid var(--bd)">
-      <div>
-        <div style="font-size:14px;font-weight:600;color:var(--t1)">${getProductName(p.code)}</div>
-        <div style="font-size:11px;color:var(--t3);margin-top:2px">${p.code} · 权益 <span class="num">${Math.round(p.equity * 100)}%</span></div>
+    const shares    = holdings[p.code] || 0;
+    const shortName = shortNameMap[p.code] || '';
+    // 只有当 name 来自 API 抓取结果时才作为 placeholder，否则用代码
+    const namePlaceholder = _lastResults.find(r => r.code === p.code)?.name || p.code;
+    html += `<div style="padding:10px 12px;background:var(--bg3);border-radius:10px;border:1px solid var(--bd)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:10px;color:var(--t3);margin-bottom:3px">简称（显示名）</div>
+          <input id="sn_${p.code}" type="text" maxlength="10" style="width:100%;height:30px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);font-size:13px;padding:0 8px;font-family:var(--f-zh)" value="${shortName}" placeholder="${namePlaceholder}">
+        </div>
+        <div style="flex-shrink:0;text-align:right">
+          <div style="font-size:10px;color:var(--t3);margin-bottom:3px">代码</div>
+          <div style="font-size:13px;font-weight:600;color:var(--t2);font-family:var(--f-num);line-height:30px">${p.code}</div>
+        </div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <input id="hi_${p.code}" type="number" step="0.01" style="width:120px;height:34px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);text-align:right;font-size:16px;padding:0 10px;font-family:var(--f-num)" value="${shares.toFixed(2)}" placeholder="0.00">
-        <span style="font-size:12px;color:var(--t3)">份</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div style="flex:2;display:flex;align-items:center;gap:6px">
+          <input id="hi_${p.code}" type="number" step="0.01" style="flex:1;height:34px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);text-align:right;font-size:15px;padding:0 10px;font-family:var(--f-num)" value="${shares.toFixed(2)}" placeholder="0.00">
+          <span style="font-size:12px;color:var(--t3);white-space:nowrap">份</span>
+        </div>
+        <div style="flex:1;display:flex;align-items:center;gap:6px">
+          <input id="eq_${p.code}" type="number" step="0.01" min="0" max="1" style="flex:1;height:34px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);text-align:right;font-size:15px;padding:0 10px;font-family:var(--f-num)" value="${p.equity.toFixed(2)}" placeholder="0.00">
+          <span style="font-size:12px;color:var(--t3);white-space:nowrap">权益</span>
+        </div>
       </div>
     </div>`;
   });
@@ -163,15 +184,27 @@ function openHoldingDrawer() {
 }
 
 function saveHoldings() {
-  const h = loadHoldings();
+  const shares     = loadHoldings();
+  const equity     = loadHoldingsEquity();
+  const shortNames = loadShortNames();
+
   getActiveProducts().forEach(p => {
-    const v = parseFloat(document.getElementById('hi_' + p.code)?.value || '0');
-    h[p.code] = isNaN(v) ? 0 : v;
+    const sv = parseFloat(document.getElementById('hi_' + p.code)?.value || '0');
+    const ev = parseFloat(document.getElementById('eq_' + p.code)?.value || '0');
+    const sn = (document.getElementById('sn_' + p.code)?.value || '').trim();
+
+    shares[p.code] = isNaN(sv) ? 0 : sv;
+    equity[p.code] = isNaN(ev) ? 0 : Math.min(1, Math.max(0, ev));
+    if (sn) shortNames[p.code] = sn;
+    else delete shortNames[p.code]; // 清空简称则回落到预设名
   });
-  saveHoldingsData(h); closeAllDrawers(); alert('✅ 持仓已保存');
+
+  saveHoldingsData(shares, equity, shortNames);
+  closeAllDrawers();
+  alert('✅ 持仓已保存');
 }
 
-// ---- 口令备份（核心修改：自定义弹窗一键复制） ----
+// ---- 口令备份（自定义弹窗一键复制） ----
 function exportToken() {
   const token = exportSnapshot();
   const modal = document.createElement('div');
@@ -236,7 +269,7 @@ function exportToken() {
   document.body.appendChild(modal);
 }
 
-// ---- 口令恢复（顺带优化的自定义弹窗） ----
+// ---- 口令恢复 ----
 function importToken() {
   const modal = document.createElement('div');
   modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
@@ -348,8 +381,8 @@ function renderPlanDrawer() {
   equityProducts.forEach(p => {
     const isPri = window._prioritySellCode === p.code;
     html += `<div style="padding:10px 12px;background:var(--bg3);border-radius:10px;margin-bottom:8px;border:1px solid var(--bd);display:flex;flex-direction:column;gap:6px">
-      <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:14px;font-weight:600">${getProductName(p.code)}</div><div id="sell_calc_shares_${p.code}" style="font-weight:600;color:var(--t3);font-family:var(--f-num)">-- 份</div></div>
-      <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:10px;color:var(--t3)">持仓: <span style="font-family:var(--f-num)">${(holdings[p.code] || 0).toFixed(2)}</span> 份</div><div id="sell_calc_fiat_${p.code}" style="font-size:11px;color:var(--t3);font-family:var(--f-num)">-- 元</div></div>
+      <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:14px;font-weight:600">${p.name}</div><div id="sell_calc_shares_${p.code}" style="font-weight:600;color:var(--t3);font-family:var(--f-num)">-- 份</div></div>
+      <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:10px;color:var(--t3)">持仓: <span style="font-family:var(--f-num)">${(holdings[p.code] || 0).toFixed(2)}</span> 份 · 权益系数 <span style="font-family:var(--f-num)">${Math.round(p.equity * 100)}%</span></div><div id="sell_calc_fiat_${p.code}" style="font-size:11px;color:var(--t3);font-family:var(--f-num)">-- 元</div></div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
         <button class="pri-btn" data-code="${p.code}" onclick="togglePrioritySell('${p.code}')" style="font-size:11px;height:24px;width:72px;border-radius:6px;border:1px solid ${isPri ? 'var(--sell)' : 'var(--bd2)'};background:${isPri ? 'var(--sell-bg)' : 'transparent'};color:${isPri ? 'var(--sell)' : 'var(--t3)'};cursor:pointer">${isPri ? '★ 优先' : '☆ 优先'}</button>
         <div style="display:flex;align-items:center;gap:6px"><span style="font-size:11px;color:var(--t3)">减仓权重</span><input type="tel" style="width:52px;height:24px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);text-align:center;font-family:var(--f-num)" id="ratio_${p.code}" value="${savedPlan[p.code] || ''}" oninput="calcSellPreview()"></div>
