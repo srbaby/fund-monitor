@@ -1,217 +1,353 @@
-// Jany 基金看板 - 控制器层
+// interact.js - 控制器层
 // 职责：接收用户操作，从 store/data 取数，调用 engine 计算，交给 ui 渲染
 // 不写计算公式，不写 HTML，不直接改状态
 
 // ---- 抽屉控制 ----
 function openDrawer(id) {
-  document.getElementById('drawerMask').classList.add('open');
-  document.getElementById(id).classList.add('open');
+  document.getElementById("drawerMask").classList.add("open");
+  document.getElementById(id).classList.add("open");
 }
 function closeAllDrawers() {
-  document.getElementById('drawerMask').classList.remove('open');
-  document.querySelectorAll('.drawer').forEach(d => d.classList.remove('open'));
+  document.getElementById("drawerMask").classList.remove("open");
+  document
+    .querySelectorAll(".drawer")
+    .forEach((d) => d.classList.remove("open"));
+}
+
+// ---- 公共复用模块 (UI Helpers) ----
+// 生成抽屉顶部的“当前PE / 当前权益 / 总市值”三列核心数据汇总
+function _buildSummaryHtml(pe, eqData, targetEq, currentEqVal, eqCol) {
+  const totalStr = eqData ? fmtMoney(eqData.total) : "--";
+  const curEqStr = currentEqVal != null ? fmt(currentEqVal, 2) + "%" : "--";
+  const peStr = pe != null ? fmt(pe.value, 2) + "%" : "--";
+
+  let html = `<div class="dr-card dr-pad dr-sec dr-summary-box">
+    <div class="dr-summary-item"><div class="dr-lbl">当前PE</div><div class="dr-val">${peStr}</div></div>
+    <div class="dr-summary-item divider"><div class="dr-lbl">当前权益</div><div class="dr-val" style="color:${eqCol}">${curEqStr}</div></div>`;
+  
+  if (targetEq != null) {
+      // 预案抽屉：显示总市值
+      html += `<div class="dr-summary-item"><div class="dr-lbl">总市值</div><div class="dr-val">${totalStr}</div></div></div>`;
+  } else {
+      // 持仓抽屉：如果没传 targetEq 参数，展示带 Badge 的目标权益
+      const targetStr = getDynamicTarget("neutral") + "%";
+      const diff = eqData ? eqData.equity - getDynamicTarget("neutral") : null;
+      const wrongDir = isEquityWrongDir(pe?.value, diff);
+      const isNeutral = diff != null && Math.abs(diff) < 1 && !wrongDir;
+      const bBg = wrongDir ? "var(--up-dim)" : isNeutral ? "transparent" : diff > 0 ? "var(--sell-bg)" : "var(--buy-bg)";
+      const bBd = wrongDir ? "var(--up-bd)" : isNeutral ? "var(--bd2)" : diff > 0 ? "var(--sell-bd)" : "var(--buy-bd)";
+      
+      html += `<div class="dr-summary-item"><div class="dr-lbl">目标权益</div><div style="display:flex;align-items:center;gap:6px;"><span class="dr-val">${targetStr}</span>
+        ${diff != null ? `<span class="dr-badge" style="color:${eqCol};background:${bBg};border-color:${bBd}">${(diff > 0 ? "+" : "")}${fmt(diff, 2)}%</span>` : ''}
+      </div></div></div>`;
+  }
+  return html;
+}
+
+// 统一的弹窗封装工厂 (用于口令导入导出等)
+function _showDialog(options) {
+  const modal = document.createElement("div");
+  modal.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;";
+
+  const mask = document.createElement("div");
+  mask.style.cssText = "position:absolute;inset:0;background:rgba(0,0,0,.6);";
+  mask.onclick = () => document.body.removeChild(modal);
+
+  const box = document.createElement("div");
+  box.style.cssText = "position:relative;background:var(--bg2);border-radius:16px;padding:24px;width:100%;max-width:320px;border:1px solid var(--bd2);display:flex;flex-direction:column;gap:12px;";
+
+  const title = document.createElement("div");
+  title.style.cssText = "font-size:15px;font-weight:600;color:var(--t1);";
+  title.textContent = options.title;
+
+  box.appendChild(title);
+
+  if (options.desc) {
+    const desc = document.createElement("div");
+    desc.style.cssText = "font-size:12px;color:var(--t3);line-height:1.4;";
+    desc.textContent = options.desc;
+    box.appendChild(desc);
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.className = "token-textarea";
+  if (options.placeholder) textarea.placeholder = options.placeholder;
+  if (options.value) textarea.value = options.value;
+  if (options.readOnly) textarea.readOnly = true;
+  box.appendChild(textarea);
+
+  const btnWrap = document.createElement("div");
+  btnWrap.style.cssText = "display:flex;gap:8px;margin-top:8px;";
+
+  if (options.showCancel) {
+    const cancelBtn = document.createElement("button");
+    cancelBtn.textContent = "取消";
+    cancelBtn.className = "modal-btn-cancel";
+    cancelBtn.onclick = () => document.body.removeChild(modal);
+    btnWrap.appendChild(cancelBtn);
+  }
+
+  const confirmBtn = document.createElement("button");
+  confirmBtn.textContent = options.confirmText;
+  confirmBtn.className = "modal-btn-zh";
+  if (options.showCancel) confirmBtn.style.flex = "2";
+  confirmBtn.onclick = () => options.onConfirm(textarea, modal);
+  btnWrap.appendChild(confirmBtn);
+
+  box.appendChild(btnWrap);
+  modal.appendChild(mask);
+  modal.appendChild(box);
+  document.body.appendChild(modal);
 }
 
 // ---- 数据刷新 ----
 let _isFetchingData = false;
+let _lastFundsStr = "";
 
 async function refreshData() {
   if (_isFetchingData) return;
   _isFetchingData = true;
-  const miniRefBtn = document.getElementById('miniRefBtn');
-  if (miniRefBtn) { miniRefBtn.textContent = '↻'; miniRefBtn.disabled = true; }
+
+  const miniRefBtn = document.getElementById("miniRefBtn");
+  const miniRefBtnPc = document.getElementById("miniRefBtnPc");
+  if (miniRefBtn) {
+    miniRefBtn.textContent = "↻";
+    miniRefBtn.disabled = true;
+  }
+  if (miniRefBtnPc) {
+    miniRefBtnPc.textContent = "↻";
+    miniRefBtnPc.disabled = true;
+  }
 
   try {
     loadFunds();
     fetchIndices();
 
     if (!funds.length) {
-      document.getElementById('cardView').innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><div>暂无关注产品，输入代码添加</div></div>`;
-      document.getElementById('fundTbody').innerHTML = `<tr><td colspan="4" style="text-align:center;padding:50px;color:var(--t3)">暂无关注产品</td></tr>`;
+      document.getElementById("cardView").innerHTML =
+        `<div class="empty-state"><div class="empty-icon">📭</div><div>暂无关注产品，输入代码添加</div></div>`;
+      document.getElementById("fundTbody").innerHTML =
+        `<tr><td colspan="4" style="text-align:center;padding:50px;color:var(--t3)">暂无关注产品</td></tr>`;
       return;
     }
 
     const results = await Promise.all(funds.map(fetchSingleFund));
     renderAll(results);
 
-    if (cardSortable) cardSortable.destroy();
-    if (tblSortable) tblSortable.destroy();
-    const onEnd = evt => {
-      const o = Array.from(evt.to.children).map(el => el.dataset.code).filter(Boolean);
-      if (o.length === funds.length) { funds = o; saveFunds(); }
-    };
-    cardSortable = Sortable.create(document.getElementById('cardView'), {handle: '.drag-handle', animation: 200, ghostClass: 'sortable-ghost', onEnd});
-    tblSortable = Sortable.create(document.getElementById('fundTbody'), {handle: '.tbl-drag', animation: 200, ghostClass: 'sortable-ghost', onEnd});
+    const currentFundsStr = funds.join(',');
+    if (!cardSortable || !tblSortable || _lastFundsStr !== currentFundsStr) {
+      if (cardSortable) cardSortable.destroy();
+      if (tblSortable) tblSortable.destroy();
+      const onEnd = (evt) => {
+        const o = Array.from(evt.to.children)
+          .map((el) => el.dataset.code)
+          .filter(Boolean);
+        if (o.length === funds.length) {
+          funds = o;
+          saveFunds();
+        }
+      };
+      cardSortable = Sortable.create(document.getElementById("cardView"), {
+        handle: ".drag-handle",
+        animation: 200,
+        ghostClass: "sortable-ghost",
+        onEnd,
+      });
+      tblSortable = Sortable.create(document.getElementById("fundTbody"), {
+        handle: ".tbl-drag",
+        animation: 200,
+        ghostClass: "sortable-ghost",
+        onEnd,
+      });
+      _lastFundsStr = currentFundsStr;
+    }
   } finally {
     _isFetchingData = false;
-    if (miniRefBtn) { miniRefBtn.textContent = '↻ 刷新'; miniRefBtn.disabled = false; }
+    if (miniRefBtn) {
+      miniRefBtn.textContent = "↻ 刷新";
+      miniRefBtn.disabled = false;
+    }
+    if (miniRefBtnPc) {
+      miniRefBtnPc.textContent = "↻ 刷新";
+      miniRefBtnPc.disabled = false;
+    }
   }
 }
 
 // ---- 基金增删 ----
 function addFund() {
-  const input = document.getElementById('codeInput');
+  const input = document.getElementById("codeInput");
   const code = input.value.trim();
   if (/^\d{6}$/.test(code) && !funds.includes(code)) {
-    funds.push(code); saveFunds(); input.value = ''; refreshData();
-  } else { input.value = ''; }
+    funds.push(code);
+    saveFunds();
+    input.value = "";
+    refreshData();
+  } else {
+    input.value = "";
+  }
 }
 function delFund(code) {
-  const name = NAMES[code] || _lastResults.find(r => r.code === code)?.name || code;
+  const fetchedResult = _lastResults.find((r) => r.code === code);
+  const name = (fetchedResult && !fetchedResult.error) ? fetchedResult.name : (NAMES[code] || code);
   if (!confirm(`确认删除「${name}」？`)) return;
-  funds = funds.filter(c => c !== code); saveFunds(); refreshData();
+  funds = funds.filter((c) => c !== code);
+  saveFunds();
+  refreshData();
 }
 
 // ---- 定锚弹窗 ----
 function openPeModal() {
   const peData = loadPe();
   if (peData) {
-    document.getElementById('peModalBucket').value = peData.bucketStr || '65,70';
-    document.getElementById('peModalInputPct').value = peData.peYest || '';
-    document.getElementById('peModalPriceAnchor').value = peData.priceAnchor || '';
-    document.getElementById('peModalBuyPrice').value = peData.priceBuy || '';
-    document.getElementById('peModalSellPrice').value = peData.priceSell || '';
+    document.getElementById("peModalBucket").value =
+      peData.bucketStr || "65,70";
+    document.getElementById("peModalInputPct").value = peData.peYest || "";
+    document.getElementById("peModalPriceAnchor").value =
+      peData.priceAnchor || "";
+    document.getElementById("peModalBuyPrice").value = peData.priceBuy || "";
+    document.getElementById("peModalSellPrice").value = peData.priceSell || "";
   }
-  document.getElementById('peModal').style.display = 'flex';
+  document.getElementById("peModal").style.display = "flex";
 }
-function closePeModal() { document.getElementById('peModal').style.display = 'none'; }
+function closePeModal() {
+  document.getElementById("peModal").style.display = "none";
+}
 
 function confirmPe() {
-  const bucketStr   = document.getElementById('peModalBucket').value;
-  const peYest      = parseFloat(document.getElementById('peModalInputPct').value);
-  const priceAnchor = parseFloat(document.getElementById('peModalPriceAnchor').value);
-  const priceBuy    = parseFloat(document.getElementById('peModalBuyPrice').value);
-  const priceSell   = parseFloat(document.getElementById('peModalSellPrice').value);
-  if (isNaN(peYest) || isNaN(priceAnchor)) { alert('请填写完整的【基准PE】与【基准点位】！'); return; }
-  savePe({bucketStr, peYest, priceAnchor, priceBuy: isNaN(priceBuy) ? null : priceBuy, priceSell: isNaN(priceSell) ? null : priceSell});
-  updatePeBar(); closePeModal();
+  const bucketStr = document.getElementById("peModalBucket").value;
+  const peYest = parseFloat(document.getElementById("peModalInputPct").value);
+  const priceAnchor = parseFloat(
+    document.getElementById("peModalPriceAnchor").value,
+  );
+  const priceBuy = parseFloat(document.getElementById("peModalBuyPrice").value);
+  const priceSell = parseFloat(
+    document.getElementById("peModalSellPrice").value,
+  );
+  if (isNaN(peYest) || isNaN(priceAnchor)) {
+    alert("请填写完整的【基准PE】与【基准点位】！");
+    return;
+  }
+  savePe({
+    bucketStr,
+    peYest,
+    priceAnchor,
+    priceBuy: isNaN(priceBuy) ? null : priceBuy,
+    priceSell: isNaN(priceSell) ? null : priceSell,
+  });
+  updatePeBar();
+  closePeModal();
 }
 
 // ---- 持仓抽屉 ----
 function openHoldingDrawer() {
-  const raw          = _loadRaw() || {};
-  const holdings     = raw.shares     || {};
-  const equityMap    = raw.equity     || {};
+  const raw = _loadRaw() || {};
+  const holdings = raw.shares || {};
+  const equityMap = raw.equity || {};
   const shortNameMap = raw.shortNames || {};
 
-  const eqData    = calcCurrentEquity(holdings);
+  const eqData = calcCurrentEquity(holdings);
   const currentPE = getCurrentPE();
-  const targetEq  = getDynamicTarget('neutral');
-  const diff      = (eqData && targetEq != null) ? eqData.equity - targetEq : null;
-  const wrongDir  = isEquityWrongDir(currentPE?.value, diff);
-  const diffCol   = diff == null ? 'var(--t3)' : wrongDir ? 'var(--warn)' : (diff > 0 ? 'var(--sell)' : 'var(--buy)');
+  const targetEq = getDynamicTarget("neutral");
+  const diff = eqData && targetEq != null ? eqData.equity - targetEq : null;
+  const wrongDir = isEquityWrongDir(currentPE?.value, diff);
+  
+  const isNeutral = diff != null && Math.abs(diff) < 1 && !wrongDir;
+  const diffCol = diff == null ? "var(--t3)" : wrongDir ? "var(--warn)" : isNeutral ? "var(--t1)" : diff > 0 ? "var(--sell)" : "var(--buy)";
 
-  // 1. 顶部汇总卡片
-  const eqAmt    = eqData ? eqData.total * eqData.equity / 100 : null;
-  const totalStr = eqData ? fmtMoney(eqData.total) : '--';
-  const eqAmtStr = eqAmt != null ? fmtMoney(eqAmt) : '--';
-  const eqPctStr = eqData ? eqData.equity.toFixed(2) + '%' : '--';
-  const targetStr = targetEq != null ? targetEq + '%' : '--';
-  const diffStr   = diff != null ? (diff > 0 ? '+' : '') + diff.toFixed(2) + '%' : '';
-  const warnStr   = wrongDir ? ' ⚠️' : '';
-
-  let html = `<div style="background:var(--bg3);border-radius:10px;padding:12px;margin-bottom:16px;border:1px solid var(--bd)">
-    <div style="font-size:11px;color:var(--t3);margin-bottom:10px;font-weight:500">📊 权益校对汇总</div>
-    <div style="display:flex;gap:8px">
-      <div style="flex:4">
-        <div style="font-size:10px;color:var(--t3);margin-bottom:4px">总市值</div>
-        <div style="font-size:13px;font-weight:600;color:var(--t1);font-family:var(--f-num)">${totalStr}</div>
-        <div style="font-size:11px;color:var(--t3);margin-top:4px">权益 <span style="color:var(--accent);font-family:var(--f-num)">${eqAmtStr}</span></div>
-      </div>
-      <div style="flex:3">
-        <div style="font-size:10px;color:var(--t3);margin-bottom:4px">实际权益</div>
-        <div style="font-size:16px;font-weight:600;color:${diffCol};font-family:var(--f-num)">${eqPctStr}</div>
-        ${diff != null ? `<div style="font-size:11px;color:var(--t3);margin-top:4px">偏离 <span style="color:${diffCol};font-family:var(--f-num)">${diffStr}</span>${warnStr}</div>` : ''}
-      </div>
-      <div style="flex:2">
-        <div style="font-size:10px;color:var(--t3);margin-bottom:4px">目标权益</div>
-        <div style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--f-num)">${targetStr}</div>
-      </div>
-    </div>
-  </div>`;
+  // 1. 顶部汇总
+  let html = `<div class="dr-header"><span class="dr-tag">📊 权益校对汇总</span></div>`;
+  html += _buildSummaryHtml(currentPE, eqData, null, eqData?.equity, diffCol);
 
   // 2. 资产价值明细
-  html += `<div style="margin-bottom:20px">
-    <div style="font-size:11px;color:var(--t3);margin-bottom:8px;font-weight:500">资产价值明细</div>
-    <div style="background:var(--bg3);border-radius:10px;overflow:hidden;border:1px solid var(--bd)">
-      <div style="display:grid;grid-template-columns:2fr 1.8fr 0.6fr 1.6fr;gap:4px;align-items:center;padding:6px 12px;border-bottom:1px solid var(--bd2);font-size:10px;color:var(--t3);font-weight:500">
+  const eqAmt = eqData ? (eqData.total * eqData.equity) / 100 : null;
+  const eqAmtStr = eqAmt != null ? fmtMoney(eqAmt) : "--";
+  
+  html += `
+  <div class="dr-sec">
+    <div class="dr-header">
+      <span class="dr-tag">📋 资产价值明细</span>
+      <span class="dr-lbl">权益总额 <span class="dr-val" style="color:var(--accent);font-size:13px">${eqAmtStr}</span></span>
+    </div>
+    <div class="dr-card" style="padding:4px 0">
+      <div class="dr-grid-holding" style="padding:8px 12px; border-bottom:1px solid var(--bd2); font-size:11px; color:var(--t3); font-weight:500;">
         <div>产品</div>
         <div style="text-align:right">市值</div>
-        <div style="text-align:right">系数</div>
+        <div style="text-align:right">权益档</div>
         <div style="text-align:right">权益金额</div>
       </div>`;
 
-  getActiveProducts().forEach(p => {
+  const activeProds = getActiveProducts();
+  activeProds.forEach((p, idx) => {
     const shares = holdings[p.code] || 0;
-    const nav    = getNavByCode(p.code);
-    const val    = nav ? shares * nav : 0;
-    html += `<div style="display:grid;grid-template-columns:2fr 1.8fr 0.6fr 1.6fr;gap:4px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--bd);font-size:12px">
-      <div style="overflow:hidden">
-        <div style="font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
-        <div style="font-size:10px;color:var(--t3);margin-top:2px;white-space:nowrap"><span class="num">${shares.toFixed(2)}</span> × <span class="num">${nav ? nav.toFixed(4) : '--'}</span></div>
-      </div>
-      <div style="text-align:right;color:var(--t2);font-weight:500;font-family:var(--f-num);font-size:11px">${val ? fmtMoney(val) : '--'}</div>
-      <div style="text-align:right;font-size:10px;color:var(--t3);font-family:var(--f-num)">×<span>${Math.round(p.equity * 100)}%</span></div>
-      <div style="text-align:right;font-weight:600;color:var(--accent);font-family:var(--f-num);font-size:11px">${val && p.equity > 0 ? fmtMoney(val * p.equity) : (p.equity === 0 ? '¥0.00' : '--')}</div>
-    </div>`;
+    const nav = getNavByCode(p.code);
+    const val = nav ? shares * nav : 0;
+    const isLast = idx === activeProds.length - 1;
+    
+    html += `
+      <div class="dr-grid-holding" style="align-items:center; padding:12px; ${isLast ? '' : 'border-bottom:1px solid var(--bd);'}">
+        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
+        <div class="dr-val" style="text-align:right;font-size:13px;font-weight:500;color:var(--t2)">${val ? fmtMoney(val) : "--"}</div>
+        <div style="text-align:right;"><span class="dr-badge gray">${fmt(p.equity, 2)}</span></div>
+        <div class="dr-val" style="text-align:right;font-size:13px;color:var(--accent)">${val && p.equity > 0 ? fmtMoney(val * p.equity) : p.equity === 0 ? "¥0.00" : "--"}</div>
+      </div>`;
   });
   html += `</div></div>`;
 
   // 3. 持仓录入
-  html += `<div style="margin-bottom:16px">
-    <div style="font-size:11px;color:var(--t3);margin-bottom:8px;font-weight:500">持仓录入 · 简称 / 份额 / 权益系数</div>
-    <div style="display:flex;flex-direction:column;gap:8px">`;
+  html += `
+  <div class="dr-sec">
+    <div class="dr-header"><span class="dr-tag">⚙️ 持仓配置</span></div>
+    <div class="dr-card">
+      <div class="dr-grid-holding" style="padding:10px 12px; border-bottom:1px solid var(--bd); background:var(--bg4); font-size:11px; color:var(--t3); font-weight:500;">
+        <div>产品</div>
+        <div style="text-align:right;">代码</div>
+        <div style="text-align:right;">权益档</div>
+        <div style="text-align:right;">份额</div>
+      </div>
+      <div class="dr-col" style="gap:0;">`;
 
-  getActiveProducts().forEach(p => {
-    const shares    = holdings[p.code] || 0;
-    const shortName = shortNameMap[p.code] || '';
-    const namePlaceholder = _lastResults.find(r => r.code === p.code)?.name || p.code;
-    const eqVal     = equityMap[p.code] != null ? equityMap[p.code] : p.equity;
-    html += `<div style="padding:10px 12px;background:var(--bg3);border-radius:10px;border:1px solid var(--bd)">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:10px;color:var(--t3);margin-bottom:3px">简称（显示名）</div>
-          <input id="sn_${p.code}" type="text" maxlength="10" style="width:100%;height:30px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);font-size:13px;padding:0 8px;font-family:var(--f-zh)" value="${shortName}" placeholder="${namePlaceholder}">
-        </div>
-        <div style="flex-shrink:0;text-align:right">
-          <div style="font-size:10px;color:var(--t3);margin-bottom:3px">代码</div>
-          <div style="font-size:13px;font-weight:600;color:var(--t2);font-family:var(--f-num);line-height:30px">${p.code}</div>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <div style="flex:2;display:flex;align-items:center;gap:6px">
-          <input id="hi_${p.code}" type="number" step="0.01" style="flex:1;height:34px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);text-align:right;font-size:15px;padding:0 10px;font-family:var(--f-num)" value="${shares.toFixed(2)}" placeholder="0.00">
-          <span style="font-size:12px;color:var(--t3);white-space:nowrap">份</span>
-        </div>
-        <div style="flex:1;display:flex;align-items:center;gap:6px">
-          <input id="eq_${p.code}" type="number" step="0.01" min="0" max="1" style="flex:1;height:34px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);text-align:right;font-size:15px;padding:0 10px;font-family:var(--f-num)" value="${eqVal.toFixed(2)}" placeholder="0.00">
-          <span style="font-size:12px;color:var(--t3);white-space:nowrap">权益</span>
-        </div>
-      </div>
-    </div>`;
+  activeProds.forEach((p, idx) => {
+    const shares = holdings[p.code] || 0;
+    const shortName = shortNameMap[p.code] || "";
+    const fetchedResult = _lastResults.find(r => r.code === p.code);
+    const namePlaceholder = (fetchedResult && !fetchedResult.error) ? fetchedResult.name : (NAMES[p.code] || p.code);
+    const eqVal = equityMap[p.code] != null ? equityMap[p.code] : p.equity;
+
+    const isLast = idx === activeProds.length - 1;
+    const borderB = isLast ? '' : 'border-bottom:1px dashed var(--bd2);';
+
+    html += `
+      <div class="dr-grid-holding" style="align-items:center; padding:12px; ${borderB}">
+        <div style="min-width:0;"><input id="sn_${p.code}" type="text" maxlength="10" class="dr-input-ghost" style="width:100%; font-size:13px;" value="${shortName}" placeholder="${namePlaceholder}"></div>
+        <div style="text-align:right;"><span class="dr-badge gray" style="font-weight:400; padding:3px 4px; font-size:10px;">${p.code}</span></div>
+        <div style="min-width:0;"><input id="eq_${p.code}" type="number" step="0.01" min="0" max="1" class="dr-input-ghost num" style="width:100%; text-align:right; font-size:15px; color:var(--accent);" value="${eqVal.toFixed(2)}" placeholder="0.00"></div>
+        <div style="min-width:0;"><input id="hi_${p.code}" type="number" step="0.01" class="dr-input-ghost num" style="width:100%; text-align:right; font-size:15px;" value="${shares > 0 ? shares.toFixed(2) : ""}" placeholder="0.00"></div>
+      </div>`;
   });
-  html += `</div></div>`;
+  html += `</div></div></div>`;
 
   // 4. 底部按钮
-  html += `<div style="display:flex;gap:10px;margin-top:20px">
-    <button onclick="exportToken()" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--bd2);background:var(--bg);color:var(--t2);font-size:13px;font-weight:500;cursor:pointer">🔑 导出备份口令</button>
-    <button onclick="importToken()" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--bd2);background:var(--bg);color:var(--t2);font-size:13px;font-weight:500;cursor:pointer">📥 口令恢复</button>
+  html += `
+  <div style="display:flex;gap:10px;margin-top:24px">
+    <button onclick="exportToken()" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--bd2);background:var(--bg3);color:var(--t2);font-size:13px;font-weight:500;cursor:pointer;">🔑 导出</button>
+    <button onclick="importToken()" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--bd2);background:var(--bg3);color:var(--t2);font-size:13px;font-weight:500;cursor:pointer;">📥 恢复</button>
   </div>`;
 
-  document.getElementById('holdingDrawerBody').innerHTML = html;
-  openDrawer('holdingDrawer');
+  document.getElementById("holdingDrawerBody").innerHTML = html;
+  openDrawer("holdingDrawer");
 }
 
 function saveHoldings() {
-  const raw        = _loadRaw() || {};
-  const shares     = raw.shares     || {};
-  const equity     = raw.equity     || {};
+  const raw = _loadRaw() || {};
+  const shares = raw.shares || {};
+  const equity = raw.equity || {};
   const shortNames = raw.shortNames || {};
 
-  getActiveProducts().forEach(p => {
-    const sv = parseFloat(document.getElementById('hi_' + p.code)?.value || '0');
-    const ev = parseFloat(document.getElementById('eq_' + p.code)?.value || '0');
-    const sn = (document.getElementById('sn_' + p.code)?.value || '').trim();
+  getActiveProducts().forEach((p) => {
+    const sv = parseFloat(document.getElementById("hi_" + p.code)?.value || "0");
+    const ev = parseFloat(document.getElementById("eq_" + p.code)?.value || "0");
+    const sn = (document.getElementById("sn_" + p.code)?.value || "").trim();
 
     shares[p.code] = isNaN(sv) ? 0 : sv;
     equity[p.code] = isNaN(ev) ? 0 : Math.min(1, Math.max(0, ev));
@@ -221,125 +357,60 @@ function saveHoldings() {
 
   saveHoldingsData(shares, equity, shortNames);
   closeAllDrawers();
-  alert('✅ 持仓已保存');
+
+  if (_lastResults && _lastResults.length) renderAll(_lastResults);
+  alert("✅ 持仓已保存");
 }
 
-// ---- 口令备份（自定义弹窗一键复制） ----
+// ---- 口令备份 ----
 function exportToken() {
   const token = exportSnapshot();
-  const modal = document.createElement('div');
-  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
-
-  const mask = document.createElement('div');
-  mask.style.cssText = 'position:absolute;inset:0;background:rgba(0,0,0,.6);';
-  mask.onclick = () => document.body.removeChild(modal);
-
-  const box = document.createElement('div');
-  box.style.cssText = 'position:relative;background:var(--bg2);border-radius:16px;padding:24px;width:100%;max-width:320px;border:1px solid var(--bd2);display:flex;flex-direction:column;gap:12px;';
-
-  const title = document.createElement('div');
-  title.style.cssText = 'font-size:15px;font-weight:600;color:var(--t1);';
-  title.textContent = '🔑 导出备份口令';
-
-  const desc = document.createElement('div');
-  desc.style.cssText = 'font-size:12px;color:var(--t3);line-height:1.4;';
-  desc.textContent = '请查看并复制下方配置口令。';
-
-  const textarea = document.createElement('textarea');
-  textarea.value = token;
-  textarea.readOnly = true;
-  textarea.className = 'token-textarea';
-
-  const btnWrap = document.createElement('div');
-  btnWrap.style.cssText = 'display:flex;gap:8px;margin-top:8px;';
-
-  const copyBtn = document.createElement('button');
-  copyBtn.textContent = '保存并确定';
-  copyBtn.className = 'modal-btn-zh';
-  copyBtn.onclick = () => {
-    textarea.select();
-    textarea.setSelectionRange(0, 99999);
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(token).then(() => {
-          alert('✅ 口令已复制到剪贴板！');
-          document.body.removeChild(modal);
-        }).catch(() => {
-          document.execCommand('copy');
-          alert('✅ 口令已复制到剪贴板！');
-          document.body.removeChild(modal);
-        });
-      } else {
-        document.execCommand('copy');
-        alert('✅ 口令已复制到剪贴板！');
-        document.body.removeChild(modal);
-      }
-    } catch(e) {
-      alert('❌ 复制失败，请手动长按文本框复制！');
+  _showDialog({
+    title: "🔑 导出备份口令",
+    desc: "请查看并复制下方配置口令。",
+    value: token,
+    readOnly: true,
+    showCancel: false,
+    confirmText: "保存并确定",
+    onConfirm: (textarea, modal) => {
+      textarea.select();
+      textarea.setSelectionRange(0, 99999);
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(token).then(() => {
+            alert("✅ 口令已复制！"); document.body.removeChild(modal);
+          }).catch(() => {
+            document.execCommand("copy"); alert("✅ 口令已复制！"); document.body.removeChild(modal);
+          });
+        } else {
+          document.execCommand("copy"); alert("✅ 口令已复制！"); document.body.removeChild(modal);
+        }
+      } catch (e) { alert("❌ 请手动长按复制！"); }
     }
-  };
-
-  btnWrap.appendChild(copyBtn);
-  box.appendChild(title);
-  box.appendChild(desc);
-  box.appendChild(textarea);
-  box.appendChild(btnWrap);
-  modal.appendChild(mask);
-  modal.appendChild(box);
-  document.body.appendChild(modal);
+  });
 }
 
 // ---- 口令恢复 ----
 function importToken() {
-  const modal = document.createElement('div');
-  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
-
-  const mask = document.createElement('div');
-  mask.style.cssText = 'position:absolute;inset:0;background:rgba(0,0,0,.6);';
-  mask.onclick = () => document.body.removeChild(modal);
-
-  const box = document.createElement('div');
-  box.style.cssText = 'position:relative;background:var(--bg2);border-radius:16px;padding:24px;width:100%;max-width:320px;border:1px solid var(--bd2);display:flex;flex-direction:column;gap:12px;';
-
-  const title = document.createElement('div');
-  title.style.cssText = 'font-size:15px;font-weight:600;color:var(--t1);';
-  title.textContent = '📥 恢复资产配置';
-
-  const textarea = document.createElement('textarea');
-  textarea.placeholder = '请在此粘贴备份口令...';
-  textarea.className = 'token-textarea';
-
-  const btnWrap = document.createElement('div');
-  btnWrap.style.cssText = 'display:flex;gap:8px;margin-top:8px;';
-
-  const cancelBtn = document.createElement('button');
-  cancelBtn.textContent = '取消';
-  cancelBtn.className = 'modal-btn-cancel';
-  cancelBtn.onclick = () => document.body.removeChild(modal);
-
-  const confirmBtn = document.createElement('button');
-  confirmBtn.textContent = '恢复配置';
-  confirmBtn.className = 'modal-btn-zh'; confirmBtn.style.flex = '2';
-  confirmBtn.onclick = () => {
-    const str = textarea.value.trim();
-    if (!str) return;
-    if (importSnapshot(str)) {
-      document.body.removeChild(modal);
-      closeAllDrawers(); updatePeBar(); refreshData();
-      alert('✅ 资产配置与首页列表全量恢复成功！');
-    } else {
-      alert('❌ 口令无效或已损坏，请检查粘贴是否完整！');
+  _showDialog({
+    title: "📥 恢复资产配置",
+    placeholder: "请在此粘贴备份口令...",
+    showCancel: true,
+    confirmText: "恢复配置",
+    onConfirm: (textarea, modal) => {
+      const str = textarea.value.trim();
+      if (!str) return;
+      if (importSnapshot(str)) {
+        document.body.removeChild(modal);
+        closeAllDrawers();
+        updatePeBar();
+        refreshData();
+        alert("✅ 资产配置与首页列表全量恢复成功！");
+      } else {
+        alert("❌ 口令无效或已损坏，请检查粘贴是否完整！");
+      }
     }
-  };
-
-  btnWrap.appendChild(cancelBtn);
-  btnWrap.appendChild(confirmBtn);
-  box.appendChild(title);
-  box.appendChild(textarea);
-  box.appendChild(btnWrap);
-  modal.appendChild(mask);
-  modal.appendChild(box);
-  document.body.appendChild(modal);
+  });
 }
 
 // ---- 预案抽屉 ----
@@ -347,135 +418,154 @@ window._prioritySellCode = loadPrioritySell();
 
 function openPlanDrawer() {
   const currentPE = getCurrentPE();
-  if (!currentPE) { alert('请先定锚！'); openPeModal(); return; }
+  if (!currentPE) { alert("请先定锚！"); openPeModal(); return; }
   window._prioritySellCode = loadPrioritySell();
   renderPlanDrawer();
-  openDrawer('planDrawer');
+  openDrawer("planDrawer");
 }
 
 function renderPlanDrawer() {
-  const currentPE      = getCurrentPE();
-  const holdings       = loadHoldings();
-  const buyData        = calcBuyPlanDraft(holdings);
-  const savedPlan      = JSON.parse(localStorage.getItem(STORE_SELL_PLAN) || '{}');
-  const equityProducts = getActiveProducts().filter(p => p.equity > 0);
+  const currentPE = getCurrentPE();
+  const holdings = loadHoldings();
+  const buyData = calcBuyPlanDraft(holdings);
+  const savedPlan = JSON.parse(localStorage.getItem(STORE_SELL_PLAN) || "{}");
+  const equityProducts = getActiveProducts().filter((p) => p.equity > 0);
 
   if (!buyData) return;
 
-  let html = `<div style="background:var(--bg3);border-radius:10px;padding:10px 12px;margin-bottom:16px;border:1px solid var(--bd);font-size:12px;color:var(--t2)">
-    当前PE <b style="color:var(--t1);font-family:var(--f-num)">${currentPE.value.toFixed(2)}%</b>
-    · 当前权益 <b style="color:var(--t1);font-family:var(--f-num)">${buyData.currentEq.toFixed(2)}%</b>
-    · 总市值 <b style="color:var(--t1);font-family:var(--f-num)">${fmtMoney(buyData.totalVal)}</b>
-  </div>
+  const targetEq = getDynamicTarget("neutral");
+  const diff = buyData.currentEq - targetEq;
+  const wrongDir = isEquityWrongDir(currentPE?.value, diff);
+  const isNeutral = Math.abs(diff) < 1 && !wrongDir;
+  const curEqCol = wrongDir ? "var(--warn)" : isNeutral ? "var(--t1)" : diff > 0 ? "var(--sell)" : "var(--buy)";
 
-  <div style="margin-bottom:20px">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="font-size:11px;font-weight:600;color:var(--buy);background:var(--buy-bg);border:1px solid var(--buy-bd);border-radius:6px;padding:2px 8px">▲ 增权预案评估</span></div>
-    <div style="background:var(--buy-bg);border:1px solid var(--buy-bd);border-radius:10px;padding:12px">
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
-        <div><div style="font-size:10px;color:var(--t3)">当前权益</div><div style="font-size:15px;font-weight:600;font-family:var(--f-num)">${buyData.currentEq.toFixed(2)}%</div></div>
-        <div><div style="font-size:10px;color:var(--t3)">触发后目标</div><div style="font-size:15px;font-weight:600;color:var(--buy);font-family:var(--f-num)">${buyData.targetEq}%</div></div>
-        <div><div style="font-size:10px;color:var(--t3)">需调配金额</div><div style="font-size:15px;font-weight:600;color:var(--buy);font-family:var(--f-num)">${fmtMoney(buyData.buyAmt)}</div></div>
+  // 1. 顶部汇总
+  let html = _buildSummaryHtml(currentPE, {total: buyData.totalVal}, "预案模式", buyData.currentEq, curEqCol);
+
+  // 2. 增权预案
+  html += `
+  <div class="dr-sec">
+    <div class="dr-header"><span class="dr-tag buy">▲ 增权预案评估</span></div>
+    <div class="dr-card dr-pad" style="background:var(--buy-bg);border-color:var(--buy-bd);">
+      <div class="dr-flex" style="margin-bottom:12px;align-items:center;">
+        <div class="dr-col" style="align-items:flex-start;"><div class="dr-lbl">当前权益</div><div class="dr-val" style="color:${curEqCol}">${fmt(buyData.currentEq, 2)}%</div></div>
+        <div class="dr-col" style="align-items:center;"><div class="dr-lbl">触发后目标</div><div class="dr-val" style="color:var(--buy)">${buyData.targetEq}%</div></div>
+        <div class="dr-col" style="align-items:flex-end;"><div class="dr-lbl">需调配金额</div><div class="dr-val" style="color:var(--buy)">${fmtMoney(buyData.buyAmt)}</div></div>
       </div>
-      <div style="font-size:11px;color:var(--t3);margin-bottom:8px">资金筹集 (卖出 ${getProductName(SYS_CONFIG.CODE_XQ)})</div>
-      <div style="padding:10px 12px;background:var(--bg3);border-radius:8px;border:1px solid rgba(240,68,68,0.3);display:flex;gap:8px;align-items:center">
-        <div style="font-size:14px;font-weight:600">卖出份数</div>
-        <div style="font-size:15px;font-weight:700;color:var(--up);font-family:var(--f-num)">${fmt(buyData.sellXqShares, 2)} 份</div>
+      
+      <div class="dr-lbl" style="margin-bottom:6px">资金筹集 (转出 ${getProductName(SYS_CONFIG.CODE_XQ)})</div>
+      <div class="dr-plan-box sell" style="margin-bottom:12px;">
+        <div style="font-size:13px;font-weight:600">转出份数</div>
+        <div class="dr-val lg" style="color:var(--up)">${fmt(buyData.sellXqShares, 2)} <span style="font-size:11px;font-weight:500;color:var(--t2)">份</span></div>
       </div>
-      <div style="font-size:11px;color:var(--t3);margin:16px 0 8px">目标分配 (优先A500C，溢出至中证500C)</div>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        <div style="padding:10px 12px;background:var(--bg3);border-radius:8px;border:1px solid var(--buy-bd);display:flex;gap:8px;align-items:center">
-          <div><div style="font-size:14px;font-weight:600">买入 A500C</div><div style="font-size:10px;color:var(--t3);font-family:var(--f-num)">~${fmt(buyData.allocA500C / buyData.a500cNav, 2)} 份</div></div>
-          <div style="font-size:15px;font-weight:700;color:var(--buy);font-family:var(--f-num)">${fmtMoney(buyData.allocA500C)}</div>
+      
+      <div class="dr-lbl" style="margin-bottom:6px">目标分配 (优先A500C，溢出至中证500C)</div>
+      <div class="dr-col" style="gap:6px;">
+        <div class="dr-plan-box">
+          <div style="font-size:13px;font-weight:600">转入 A500C</div>
+          <div class="dr-val lg" style="color:var(--buy)">${fmtMoney(buyData.allocA500C)}</div>
         </div>
-        ${buyData.allocZZ500C > 1 ? `<div style="padding:10px 12px;background:var(--bg3);border-radius:8px;border:1px solid var(--buy-bd);display:flex;gap:8px;align-items:center"><div><div style="font-size:14px;font-weight:600">买入 中证500C</div><div style="font-size:10px;color:var(--t3);font-family:var(--f-num)">~${fmt(buyData.allocZZ500C / buyData.zz500cNav, 2)} 份</div></div><div style="font-size:15px;font-weight:700;color:var(--buy);font-family:var(--f-num)">${fmtMoney(buyData.allocZZ500C)}</div></div>` : ''}
+        ${buyData.allocZZ500C > 1 ? `<div class="dr-plan-box"><div style="font-size:13px;font-weight:600">转入 中证500C</div><div class="dr-val lg" style="color:var(--buy)">${fmtMoney(buyData.allocZZ500C)}</div></div>` : ""}
       </div>
     </div>
-  </div>
+  </div>`;
 
+  // 3. 降权预案
+  html += `
   <div>
-    <div style="display:flex;align-items:center;margin-bottom:10px"><span style="font-size:11px;font-weight:600;color:var(--sell);background:var(--sell-bg);border:1px solid var(--sell-bd);border-radius:6px;padding:2px 8px">▼ 降权预案评估</span></div>
-    <div style="background:var(--up-dim);border:1px solid var(--up-bg);border-radius:10px;padding:12px">
+    <div class="dr-header"><span class="dr-tag sell">▼ 降权预案评估</span></div>
+    <div class="dr-card dr-pad" style="background:var(--up-dim);border-color:var(--up-bg);">
       <div id="sell_summary_area"></div>
-      <div style="font-size:11px;color:var(--t3);margin-bottom:10px">配置减仓比例（空=不参与），摩擦费率 ${SYS_CONFIG.FEE * 100}%</div>`;
+      <div class="dr-lbl" style="margin-bottom:10px">配置减仓比例（空=不参与），摩擦费率 ${fmt(SYS_CONFIG.FEE * 100, 1)}%</div>`;
 
-  equityProducts.forEach(p => {
+  equityProducts.forEach((p) => {
     const isPri = window._prioritySellCode === p.code;
-    html += `<div style="padding:10px 12px;background:var(--bg3);border-radius:10px;margin-bottom:8px;border:1px solid var(--bd);display:flex;flex-direction:column;gap:6px">
-      <div style="display:flex;gap:8px;align-items:center"><div style="font-size:14px;font-weight:600">${p.name}</div><div id="sell_calc_shares_${p.code}" style="font-weight:600;color:var(--t3);font-family:var(--f-num)">-- 份</div></div>
-      <div style="display:flex;gap:8px;align-items:center"><div style="font-size:10px;color:var(--t3)">持仓: <span style="font-family:var(--f-num)">${(holdings[p.code] || 0).toFixed(2)}</span> 份 · 权益系数 <span style="font-family:var(--f-num)">${Math.round(p.equity * 100)}%</span></div><div id="sell_calc_fiat_${p.code}" style="font-size:11px;color:var(--t3);font-family:var(--f-num)">-- 元</div></div>
-      <div style="display:flex;gap:8px;align-items:center;margin-top:2px">
-        <button class="pri-btn" data-code="${p.code}" onclick="togglePrioritySell('${p.code}')" style="font-size:11px;height:24px;width:72px;border-radius:6px;border:1px solid ${isPri ? 'var(--sell)' : 'var(--bd2)'};background:${isPri ? 'var(--sell-bg)' : 'transparent'};color:${isPri ? 'var(--sell)' : 'var(--t3)'};cursor:pointer">${isPri ? '★ 优先' : '☆ 优先'}</button>
-        <div style="display:flex;align-items:center;gap:6px"><span style="font-size:11px;color:var(--t3)">减仓权重</span><input type="tel" style="width:52px;height:24px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);text-align:center;font-family:var(--f-num)" id="ratio_${p.code}" value="${savedPlan[p.code] || ''}" oninput="calcSellPreview()"></div>
+    html += `
+    <div class="dr-card dr-pad" style="margin-bottom:8px;">
+      <div class="dr-flex" style="margin-bottom:4px;"><div style="font-size:13px;font-weight:600">${p.name}</div><div id="sell_calc_shares_${p.code}" class="dr-val" style="color:var(--t3);font-size:13px;">-- <span style="font-size:11px;font-weight:500">份</span></div></div>
+      <div class="dr-flex"><div class="dr-lbl">持仓: <span class="num">${fmt(holdings[p.code] || 0, 2)}</span> 份 · 权益 <span class="num">${Math.round(p.equity * 100)}%</span></div><div id="sell_calc_fiat_${p.code}" class="dr-val" style="color:var(--t3);font-size:13px;">-- 元</div></div>
+      <div class="dr-flex" style="margin-top:8px;padding-top:10px;border-top:1px dashed var(--bd2);">
+        <button class="pri-btn ${isPri ? 'active' : ''}" data-code="${p.code}" onclick="togglePrioritySell('${p.code}')">${isPri ? "★ 优先" : "☆ 优先"}</button>
+        <div style="display:flex;align-items:center;gap:8px"><span class="dr-lbl">减仓权重</span>
+          <input type="tel" style="width:60px;height:28px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);text-align:center;font-family:var(--f-num);font-size:14px;outline:none;" id="ratio_${p.code}" value="${savedPlan[p.code] || ""}" oninput="calcSellPreview()">
+        </div>
       </div>
     </div>`;
   });
 
-  html += `<div style="margin-top:10px;padding:10px;background:var(--bg3);border-radius:8px" id="sell_preview_result"><span style="font-size:12px;color:var(--t3)">等待输入比例...</span></div></div></div>`;
+  html += `<div class="dr-card dr-pad" style="margin-top:12px;" id="sell_preview_result"><span class="dr-lbl">等待输入比例...</span></div></div></div>`;
 
-  document.getElementById('planDrawerBody').innerHTML = html;
+  document.getElementById("planDrawerBody").innerHTML = html;
   calcSellPreview();
 }
 
 function calcSellPreview() {
-  const holdings       = loadHoldings();
-  const equityProducts = getActiveProducts().filter(p => p.equity > 0);
+  const holdings = loadHoldings();
+  const equityProducts = getActiveProducts().filter((p) => p.equity > 0);
   const ratios = {};
-  equityProducts.forEach(p => { ratios[p.code] = parseFloat(document.getElementById('ratio_' + p.code)?.value) || 0; });
+  equityProducts.forEach((p) => { ratios[p.code] = parseFloat(document.getElementById("ratio_" + p.code)?.value) || 0; });
 
   const draft = calcSellExecutionDraft(holdings, ratios, window._prioritySellCode);
-
-  const summaryEl = document.getElementById('sell_summary_area');
+  const summaryEl = document.getElementById("sell_summary_area");
+  
   if (summaryEl && !draft.error) {
-    summaryEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
-      <div><div style="font-size:10px;color:var(--t3)">当前权益</div><div style="font-size:15px;font-weight:600;font-family:var(--f-num)">${draft.currentEq.toFixed(2)}%</div></div>
-      <div><div style="font-size:10px;color:var(--t3)">触发后目标</div><div style="font-size:15px;font-weight:600;color:var(--warn);font-family:var(--f-num)">${draft.targetEq}%</div></div>
-      <div><div style="font-size:10px;color:var(--t3)">需减比例</div><div style="font-size:15px;font-weight:600;color:var(--sell);font-family:var(--f-num)">${draft.diffEqPct.toFixed(2)}%</div></div>
+    const targetEq = getDynamicTarget("neutral");
+    const diff = draft.currentEq - targetEq;
+    const wrongDir = isEquityWrongDir(getCurrentPE()?.value, diff);
+    const isNeutral = Math.abs(diff) < 1 && !wrongDir;
+    const curEqCol = wrongDir ? "var(--warn)" : isNeutral ? "var(--t1)" : diff > 0 ? "var(--sell)" : "var(--buy)";
+
+    summaryEl.innerHTML = `
+    <div class="dr-flex" style="margin-bottom:12px;align-items:center;">
+      <div class="dr-col" style="align-items:flex-start;"><div class="dr-lbl">当前权益</div><div class="dr-val" style="color:${curEqCol}">${fmt(draft.currentEq, 2)}%</div></div>
+      <div class="dr-col" style="align-items:center;"><div class="dr-lbl">触发后目标</div><div class="dr-val" style="color:var(--warn)">${draft.targetEq}%</div></div>
+      <div class="dr-col" style="align-items:flex-end;"><div class="dr-lbl">需减比例</div><div class="dr-val" style="color:var(--sell)">${fmt(draft.diffEqPct, 2)}%</div></div>
     </div>`;
   }
 
-  equityProducts.forEach(p => {
+  equityProducts.forEach((p) => {
     const res = draft.results?.[p.code];
-    const elS = document.getElementById('sell_calc_shares_' + p.code);
-    const elF = document.getElementById('sell_calc_fiat_'  + p.code);
+    const elS = document.getElementById("sell_calc_shares_" + p.code);
+    const elF = document.getElementById("sell_calc_fiat_" + p.code);
     if (res && res.amt > 0) {
-      elS.innerHTML = `<span style="color:var(--up);font-family:var(--f-num)">${fmt(res.shares, 2)}</span> 份`;
-      elF.innerHTML = `<span style="color:var(--t2);font-family:var(--f-num)">${fmtMoney(res.amt)}</span> <span style="color:var(--sell);font-size:10px;margin-left:4px;font-family:var(--f-num)">降权 ${res.eqDropPct.toFixed(2)}%</span>`;
+      elS.innerHTML = `<span style="color:var(--up);">${fmt(res.shares, 2)}</span> <span style="font-size:11px;color:var(--t2);font-weight:500;">份</span>`;
+      elF.innerHTML = `<span style="color:var(--sell);font-size:11px;margin-right:8px;font-weight:400">降权 ${fmt(res.eqDropPct, 2)}%</span><span style="color:var(--t1);">${fmtMoney(res.amt)}</span>`;
     } else {
-      elS.innerHTML = `-- 份`; elF.innerHTML = `-- 元`;
+      elS.innerHTML = `-- <span style="font-size:11px;font-weight:500;">份</span>`;
+      elF.innerHTML = `-- 元`;
     }
   });
 
-  const resultEl = document.getElementById('sell_preview_result');
+  const resultEl = document.getElementById("sell_preview_result");
   if (draft.hasAnySell) {
-    resultEl.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px">
-      <div><div style="color:var(--t3);font-size:10px">操作后权益</div><div style="font-weight:700;font-size:16px;color:var(--dn);font-family:var(--f-num)">${draft.afterEqPct.toFixed(2)}%</div></div>
-      <div><div style="color:var(--t3);font-size:10px">转出到账</div><div style="font-weight:600;font-size:15px;font-family:var(--f-num)">${fmtMoney(draft.totalCashOut)}</div></div>
-      <div><div style="color:var(--t3);font-size:10px">总摩擦</div><div style="font-weight:600;font-size:15px;color:var(--warn);font-family:var(--f-num)">${fmtMoney(draft.totalFriction)}</div></div>
+    resultEl.innerHTML = `
+    <div class="dr-flex" style="align-items:center;">
+      <div class="dr-col" style="align-items:flex-start;"><div class="dr-lbl">操作后权益</div><div class="dr-val lg" style="color:var(--dn)">${fmt(draft.afterEqPct, 2)}%</div></div>
+      <div class="dr-col" style="align-items:center;"><div class="dr-lbl">转出到账</div><div class="dr-val lg">${fmtMoney(draft.totalCashOut)}</div></div>
+      <div class="dr-col" style="align-items:flex-end;"><div class="dr-lbl">总摩擦</div><div class="dr-val lg" style="color:var(--warn)">${fmtMoney(draft.totalFriction)}</div></div>
     </div>`;
   } else {
-    resultEl.innerHTML = `<span style="font-size:12px;color:var(--t3)">请填写比例或设为优先卖出</span>`;
+    resultEl.innerHTML = `<span class="dr-lbl">请填写比例或设为优先卖出</span>`;
   }
 }
 
 function togglePrioritySell(code) {
-  window._prioritySellCode = (window._prioritySellCode === code) ? null : code;
+  window._prioritySellCode = window._prioritySellCode === code ? null : code;
   if (window._prioritySellCode) savePrioritySell(window._prioritySellCode);
   else clearPrioritySell();
 
-  document.querySelectorAll('.pri-btn').forEach(btn => {
+  document.querySelectorAll(".pri-btn").forEach((btn) => {
     const isPri = btn.dataset.code === window._prioritySellCode;
-    btn.innerHTML         = isPri ? '★ 优先' : '☆ 优先';
-    btn.style.color       = isPri ? 'var(--sell)' : 'var(--t3)';
-    btn.style.borderColor = isPri ? 'var(--sell)' : 'var(--bd2)';
-    btn.style.background  = isPri ? 'var(--sell-bg)' : 'transparent';
+    btn.className = `pri-btn ${isPri ? 'active' : ''}`;
+    btn.innerHTML = isPri ? "★ 优先" : "☆ 优先";
   });
   calcSellPreview();
 }
 
 function saveSellPlan() {
   const plan = {};
-  getActiveProducts().filter(p => p.equity > 0).forEach(p => {
-    const v = document.getElementById('ratio_' + p.code)?.value || '';
+  getActiveProducts().filter((p) => p.equity > 0).forEach((p) => {
+    const v = document.getElementById("ratio_" + p.code)?.value || "";
     if (v) plan[p.code] = v;
   });
   localStorage.setItem(STORE_SELL_PLAN, JSON.stringify(plan));
