@@ -5,15 +5,18 @@
 // ============================================================
 
 // ---- 模块状态 ----
-let _mktState     = null;          // 上次市场状态，用于避免重复更新标签
-let allCollapsed  = true;          // 桌面端收窄状态（默认 true 但桌面 CSS 隐藏按钮）
-let mobileExpanded = false;        // 手机端展开状态（默认收窄）
-let miniMode      = 0;             // 手机收窄模式：0=估算 1=官方 2=全部
-let cardSortable  = null;          // 卡片拖拽实例
-let tblSortable   = null;          // 表格拖拽实例
+let _mktState     = null;          
+let allCollapsed  = true;          
+let mobileExpanded = false;        
+let miniMode      = 0;             
+let cardSortable  = null;          
+let tblSortable   = null;          
 const miniLabels  = ['估算', '官方', '全部'];
-const prevData    = {};            // 上次渲染数据，用于闪烁追踪
-const idxPrev     = {};            // 上次指数价格，用于指数闪烁
+const prevData    = {};            
+const idxPrev     = {};            
+
+// 缓存 PE 相关的高频 DOM 节点
+const _peDOM = {};
 
 // ---- 格式化工具 ----
 function fp(v) {
@@ -25,6 +28,18 @@ function fmt(n, decimals = 0) {
 }
 function fmtMoney(n) { return '¥' + fmt(n, 2); }
 function getProductName(code) { return SHORT_NAMES[code] || (PRODUCTS.find(p => p.code === code)?.name) || code; }
+
+function getDisplayName(f) {
+  return f.name || NAMES[f.code] || f.code;
+}
+
+// 检测容器内的代码列表结构是否保持不变
+function isStructureUnchanged(containerId, targetCodes) {
+  const container = document.getElementById(containerId);
+  if (!container) return false;
+  const currentCodes = Array.from(container.children).filter(c => c.dataset?.code).map(c => c.dataset.code);
+  return currentCodes.length > 0 && currentCodes.join(',') === targetCodes.join(',');
+}
 
 // ---- 时钟与市场状态标签 ----
 function updateClock() {
@@ -73,28 +88,30 @@ function renderIndices(map) {
 
 // ---- PE 栏 ----
 function updatePeBar() {
-  const currentPE = getCurrentPE();
-  const display   = document.getElementById('peDisplay');
-  const status    = document.getElementById('peStatus');
-  const marker    = document.getElementById('peTrackMarker');
-  const planBtn   = document.getElementById('planBtn');
-  const eqDiv     = document.getElementById('peEquityInfo');
-  const loEl      = document.getElementById('peTrackLo');
-  const hiEl      = document.getElementById('peTrackHi');
+  if (!_peDOM.display) {
+    _peDOM.display = document.getElementById('peDisplay');
+    _peDOM.status  = document.getElementById('peStatus');
+    _peDOM.marker  = document.getElementById('peTrackMarker');
+    _peDOM.planBtn = document.getElementById('planBtn');
+    _peDOM.eqDiv   = document.getElementById('peEquityInfo');
+    _peDOM.loEl    = document.getElementById('peTrackLo');
+    _peDOM.hiEl    = document.getElementById('peTrackHi');
+  }
 
+  const currentPE = getCurrentPE();
   if (!currentPE) {
-    display.textContent = '--.--%'; display.className = 'pe-value pe-normal';
-    status.textContent  = '未输入PE'; status.className = 'pe-status normal';
-    planBtn.className   = 'pe-plan-btn neutral'; planBtn.textContent = '预案';
-    if (marker) marker.style.display = 'none';
-    if (loEl)   loEl.style.display   = 'none';
-    if (hiEl)   hiEl.style.display   = 'none';
-    if (eqDiv)  eqDiv.style.display  = 'none';
+    _peDOM.display.textContent = '--.--%'; _peDOM.display.className = 'pe-value pe-normal';
+    _peDOM.status.textContent  = '未输入PE'; _peDOM.status.className = 'pe-status normal';
+    _peDOM.planBtn.className   = 'pe-plan-btn neutral'; _peDOM.planBtn.textContent = '预案';
+    if (_peDOM.marker) _peDOM.marker.style.display = 'none';
+    if (_peDOM.loEl)   _peDOM.loEl.style.display   = 'none';
+    if (_peDOM.hiEl)   _peDOM.hiEl.style.display   = 'none';
+    if (_peDOM.eqDiv)  _peDOM.eqDiv.style.display  = 'none';
     return;
   }
 
   const v = currentPE.value, bounds = currentPE.bounds;
-  display.innerHTML = `<span class="num">${v.toFixed(2)}%</span>`
+  _peDOM.display.innerHTML = `<span class="num">${v.toFixed(2)}%</span>`
     + (currentPE.isDynamic ? `<span style="font-size:10px;color:var(--accent);font-weight:600;margin-left:4px;vertical-align:top">实时</span>` : '');
 
   const PE_MID = (bounds.buyPct + bounds.sellPct) / 2;
@@ -102,11 +119,11 @@ function updatePeBar() {
   const peMin  = PE_MID - span / 2, peMax = PE_MID + span / 2;
   const toPos  = pe => Math.min(Math.max((pe - peMin) / (peMax - peMin) * 100, 0), 100);
 
-  if (marker) { marker.style.display = 'block'; marker.style.left = toPos(v) + '%'; }
-  if (loEl)   { loEl.style.display   = 'block'; loEl.style.left   = toPos(bounds.buyPct) + '%'; }
-  if (hiEl)   { hiEl.style.display   = 'block'; hiEl.style.left   = toPos(bounds.sellPct) + '%'; }
+  if (_peDOM.marker) { _peDOM.marker.style.display = 'block'; _peDOM.marker.style.left = toPos(v) + '%'; }
+  if (_peDOM.loEl)   { _peDOM.loEl.style.display   = 'block'; _peDOM.loEl.style.left   = toPos(bounds.buyPct) + '%'; }
+  if (_peDOM.hiEl)   { _peDOM.hiEl.style.display   = 'block'; _peDOM.hiEl.style.left   = toPos(bounds.sellPct) + '%'; }
 
-  if (eqDiv) {
+  if (_peDOM.eqDiv) {
     const eqData = calcCurrentEquity(loadHoldings());
     const target = getDynamicTarget('neutral');
     if (eqData && target != null) {
@@ -114,29 +131,29 @@ function updatePeBar() {
       const sign     = diff > 0 ? '+' : '';
       const wrongDir = isEquityWrongDir(v, diff);
       const col      = wrongDir ? 'var(--warn)' : (diff > 0 ? 'var(--sell)' : 'var(--buy)');
-      eqDiv.innerHTML = `目标<b class="num">${target}%</b> 实际<b class="num" style="color:${col}">${eqData.equity.toFixed(2)}%</b> <span class="num" style="color:${col}">${sign}${diff.toFixed(2)}%</span>`;
-      eqDiv.style.display = 'flex';
+      _peDOM.eqDiv.innerHTML = `目标<b class="num">${target}%</b> 实际<b class="num" style="color:${col}">${eqData.equity.toFixed(2)}%</b> <span class="num" style="color:${col}">${sign}${diff.toFixed(2)}%</span>`;
+      _peDOM.eqDiv.style.display = 'flex';
     } else {
-      eqDiv.style.display = 'none';
+      _peDOM.eqDiv.style.display = 'none';
     }
   }
 
   if (v <= bounds.buyPct) {
-    display.className = 'pe-value pe-danger-dn'; status.textContent = '▲ 增权信号'; status.className = 'pe-status triggered-buy';
-    planBtn.className = 'pe-plan-btn buy'; planBtn.textContent = '增权';
-    if (marker) marker.style.background = 'var(--buy)';
+    _peDOM.display.className = 'pe-value pe-danger-dn'; _peDOM.status.textContent = '▲ 增权信号'; _peDOM.status.className = 'pe-status triggered-buy';
+    _peDOM.planBtn.className = 'pe-plan-btn buy'; _peDOM.planBtn.textContent = '增权';
+    if (_peDOM.marker) _peDOM.marker.style.background = 'var(--buy)';
   } else if (v >= bounds.sellPct) {
-    display.className = 'pe-value pe-danger-up'; status.textContent = '▼ 降权信号'; status.className = 'pe-status triggered-sell';
-    planBtn.className = 'pe-plan-btn sell'; planBtn.textContent = '降权';
-    if (marker) marker.style.background = 'var(--sell)';
+    _peDOM.display.className = 'pe-value pe-danger-up'; _peDOM.status.textContent = '▼ 降权信号'; _peDOM.status.className = 'pe-status triggered-sell';
+    _peDOM.planBtn.className = 'pe-plan-btn sell'; _peDOM.planBtn.textContent = '降权';
+    if (_peDOM.marker) _peDOM.marker.style.background = 'var(--sell)';
   } else {
-    display.className = 'pe-value pe-normal'; status.textContent = '待机'; status.className = 'pe-status normal';
-    planBtn.className = 'pe-plan-btn neutral'; planBtn.textContent = '预案';
-    if (marker) marker.style.background = 'var(--t1)';
+    _peDOM.display.className = 'pe-value pe-normal'; _peDOM.status.textContent = '待机'; _peDOM.status.className = 'pe-status normal';
+    _peDOM.planBtn.className = 'pe-plan-btn neutral'; _peDOM.planBtn.textContent = '预案';
+    if (_peDOM.marker) _peDOM.marker.style.background = 'var(--t1)';
   }
 }
 
-// ---- 卡片 HTML ----
+// ---- 卡片 HTML (移动端) ----
 function inlinePctHtml(ep, op, stale, ef, of2) {
   const staleCls = stale ? ' stale-text' : '';
   const opCls    = stale ? 'flat' : op.cls;
@@ -146,7 +163,8 @@ function inlinePctHtml(ep, op, stale, ef, of2) {
 }
 
 function buildCardInnerHtml(f, fl, today, tradingDay) {
-  if (f.error) return `<div class="card-top"><span class="drag-handle">⠿</span><div class="card-info"><div class="card-name-box"><div class="card-name" style="color:var(--t3)">${f.name || NAMES[f.code] || f.code}</div><div class="card-code">${f.code}</div></div></div><div class="card-actions"><button class="del-btn" onclick="delFund('${f.code}')">删除</button></div></div><div style="padding:10px 16px 14px;font-size:12px;color:var(--t3);border-top:1px solid var(--bd)">⚠ 获取超时，请刷新</div>`;
+  const dName = getDisplayName(f);
+  if (f.error) return `<div class="card-top"><span class="drag-handle">⠿</span><div class="card-info"><div class="card-name-box"><div class="card-name" style="color:var(--t3)">${dName}</div><div class="card-code">${f.code}</div></div></div><div class="card-actions"><button class="del-btn" onclick="delFund('${f.code}')">删除</button></div></div><div style="padding:10px 16px 14px;font-size:12px;color:var(--t3);border-top:1px solid var(--bd)">⚠ 获取超时，请刷新</div>`;
 
   const ep = fp(f.estPct), op = fp(f.offPct);
   const {ef, of2} = (fl || {})[f.code] || {ef: '', of2: ''};
@@ -154,7 +172,7 @@ function buildCardInnerHtml(f, fl, today, tradingDay) {
 
   return `<div class="card-top">
     <span class="drag-handle">⠿</span>
-    <div class="card-info"><div class="card-name-box"><div class="card-name">${f.name}</div><div class="card-code">${f.code}</div></div></div>
+    <div class="card-info"><div class="card-name-box"><div class="card-name">${dName}</div><div class="card-code">${f.code}</div></div></div>
     ${inlinePctHtml(ep, op, isStale, ef, of2)}
     <div class="card-actions"><button class="del-btn" onclick="delFund('${f.code}')">删除</button></div>
   </div>
@@ -174,9 +192,8 @@ function buildCardInnerHtml(f, fl, today, tradingDay) {
 
 function renderCards(results, fl, today, tradingDay) {
   const container  = document.getElementById('cardView');
-  const currentCodes = Array.from(container.children).filter(c => c.dataset?.code).map(c => c.dataset.code);
   const targetCodes  = results.map(r => r.code);
-  const isStructureSame = currentCodes.length > 0 && currentCodes.join(',') === targetCodes.join(',');
+  const isStructureSame = isStructureUnchanged('cardView', targetCodes);
   const isMobile   = window.matchMedia('(max-width:767px)').matches;
   const collapsed  = isMobile ? !mobileExpanded : allCollapsed;
 
@@ -198,45 +215,56 @@ function renderCards(results, fl, today, tradingDay) {
   });
 }
 
-// ---- 表格 HTML ----
+// ---- 表格 HTML (PC端) ----
 function buildTableInnerHtml(f, fl, today, tradingDay) {
-  if (f.error) return `<td><span class="tbl-drag">⠿</span><div style="display:inline-block;vertical-align:top"><div class="tbl-name" style="color:var(--t3)">${NAMES[f.code] || f.code}</div><div class="tbl-code">${f.code}</div></div></td><td colspan="2" style="color:var(--t3);font-size:12px">⚠ 获取超时</td><td><button class="tbl-del" onclick="delFund('${f.code}')">删除</button></td>`;
+  const dName = getDisplayName(f);
+  if (f.error) return `<td><span class="tbl-drag">⠿</span><div style="display:inline-block;vertical-align:top"><div class="tbl-name" style="color:var(--t3)">${dName}</div><div class="tbl-code">${f.code}</div></div></td><td colspan="2" style="color:var(--t3);font-size:12px">⚠ 获取超时</td><td><button class="tbl-del" onclick="delFund('${f.code}')">删除</button></td>`;
 
   const ep = fp(f.estPct), op = fp(f.offPct);
   const {ef, of2}  = (fl || {})[f.code] || {ef: '', of2: ''};
   const tblStale   = (f.estTime && f.estTime.slice(0,10) === today || tradingDay) && (!f.offDate || f.offDate.slice(0,10) < today);
 
-  return `<td><span class="tbl-drag">⠿</span><div style="display:inline-block;vertical-align:top"><div class="tbl-name">${f.name}</div><div class="tbl-code">${f.code}</div></div></td>
+  return `<td><span class="tbl-drag">⠿</span><div style="display:inline-block;vertical-align:top"><div class="tbl-name">${dName}</div><div class="tbl-code">${f.code}</div></div></td>
     <td><div class="tbl-pct ${ep.cls} ${ef}">${ep.txt}</div><div class="tbl-nav">净值 <span class="nv">${f.estVal || '--'}</span></div><div class="tbl-time">${f.estTime || '--'}</div></td>
-    <td style="${tblStale ? 'opacity:0.35;filter:grayscale(1)' : ''}"><div class="tbl-pct ${op.cls} ${of2}">${op.txt}</div><div class="tbl-nav">净值 <span class="nv">${f.offVal || '--'}</span></div><div class="tbl-time">${f.offDate || '--'}</div></td>
+    <td><div style="${tblStale ? 'opacity:0.35;filter:grayscale(1)' : ''}"><div class="tbl-pct ${op.cls} ${of2}">${op.txt}</div><div class="tbl-nav">净值 <span class="nv">${f.offVal || '--'}</span></div><div class="tbl-time">${f.offDate || '--'}</div></div></td>
     <td><button class="tbl-del" onclick="delFund('${f.code}')">删除</button></td>`;
 }
 
 function renderTable(results, fl, today, tradingDay) {
   const container = document.getElementById('fundTbody');
-  const currentCodes = Array.from(container.children).filter(c => c.dataset?.code).map(c => c.dataset.code);
   const targetCodes  = results.map(r => r.code);
-  const isStructureSame = currentCodes.length > 0 && currentCodes.join(',') === targetCodes.join(',');
+  const isStructureSame = isStructureUnchanged('fundTbody', targetCodes);
 
   if (!isStructureSame) {
-    container.innerHTML = results.map(f => `<tr data-code="${f.code}">${buildTableInnerHtml(f, fl, today, tradingDay)}</tr>`).join('');
+    container.innerHTML = results.map(f => {
+      const cc = (f.estPct != null && !f.error) ? (f.estPct > 0 ? 'up-row' : f.estPct < 0 ? 'down-row' : '') : '';
+      return `<tr class="${cc}" data-code="${f.code}">${buildTableInnerHtml(f, fl, today, tradingDay)}</tr>`;
+    }).join('');
     return;
   }
+  
   results.forEach(f => {
     const el = container.querySelector(`[data-code="${f.code}"]`);
-    if (el) el.innerHTML = buildTableInnerHtml(f, fl, today, tradingDay);
+    if (el) {
+      const cc = (f.estPct != null && !f.error) ? (f.estPct > 0 ? 'up-row' : f.estPct < 0 ? 'down-row' : '') : '';
+      el.className = cc;
+      el.innerHTML = buildTableInnerHtml(f, fl, today, tradingDay);
+    }
   });
 }
 
-// ---- 今日盈亏 ----
+// ---- 今日盈亏渲染 ----
 function renderTodayProfit(results, mktState, todayStr) {
-  const profitEl = document.getElementById('todayProfit');
-  if (!profitEl) return;
+  const profitElMobile = document.getElementById('todayProfit');
+  const profitElPc = document.getElementById('todayProfitPc');
+  if (!profitElMobile && !profitElPc) return;
+  
   const holdings = loadHoldings();
   const {totalProfit, totalYestVal, allUpdated, hasHoldings, isWaitingForOpen} = calcTodayProfit(results, holdings, mktState, todayStr);
 
+  let html = '';
   if (isWaitingForOpen) {
-    profitEl.innerHTML = `<span style="color:var(--t3)">-</span>`;
+    html = `<span style="color:var(--t3)">-</span>`;
   } else if (hasHoldings) {
     const sign   = totalProfit > 0 ? '+' : '';
     const cls    = totalProfit > 0 ? 'up' : totalProfit < 0 ? 'down' : 'flat';
@@ -245,13 +273,14 @@ function renderTodayProfit(results, mktState, todayStr) {
     const rightBlock = allUpdated
       ? `<span style="display:inline-flex;flex-direction:column;justify-content:center;align-items:flex-start;margin-left:6px"><span style="font-size:9px;color:var(--sell);font-weight:500;line-height:1.2;margin-bottom:1px">已更新</span><span class="num" style="font-size:11px;font-weight:600;line-height:1.2;color:var(--t2)">${pctText}</span></span>`
       : `<span class="num" style="font-size:13px;font-weight:600;margin-left:6px">${pctText}</span>`;
-    profitEl.innerHTML = `<span class="${cls}" style="display:flex;align-items:center">${sign}${totalProfit.toFixed(2)}</span>${rightBlock}`;
-  } else {
-    profitEl.innerHTML = '';
+    html = `<span class="${cls}" style="display:flex;align-items:center">${sign}${totalProfit.toFixed(2)}</span>${rightBlock}`;
   }
+
+  if (profitElMobile) profitElMobile.innerHTML = html;
+  if (profitElPc) profitElPc.innerHTML = html;
 }
 
-// ---- 渲染总调度 ----
+// ---- 总调度 ----
 function renderAll(results) {
   _lastResults = results;
   updatePeBar();
@@ -265,10 +294,18 @@ function renderAll(results) {
   renderCards(uiResults, fl, today, tradingDay);
   renderTable(uiResults, fl, today, tradingDay);
   renderTodayProfit(uiResults, mktState, today);
-  document.getElementById('cardHeaderBar').style.display = uiResults.length ? 'flex' : 'none';
+  
+  const chb = document.getElementById('cardHeaderBar');
+  if (chb) chb.style.display = uiResults.length ? 'flex' : 'none';
+  
+  const hasData = uiResults.length > 0;
+  const pcpa = document.getElementById('pcProfitArea');
+  if (pcpa) pcpa.style.visibility = hasData ? 'visible' : 'hidden';
+  const mrbp = document.getElementById('miniRefBtnPc');
+  if (mrbp) mrbp.style.visibility = hasData ? 'visible' : 'hidden';
 }
 
-// ---- 收窄/展开控制 ----
+// ---- 交互控制 ----
 function toggleAllCollapse() {
   if (window.matchMedia('(max-width:767px)').matches) {
     mobileExpanded = !mobileExpanded;
