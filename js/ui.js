@@ -130,7 +130,9 @@ function updatePeBar() {
       const diff     = eqData.equity - target;
       const sign     = diff > 0 ? '+' : '';
       const wrongDir = isEquityWrongDir(v, diff);
-      const col      = wrongDir ? 'var(--warn)' : (diff > 0 ? 'var(--sell)' : 'var(--buy)');
+      const isNeutral = Math.abs(diff) < 1 && !wrongDir; // 偏离1%以内属于待机区间
+      // 1%以内不变色（保持--t1），否则根据方向变色
+      const col      = wrongDir ? 'var(--warn)' : (isNeutral ? 'var(--t1)' : (diff > 0 ? 'var(--sell)' : 'var(--buy)'));
       _peDOM.eqDiv.innerHTML = `目标<b class="num">${target}%</b> 实际<b class="num" style="color:${col}">${eqData.equity.toFixed(2)}%</b> <span class="num" style="color:${col}">${sign}${diff.toFixed(2)}%</span>`;
       _peDOM.eqDiv.style.display = 'flex';
     } else {
@@ -139,12 +141,12 @@ function updatePeBar() {
   }
 
   if (v <= bounds.buyPct) {
-    _peDOM.display.className = 'pe-value pe-danger-dn'; _peDOM.status.textContent = '▲ 增权信号'; _peDOM.status.className = 'pe-status triggered-buy';
-    _peDOM.planBtn.className = 'pe-plan-btn buy'; _peDOM.planBtn.textContent = '增权';
+    _peDOM.display.className = 'pe-value pe-danger-dn'; _peDOM.status.textContent = '▲ 增权'; _peDOM.status.className = 'pe-status triggered-buy';
+    _peDOM.planBtn.className = 'pe-plan-btn buy'; _peDOM.planBtn.textContent = '预案';
     if (_peDOM.marker) _peDOM.marker.style.background = 'var(--buy)';
   } else if (v >= bounds.sellPct) {
-    _peDOM.display.className = 'pe-value pe-danger-up'; _peDOM.status.textContent = '▼ 降权信号'; _peDOM.status.className = 'pe-status triggered-sell';
-    _peDOM.planBtn.className = 'pe-plan-btn sell'; _peDOM.planBtn.textContent = '降权';
+    _peDOM.display.className = 'pe-value pe-danger-up'; _peDOM.status.textContent = '▼ 降权'; _peDOM.status.className = 'pe-status triggered-sell';
+    _peDOM.planBtn.className = 'pe-plan-btn sell'; _peDOM.planBtn.textContent = '预案';
     if (_peDOM.marker) _peDOM.marker.style.background = 'var(--sell)';
   } else {
     _peDOM.display.className = 'pe-value pe-normal'; _peDOM.status.textContent = '待机'; _peDOM.status.className = 'pe-status normal';
