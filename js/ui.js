@@ -95,7 +95,7 @@ function updatePeBar() {
   }
 
   const v = currentPE.value, bounds = currentPE.bounds;
-  display.innerHTML = `<span style="font-family:var(--f-num)">${v.toFixed(2)}%</span>`
+  display.innerHTML = `<span class="num">${v.toFixed(2)}%</span>`
     + (currentPE.isDynamic ? `<span style="font-size:10px;color:var(--accent);font-weight:600;margin-left:4px;vertical-align:top">实时</span>` : '');
 
   const PE_MID = (bounds.buyPct + bounds.sellPct) / 2;
@@ -116,7 +116,7 @@ function updatePeBar() {
       const sign     = diff > 0 ? '+' : '';
       const wrongDir = (v >= 65 && diff > dev) || (v < 65 && diff < -dev);
       const col      = wrongDir ? '#f87171' : (diff > 0 ? '#f59e0b' : '#60a5fa');
-      eqDiv.innerHTML = `目标<b style="font-family:var(--f-num)">${target}%</b> 实际<b style="color:${col};font-family:var(--f-num)">${eqData.equity.toFixed(2)}%</b> <span style="color:${col};font-family:var(--f-num)">${sign}${diff.toFixed(2)}%</span>`;
+      eqDiv.innerHTML = `目标<b class="num">${target}%</b> 实际<b class="num" style="color:${col}">${eqData.equity.toFixed(2)}%</b> <span class="num" style="color:${col}">${sign}${diff.toFixed(2)}%</span>`;
       eqDiv.style.display = 'flex';
     } else {
       eqDiv.style.display = 'none';
@@ -245,8 +245,8 @@ function renderTodayProfit(results, mktState, todayStr) {
     const pctVal = totalYestVal > 0 ? (totalProfit / totalYestVal) * 100 : null;
     const pctText = pctVal !== null ? `(${sign}${pctVal.toFixed(2)}%)` : '';
     const rightBlock = allUpdated
-      ? `<span style="display:inline-flex;flex-direction:column;justify-content:center;align-items:flex-start;margin-left:6px"><span style="font-size:9px;color:#d97706;font-weight:500;font-family:var(--f-zh);line-height:1.2;margin-bottom:1px">已更新</span><span style="font-size:11px;font-weight:600;line-height:1.2;color:var(--t2)">${pctText}</span></span>`
-      : `<span style="font-size:13px;font-weight:600;margin-left:6px">${pctText}</span>`;
+      ? `<span style="display:inline-flex;flex-direction:column;justify-content:center;align-items:flex-start;margin-left:6px"><span style="font-size:9px;color:#d97706;font-weight:500;line-height:1.2;margin-bottom:1px">已更新</span><span class="num" style="font-size:11px;font-weight:600;line-height:1.2;color:var(--t2)">${pctText}</span></span>`
+      : `<span class="num" style="font-size:13px;font-weight:600;margin-left:6px">${pctText}</span>`;
     profitEl.innerHTML = `<span class="${cls}" style="display:flex;align-items:center">${sign}${totalProfit.toFixed(2)}</span>${rightBlock}`;
   } else {
     profitEl.innerHTML = '';
