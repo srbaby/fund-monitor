@@ -245,7 +245,7 @@ function renderTodayProfit(results, mktState, todayStr) {
     const pctVal = totalYestVal > 0 ? (totalProfit / totalYestVal) * 100 : null;
     const pctText = pctVal !== null ? `(${sign}${pctVal.toFixed(2)}%)` : '';
     const rightBlock = allUpdated
-      ? `<span style="display:inline-flex;flex-direction:column;justify-content:center;align-items:flex-start;margin-left:6px"><span style="font-size:9px;color:#d97706;font-weight:500;line-height:1.2;margin-bottom:1px">已更新</span><span class="num" style="font-size:11px;font-weight:600;line-height:1.2;color:var(--t2)">${pctText}</span></span>`
+      ? `<span style="display:inline-flex;flex-direction:column;justify-content:center;align-items:flex-start;margin-left:6px"><span style="font-size:9px;color:var(--sell);font-weight:500;line-height:1.2;margin-bottom:1px">已更新</span><span class="num" style="font-size:11px;font-weight:600;line-height:1.2;color:var(--t2)">${pctText}</span></span>`
       : `<span class="num" style="font-size:13px;font-weight:600;margin-left:6px">${pctText}</span>`;
     profitEl.innerHTML = `<span class="${cls}" style="display:flex;align-items:center">${sign}${totalProfit.toFixed(2)}</span>${rightBlock}`;
   } else {
