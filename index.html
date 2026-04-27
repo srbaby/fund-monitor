@@ -11,7 +11,7 @@
   <title>Jany基金看板</title>
   <link rel="icon" href="favicon.png">
   <link rel="apple-touch-icon" href="favicon.png">
-  <link rel="stylesheet" href="css/style.css?v=1.1">
+  <link rel="stylesheet" href="css/style.css">
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 </head>
 <body>
@@ -57,7 +57,7 @@
     <div class="card-header-bar" id="cardHeaderBar">
       <div style="flex:1; display:flex; align-items:center; min-width:0; overflow:hidden; padding-right:12px;">
         <span class="chb-title" style="flex:none; padding-right:8px;">关注基金</span>
-        <span id="todayProfit" style="font-family:var(--f-num); font-size:16px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center;"></span>
+        <span id="todayProfit" class="num" style="font-size:16px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center;"></span>
       </div>
       <div class="chb-actions">
         <button class="chb-btn" id="miniRefBtn" onclick="refreshData()">↻ 刷新</button>
@@ -138,7 +138,7 @@
     </div>
     <div class="drawer-body" id="planDrawerBody"></div>
     <div class="drawer-footer">
-      <button style="flex:1;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:600;font-family:var(--f-zh);cursor:pointer" onclick="saveAndClosePlan()">保存预案</button>
+      <button class="drawer-footer-btn" onclick="saveAndClosePlan()">保存预案</button>
     </div>
   </div>
 
@@ -150,8 +150,8 @@
     </div>
     <div class="drawer-body" id="holdingDrawerBody"></div>
     <div class="drawer-footer">
-      <button style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--bd2);background:transparent;color:var(--t2);font-size:14px;font-family:var(--f-zh);cursor:pointer" onclick="closeAllDrawers()">取消</button>
-      <button style="flex:2;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:600;font-family:var(--f-zh);cursor:pointer" onclick="saveHoldings()">保存持仓</button>
+      <button class="drawer-footer-btn drawer-footer-btn--cancel" onclick="closeAllDrawers()">取消</button>
+      <button class="drawer-footer-btn drawer-footer-btn--primary" onclick="saveHoldings()">保存持仓</button>
     </div>
   </div>
 
