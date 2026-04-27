@@ -104,11 +104,11 @@ function openHoldingDrawer() {
   let html = `<div style="background:var(--bg3);border-radius:10px;padding:12px;margin-bottom:16px;border:1px solid var(--bd)">
     <div style="font-size:11px;color:var(--t3);margin-bottom:10px;font-weight:500;display:flex;align-items:center;gap:4px"><span>📊</span> 权益校对汇总</div>
     <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:12px">
-      <div><div style="font-size:10px;color:var(--t3);margin-bottom:4px">总市值</div><div style="font-family:var(--f-num);font-size:16px;font-weight:600;color:var(--t1)">${eqData ? fmtMoney(eqData.total) : '--'}</div></div>
-      <div><div style="font-size:10px;color:var(--t3);margin-bottom:4px">实际权益</div><div style="font-family:var(--f-num);font-size:16px;font-weight:600;color:${diffCol}">${eqData ? eqData.equity.toFixed(2) + '%' : '--'}</div></div>
-      <div><div style="font-size:10px;color:var(--t3);margin-bottom:4px">目标权益</div><div style="font-family:var(--f-num);font-size:16px;font-weight:600;color:var(--accent)">${targetEq != null ? targetEq + '%' : '输入PE'}</div></div>
+      <div><div style="font-size:10px;color:var(--t3);margin-bottom:4px">总市值</div><div style="font-size:16px;font-weight:600;color:var(--t1)">${eqData ? fmtMoney(eqData.total) : '--'}</div></div>
+      <div><div style="font-size:10px;color:var(--t3);margin-bottom:4px">实际权益</div><div style="font-size:16px;font-weight:600;color:${diffCol}">${eqData ? eqData.equity.toFixed(2) + '%' : '--'}</div></div>
+      <div><div style="font-size:10px;color:var(--t3);margin-bottom:4px">目标权益</div><div style="font-size:16px;font-weight:600;color:var(--accent)">${targetEq != null ? targetEq + '%' : '输入PE'}</div></div>
     </div>
-    ${diff != null ? `<div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--bd2);font-size:11px;color:var(--t2)">偏离评估：<span style="font-family:var(--f-num);font-weight:600;color:${diffCol}">${diff > 0 ? '+' : ''}${diff.toFixed(2)}%</span>${wrongDir ? '<span style="color:#f87171;margin-left:8px;font-weight:500">⚠️ 方向警告</span>' : ''}</div>` : ''}
+    ${diff != null ? `<div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--bd2);font-size:11px;color:var(--t2)">偏离评估：<span style="font-weight:600;color:${diffCol}">${diff > 0 ? '+' : ''}${diff.toFixed(2)}%</span>${wrongDir ? '<span style="color:#f87171;margin-left:8px;font-weight:500">⚠️ 方向警告</span>' : ''}</div>` : ''}
   </div>`;
 
   // 2. 资产价值明细
@@ -123,11 +123,11 @@ function openHoldingDrawer() {
     html += `<div style="display:grid;grid-template-columns: 2.5fr 2.2fr 0.8fr 2.2fr; gap:4px; align-items:center; padding:10px 12px; border-bottom:1px solid var(--bd); font-size:12px">
       <div style="overflow:hidden">
         <div style="font-weight:600;color:var(--t1);white-space:nowrap;text-overflow:ellipsis">${p.name}</div>
-        <div style="font-size:10px;color:var(--t3);margin-top:2px;white-space:nowrap"><span style="font-family:var(--f-num)">${shares.toFixed(2)}</span> 份 × <span style="font-family:var(--f-num)">${nav ? nav.toFixed(4) : '--'}</span></div>
+        <div style="font-size:10px;color:var(--t3);margin-top:2px;white-space:nowrap"><span class="num">${shares.toFixed(2)}</span> 份 × <span class="num">${nav ? nav.toFixed(4) : '--'}</span></div>
       </div>
-      <div style="text-align:right;font-family:var(--f-num);color:var(--t2);font-weight:500">${val ? fmtMoney(val) : '--'}</div>
-      <div style="text-align:right;font-size:10px;color:var(--t3)">×<span style="font-family:var(--f-num)">${Math.round(p.equity * 100)}%</span></div>
-      <div style="text-align:right;font-family:var(--f-num);font-weight:600;color:var(--accent)">${val ? fmtMoney(val * p.equity) : '--'}</div>
+      <div style="text-align:right;color:var(--t2);font-weight:500">${val ? fmtMoney(val) : '--'}</div>
+      <div style="text-align:right;font-size:10px;color:var(--t3)">×<span class="num">${Math.round(p.equity * 100)}%</span></div>
+      <div style="text-align:right;font-weight:600;color:var(--accent)">${val ? fmtMoney(val * p.equity) : '--'}</div>
     </div>`;
   });
   html += `</div></div>`;
@@ -142,10 +142,10 @@ function openHoldingDrawer() {
     html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--bg3);border-radius:10px;border:1px solid var(--bd)">
       <div>
         <div style="font-size:14px;font-weight:600;color:var(--t1)">${getProductName(p.code)}</div>
-        <div style="font-size:11px;color:var(--t3);margin-top:2px">${p.code} · 权益 <span style="font-family:var(--f-num)">${Math.round(p.equity * 100)}%</span></div>
+        <div style="font-size:11px;color:var(--t3);margin-top:2px">${p.code} · 权益 <span class="num">${Math.round(p.equity * 100)}%</span></div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
-        <input id="hi_${p.code}" type="number" step="0.01" style="width:120px;height:34px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);text-align:right;font-size:16px;font-family:var(--f-num);padding:0 10px" value="${shares.toFixed(2)}" placeholder="0.00">
+        <input id="hi_${p.code}" type="number" step="0.01" style="width:120px;height:34px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);text-align:right;font-size:16px;padding:0 10px" value="${shares.toFixed(2)}" placeholder="0.00">
         <span style="font-size:12px;color:var(--t3)">份</span>
       </div>
     </div>`;
@@ -195,14 +195,14 @@ function exportToken() {
   const textarea = document.createElement('textarea');
   textarea.value = token;
   textarea.readOnly = true;
-  textarea.style.cssText = 'width:100%;height:80px;background:var(--bg3);border:1px solid var(--bd2);border-radius:10px;color:var(--t1);font-family:var(--f-num);font-size:12px;padding:12px;outline:none;resize:none;word-break:break-all;';
+  textarea.className = 'token-textarea';
 
   const btnWrap = document.createElement('div');
   btnWrap.style.cssText = 'display:flex;gap:8px;margin-top:8px;';
 
   const copyBtn = document.createElement('button');
   copyBtn.textContent = '保存并确定';
-  copyBtn.style.cssText = 'flex:1;padding:10px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:600;font-family:var(--f-zh);cursor:pointer;';
+  copyBtn.className = 'modal-btn-zh';
   copyBtn.onclick = () => {
     textarea.select();
     textarea.setSelectionRange(0, 99999);
@@ -254,19 +254,19 @@ function importToken() {
 
   const textarea = document.createElement('textarea');
   textarea.placeholder = '请在此粘贴备份口令...';
-  textarea.style.cssText = 'width:100%;height:80px;background:var(--bg3);border:1px solid var(--bd2);border-radius:10px;color:var(--t1);font-family:var(--f-num);font-size:12px;padding:12px;outline:none;resize:none;word-break:break-all;';
+  textarea.className = 'token-textarea';
 
   const btnWrap = document.createElement('div');
   btnWrap.style.cssText = 'display:flex;gap:8px;margin-top:8px;';
 
   const cancelBtn = document.createElement('button');
   cancelBtn.textContent = '取消';
-  cancelBtn.style.cssText = 'flex:1;padding:10px;border-radius:10px;border:1px solid var(--bd2);background:transparent;color:var(--t2);font-size:14px;font-family:var(--f-zh);cursor:pointer;';
+  cancelBtn.className = 'modal-btn-cancel';
   cancelBtn.onclick = () => document.body.removeChild(modal);
 
   const confirmBtn = document.createElement('button');
   confirmBtn.textContent = '恢复配置';
-  confirmBtn.style.cssText = 'flex:2;padding:10px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:600;font-family:var(--f-zh);cursor:pointer;';
+  confirmBtn.className = 'modal-btn-zh'; confirmBtn.style.flex = '2';
   confirmBtn.onclick = () => {
     const str = textarea.value.trim();
     if (!str) return;
@@ -310,31 +310,31 @@ function renderPlanDrawer() {
   if (!buyData) return;
 
   let html = `<div style="background:var(--bg3);border-radius:10px;padding:10px 12px;margin-bottom:16px;border:1px solid var(--bd);font-size:12px;color:var(--t2)">
-    当前PE <b style="color:var(--t1);font-family:var(--f-num)">${currentPE.value.toFixed(2)}%</b>
-    · 当前权益 <b style="color:var(--t1);font-family:var(--f-num)">${buyData.currentEq.toFixed(2)}%</b>
-    · 总市值 <b style="color:var(--t1);font-family:var(--f-num)">${fmtMoney(buyData.totalVal)}</b>
+    当前PE <b style="color:var(--t1)">${currentPE.value.toFixed(2)}%</b>
+    · 当前权益 <b style="color:var(--t1)">${buyData.currentEq.toFixed(2)}%</b>
+    · 总市值 <b style="color:var(--t1)">${fmtMoney(buyData.totalVal)}</b>
   </div>
 
   <div style="margin-bottom:20px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="font-size:11px;font-weight:600;color:#60a5fa;background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.3);border-radius:6px;padding:2px 8px">▲ 增权预案评估</span></div>
     <div style="background:rgba(59,130,246,0.05);border:1px solid rgba(59,130,246,0.15);border-radius:10px;padding:12px">
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
-        <div><div style="font-size:10px;color:var(--t3)">当前权益</div><div style="font-family:var(--f-num);font-size:15px;font-weight:600">${buyData.currentEq.toFixed(2)}%</div></div>
-        <div><div style="font-size:10px;color:var(--t3)">触发后目标</div><div style="font-family:var(--f-num);font-size:15px;font-weight:600;color:#60a5fa">${buyData.targetEq}%</div></div>
-        <div><div style="font-size:10px;color:var(--t3)">需调配金额</div><div style="font-family:var(--f-num);font-size:15px;font-weight:600;color:#60a5fa">${fmtMoney(buyData.buyAmt)}</div></div>
+        <div><div style="font-size:10px;color:var(--t3)">当前权益</div><div style="font-size:15px;font-weight:600">${buyData.currentEq.toFixed(2)}%</div></div>
+        <div><div style="font-size:10px;color:var(--t3)">触发后目标</div><div style="font-size:15px;font-weight:600;color:#60a5fa">${buyData.targetEq}%</div></div>
+        <div><div style="font-size:10px;color:var(--t3)">需调配金额</div><div style="font-size:15px;font-weight:600;color:#60a5fa">${fmtMoney(buyData.buyAmt)}</div></div>
       </div>
       <div style="font-size:11px;color:var(--t3);margin-bottom:8px">资金筹集 (卖出 ${getProductName(SYS_CONFIG.CODE_XQ)})</div>
       <div style="padding:10px 12px;background:var(--bg3);border-radius:8px;border:1px solid rgba(240,68,68,0.3);display:flex;justify-content:space-between;align-items:center">
         <div style="font-size:14px;font-weight:600">卖出份数</div>
-        <div style="font-family:var(--f-num);font-size:15px;font-weight:700;color:var(--up)">${fmt(buyData.sellXqShares, 2)} 份</div>
+        <div style="font-size:15px;font-weight:700;color:var(--up)">${fmt(buyData.sellXqShares, 2)} 份</div>
       </div>
       <div style="font-size:11px;color:var(--t3);margin:16px 0 8px">目标分配 (优先A500C，溢出至中证500C)</div>
       <div style="display:flex;flex-direction:column;gap:6px">
         <div style="padding:10px 12px;background:var(--bg3);border-radius:8px;border:1px solid rgba(59,130,246,0.3);display:flex;justify-content:space-between;align-items:center">
           <div><div style="font-size:14px;font-weight:600">买入 A500C</div><div style="font-size:10px;color:var(--t3)">~${fmt(buyData.allocA500C / buyData.a500cNav, 2)} 份</div></div>
-          <div style="font-family:var(--f-num);font-size:15px;font-weight:700;color:#60a5fa">${fmtMoney(buyData.allocA500C)}</div>
+          <div style="font-size:15px;font-weight:700;color:#60a5fa">${fmtMoney(buyData.allocA500C)}</div>
         </div>
-        ${buyData.allocZZ500C > 1 ? `<div style="padding:10px 12px;background:var(--bg3);border-radius:8px;border:1px solid rgba(59,130,246,0.3);display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:14px;font-weight:600">买入 中证500C</div><div style="font-size:10px;color:var(--t3)">~${fmt(buyData.allocZZ500C / buyData.zz500cNav, 2)} 份</div></div><div style="font-family:var(--f-num);font-size:15px;font-weight:700;color:#60a5fa">${fmtMoney(buyData.allocZZ500C)}</div></div>` : ''}
+        ${buyData.allocZZ500C > 1 ? `<div style="padding:10px 12px;background:var(--bg3);border-radius:8px;border:1px solid rgba(59,130,246,0.3);display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:14px;font-weight:600">买入 中证500C</div><div style="font-size:10px;color:var(--t3)">~${fmt(buyData.allocZZ500C / buyData.zz500cNav, 2)} 份</div></div><div style="font-size:15px;font-weight:700;color:#60a5fa">${fmtMoney(buyData.allocZZ500C)}</div></div>` : ''}
       </div>
     </div>
   </div>
@@ -348,7 +348,7 @@ function renderPlanDrawer() {
   equityProducts.forEach(p => {
     const isPri = window._prioritySellCode === p.code;
     html += `<div style="padding:10px 12px;background:var(--bg3);border-radius:10px;margin-bottom:8px;border:1px solid var(--bd);display:flex;flex-direction:column;gap:6px">
-      <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:14px;font-weight:600">${getProductName(p.code)}</div><div id="sell_calc_shares_${p.code}" style="font-family:var(--f-num);font-weight:600;color:var(--t3)">-- 份</div></div>
+      <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:14px;font-weight:600">${getProductName(p.code)}</div><div id="sell_calc_shares_${p.code}" style="font-weight:600;color:var(--t3)">-- 份</div></div>
       <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:10px;color:var(--t3)">持仓: ${(holdings[p.code] || 0).toFixed(2)} 份</div><div id="sell_calc_fiat_${p.code}" style="font-size:11px;color:var(--t3)">-- 元</div></div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
         <button class="pri-btn" data-code="${p.code}" onclick="togglePrioritySell('${p.code}')" style="font-size:11px;height:24px;width:72px;border-radius:6px;border:1px solid ${isPri ? '#f59e0b' : 'var(--bd2)'};background:${isPri ? 'rgba(245,158,11,0.1)' : 'transparent'};color:${isPri ? '#f59e0b' : 'var(--t3)'};cursor:pointer">${isPri ? '★ 优先' : '☆ 优先'}</button>
@@ -374,9 +374,9 @@ function calcSellPreview() {
   const summaryEl = document.getElementById('sell_summary_area');
   if (summaryEl && !draft.error) {
     summaryEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
-      <div><div style="font-size:10px;color:var(--t3)">当前权益</div><div style="font-family:var(--f-num);font-size:15px;font-weight:600">${draft.currentEq.toFixed(2)}%</div></div>
-      <div><div style="font-size:10px;color:var(--t3)">触发后目标</div><div style="font-family:var(--f-num);font-size:15px;font-weight:600;color:#f87171">${draft.targetEq}%</div></div>
-      <div><div style="font-size:10px;color:var(--t3)">需减比例</div><div style="font-family:var(--f-num);font-size:15px;font-weight:600;color:#f59e0b">${draft.diffEqPct.toFixed(2)}%</div></div>
+      <div><div style="font-size:10px;color:var(--t3)">当前权益</div><div style="font-size:15px;font-weight:600">${draft.currentEq.toFixed(2)}%</div></div>
+      <div><div style="font-size:10px;color:var(--t3)">触发后目标</div><div style="font-size:15px;font-weight:600;color:#f87171">${draft.targetEq}%</div></div>
+      <div><div style="font-size:10px;color:var(--t3)">需减比例</div><div style="font-size:15px;font-weight:600;color:#f59e0b">${draft.diffEqPct.toFixed(2)}%</div></div>
     </div>`;
   }
 
@@ -395,9 +395,9 @@ function calcSellPreview() {
   const resultEl = document.getElementById('sell_preview_result');
   if (draft.hasAnySell) {
     resultEl.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px">
-      <div><div style="color:var(--t3);font-size:10px">操作后权益</div><div style="font-family:var(--f-num);font-weight:700;font-size:16px;color:#22c55e">${draft.afterEqPct.toFixed(2)}%</div></div>
-      <div><div style="color:var(--t3);font-size:10px">转出到账</div><div style="font-family:var(--f-num);font-weight:600;font-size:15px">${fmtMoney(draft.totalCashOut)}</div></div>
-      <div><div style="color:var(--t3);font-size:10px">总摩擦</div><div style="font-family:var(--f-num);font-weight:600;font-size:15px;color:#f87171">${fmtMoney(draft.totalFriction)}</div></div>
+      <div><div style="color:var(--t3);font-size:10px">操作后权益</div><div style="font-weight:700;font-size:16px;color:#22c55e">${draft.afterEqPct.toFixed(2)}%</div></div>
+      <div><div style="color:var(--t3);font-size:10px">转出到账</div><div style="font-weight:600;font-size:15px">${fmtMoney(draft.totalCashOut)}</div></div>
+      <div><div style="color:var(--t3);font-size:10px">总摩擦</div><div style="font-weight:600;font-size:15px;color:#f87171">${fmtMoney(draft.totalFriction)}</div></div>
     </div>`;
   } else {
     resultEl.innerHTML = `<span style="font-size:12px;color:var(--t3)">请填写比例或设为优先卖出</span>`;
