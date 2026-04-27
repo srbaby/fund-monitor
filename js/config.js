@@ -5,20 +5,21 @@
 
 // ---- 系统参数 ----
 const SYS_CONFIG = {
-  FEE:          0.005,   // 全局摩擦费率
-  BUFFER_ZONE:    1.8,     // PE信号死区缓冲
-  EQUITY_DEV_LIMIT: 1.8, // 权益偏离警告阈值
-  CODE_XQ:      '003949', // 资金来源：兴全中长债
-  CODE_A500:    '022439', // 增权优先品种：A500C
-  CODE_ZZ500:   '000500', // 增权溢出品种：中证500C
-  LIMIT_A500C:  0.20,    // A500C单品持仓上限（占总资产）
-  REFRESH_IDX:  10000,   // 指数刷新间隔（ms）
-  REFRESH_API:  60000,   // 基金数据刷新间隔（ms）
-  T_PRE_MARKET: 540,     // 盘前开始（分钟）09:00
-  T_OPEN:       570,     // 开盘（分钟）09:30
-  T_MID_BREAK:  690,     // 午休开始（分钟）11:30
-  T_AFTERNOON:  780,     // 下午开盘（分钟）13:00
-  T_CLOSE:      900      // 收盘（分钟）15:00
+  FEE:               0.005,  // 全局摩擦费率
+  BUFFER_ZONE:       1.8,    // PE信号死区缓冲
+  EQUITY_DEV_LIMIT:  1.8,   // 权益偏离警告阈值
+  PE_HIGH_THRESHOLD: 65,    // 权益方向判断分界线（高于此值为高估区）
+  CODE_XQ:      '003949',   // 资金来源：兴全中长债
+  CODE_A500:    '022439',   // 增权优先品种：A500C
+  CODE_ZZ500:   '000500',   // 增权溢出品种：中证500C
+  LIMIT_A500C:  0.20,       // A500C单品持仓上限（占总资产）
+  REFRESH_IDX:  10000,      // 指数刷新间隔（ms）
+  REFRESH_API:  60000,      // 基金数据刷新间隔（ms）
+  T_PRE_MARKET: 540,        // 盘前开始（分钟）09:00
+  T_OPEN:       570,        // 开盘（分钟）09:30
+  T_MID_BREAK:  690,        // 午休开始（分钟）11:30
+  T_AFTERNOON:  780,        // 下午开盘（分钟）13:00
+  T_CLOSE:      900         // 收盘（分钟）15:00
 };
 
 // ---- 市场常量 ----
@@ -95,20 +96,9 @@ const PE_EQUITY_TABLE = [
   {lo:  0, hi: 30,  target: 80}
 ];
 
-// ---- 默认持仓（新设备首次加载，默认为0，依赖口令恢复或手动输入）----
-const DEFAULT_HOLDINGS = {
-  [SYS_CONFIG.CODE_XQ]:   0,
-  '160622':                0,
-  '007466':                0,
-  '011554':                0,
-  '110027':                0,
-  '004496':                0,
-  [SYS_CONFIG.CODE_A500]:  0,
-  [SYS_CONFIG.CODE_ZZ500]: 0
-};
-
 // ---- localStorage Key ----
-const STORE_CODES     = 'fm_v20';
-const STORE_PE        = 'jy_pe_v2_lagrange';
-const STORE_HOLDINGS  = 'jy_holdings_v1';
-const STORE_SELL_PLAN = 'jy_sell_plan_v1';
+const STORE_CODES         = 'fm_v20';
+const STORE_PE            = 'jy_pe_v2_lagrange';
+const STORE_HOLDINGS      = 'jy_holdings_v1';
+const STORE_SELL_PLAN     = 'jy_sell_plan_v1';
+const STORE_PRIORITY_SELL = 'jy_priority_sell_v1';
