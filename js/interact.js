@@ -1,4 +1,4 @@
-// interact.js - 控制器层
+// Jany 基金看板 - 控制器层
 // 职责：接收用户操作，从 store/data 取数，调用 engine 计算，交给 ui 渲染
 // 不写计算公式，不写 HTML，不直接改状态
 
@@ -15,29 +15,31 @@ function closeAllDrawers() {
 }
 
 // ---- 公共复用模块 (UI Helpers) ----
-// 生成抽屉顶部的“当前PE / 当前权益 / 总市值”三列核心数据汇总
+// 生成抽屉顶部的“持仓总额 / 当前PE / 当前权益 / 目标权益” 四列核心数据汇总
 function _buildSummaryHtml(pe, eqData, targetEq, currentEqVal, eqCol) {
   const totalStr = eqData ? fmtMoney(eqData.total) : "--";
   const curEqStr = currentEqVal != null ? fmt(currentEqVal, 2) + "%" : "--";
   const peStr = pe != null ? fmt(pe.value, 2) + "%" : "--";
 
   let html = `<div class="dr-card dr-pad dr-sec dr-summary-box">
-    <div class="dr-summary-item"><div class="dr-lbl">当前PE</div><div class="dr-val">${peStr}</div></div>
-    <div class="dr-summary-item divider"><div class="dr-lbl">当前权益</div><div class="dr-val" style="color:${eqCol}">${curEqStr}</div></div>`;
+    <div class="dr-summary-item"><div class="dr-lbl">持仓总额</div><div class="dr-val" style="color:var(--accent)">${totalStr}</div></div>
+    <div class="dr-summary-item" style="border-left:1px solid var(--bd2); border-right:1px solid var(--bd2); padding:0 4px;"><div class="dr-lbl">当前PE</div><div class="dr-val">${peStr}</div></div>
+    <div class="dr-summary-item"><div class="dr-lbl">当前权益</div><div class="dr-val" style="color:${eqCol}">${curEqStr}</div></div>
+    <div class="dr-summary-item" style="border-left:1px solid var(--bd2); padding-left:4px;">`;
   
   if (targetEq != null) {
-      // 预案抽屉：显示总市值
-      html += `<div class="dr-summary-item"><div class="dr-lbl">总市值</div><div class="dr-val">${totalStr}</div></div></div>`;
+      // 预案抽屉：第4列显示预案状态
+      html += `<div class="dr-lbl">预案状态</div><div class="dr-val">${targetEq}</div></div></div>`;
   } else {
-      // 持仓抽屉：如果没传 targetEq 参数，展示带 Badge 的目标权益
+      // 持仓抽屉：第4列展示带 Badge 的目标权益
       const targetStr = getDynamicTarget("neutral") + "%";
       const diff = eqData ? eqData.equity - getDynamicTarget("neutral") : null;
       const wrongDir = isEquityWrongDir(pe?.value, diff);
       const isNeutral = diff != null && Math.abs(diff) < 1 && !wrongDir;
       const bBg = wrongDir ? "var(--up-dim)" : isNeutral ? "transparent" : diff > 0 ? "var(--sell-bg)" : "var(--buy-bg)";
       const bBd = wrongDir ? "var(--up-bd)" : isNeutral ? "var(--bd2)" : diff > 0 ? "var(--sell-bd)" : "var(--buy-bd)";
-      
-      html += `<div class="dr-summary-item"><div class="dr-lbl">目标权益</div><div style="display:flex;align-items:center;gap:6px;"><span class="dr-val">${targetStr}</span>
+
+      html += `<div class="dr-lbl">目标权益</div><div style="display:flex;align-items:center;justify-content:center;gap:4px;"><span class="dr-val">${targetStr}</span>
         ${diff != null ? `<span class="dr-badge" style="color:${eqCol};background:${bBg};border-color:${bBd}">${(diff > 0 ? "+" : "")}${fmt(diff, 2)}%</span>` : ''}
       </div></div></div>`;
   }
@@ -102,7 +104,6 @@ function _showDialog(options) {
 
 // ---- 数据刷新 ----
 let _isFetchingData = false;
-let _lastFundsStr = "";
 
 async function refreshData() {
   if (_isFetchingData) return;
@@ -134,33 +135,29 @@ async function refreshData() {
     const results = await Promise.all(funds.map(fetchSingleFund));
     renderAll(results);
 
-    const currentFundsStr = funds.join(',');
-    if (!cardSortable || !tblSortable || _lastFundsStr !== currentFundsStr) {
-      if (cardSortable) cardSortable.destroy();
-      if (tblSortable) tblSortable.destroy();
-      const onEnd = (evt) => {
-        const o = Array.from(evt.to.children)
-          .map((el) => el.dataset.code)
-          .filter(Boolean);
-        if (o.length === funds.length) {
-          funds = o;
-          saveFunds();
-        }
-      };
-      cardSortable = Sortable.create(document.getElementById("cardView"), {
-        handle: ".drag-handle",
-        animation: 200,
-        ghostClass: "sortable-ghost",
-        onEnd,
-      });
-      tblSortable = Sortable.create(document.getElementById("fundTbody"), {
-        handle: ".tbl-drag",
-        animation: 200,
-        ghostClass: "sortable-ghost",
-        onEnd,
-      });
-      _lastFundsStr = currentFundsStr;
-    }
+    if (cardSortable) cardSortable.destroy();
+    if (tblSortable) tblSortable.destroy();
+    const onEnd = (evt) => {
+      const o = Array.from(evt.to.children)
+        .map((el) => el.dataset.code)
+        .filter(Boolean);
+      if (o.length === funds.length) {
+        funds = o;
+        saveFunds();
+      }
+    };
+    cardSortable = Sortable.create(document.getElementById("cardView"), {
+      handle: ".drag-handle",
+      animation: 200,
+      ghostClass: "sortable-ghost",
+      onEnd,
+    });
+    tblSortable = Sortable.create(document.getElementById("fundTbody"), {
+      handle: ".tbl-drag",
+      animation: 200,
+      ghostClass: "sortable-ghost",
+      onEnd,
+    });
   } finally {
     _isFetchingData = false;
     if (miniRefBtn) {
@@ -255,7 +252,10 @@ function openHoldingDrawer() {
   const isNeutral = diff != null && Math.abs(diff) < 1 && !wrongDir;
   const diffCol = diff == null ? "var(--t3)" : wrongDir ? "var(--warn)" : isNeutral ? "var(--t1)" : diff > 0 ? "var(--sell)" : "var(--buy)";
 
-  // 1. 顶部汇总
+  // 统一声明的共享网格，保证上下区域 100% 像素级对齐
+  const gridStyle = 'display:grid; grid-template-columns: minmax(70px, 1.3fr) minmax(65px, 1fr) 52px minmax(85px, 1.2fr); gap:8px;';
+
+  // 1. 顶部汇总 (已恢复 4 列布局)
   let html = `<div class="dr-header"><span class="dr-tag">📊 权益校对汇总</span></div>`;
   html += _buildSummaryHtml(currentPE, eqData, null, eqData?.equity, diffCol);
 
@@ -270,7 +270,7 @@ function openHoldingDrawer() {
       <span class="dr-lbl">权益总额 <span class="dr-val" style="color:var(--accent);font-size:13px">${eqAmtStr}</span></span>
     </div>
     <div class="dr-card" style="padding:4px 0">
-      <div class="dr-grid-holding" style="padding:8px 12px; border-bottom:1px solid var(--bd2); font-size:11px; color:var(--t3); font-weight:500;">
+      <div style="${gridStyle} padding:8px 12px; border-bottom:1px solid var(--bd2); font-size:11px; color:var(--t3); font-weight:500;">
         <div>产品</div>
         <div style="text-align:right">市值</div>
         <div style="text-align:right">权益档</div>
@@ -285,7 +285,7 @@ function openHoldingDrawer() {
     const isLast = idx === activeProds.length - 1;
     
     html += `
-      <div class="dr-grid-holding" style="align-items:center; padding:12px; ${isLast ? '' : 'border-bottom:1px solid var(--bd);'}">
+      <div style="${gridStyle} align-items:center; padding:12px; ${isLast ? '' : 'border-bottom:1px solid var(--bd);'}">
         <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
         <div class="dr-val" style="text-align:right;font-size:13px;font-weight:500;color:var(--t2)">${val ? fmtMoney(val) : "--"}</div>
         <div style="text-align:right;"><span class="dr-badge gray">${fmt(p.equity, 2)}</span></div>
@@ -294,12 +294,12 @@ function openHoldingDrawer() {
   });
   html += `</div></div>`;
 
-  // 3. 持仓录入
+  // 3. 持仓录入 (复用网格模板，交换权益与份额，右对齐代码)
   html += `
   <div class="dr-sec">
     <div class="dr-header"><span class="dr-tag">⚙️ 持仓配置</span></div>
     <div class="dr-card">
-      <div class="dr-grid-holding" style="padding:10px 12px; border-bottom:1px solid var(--bd); background:var(--bg4); font-size:11px; color:var(--t3); font-weight:500;">
+      <div style="${gridStyle} padding:10px 12px; border-bottom:1px solid var(--bd); background:var(--bg4); font-size:11px; color:var(--t3); font-weight:500;">
         <div>产品</div>
         <div style="text-align:right;">代码</div>
         <div style="text-align:right;">权益档</div>
@@ -318,7 +318,7 @@ function openHoldingDrawer() {
     const borderB = isLast ? '' : 'border-bottom:1px dashed var(--bd2);';
 
     html += `
-      <div class="dr-grid-holding" style="align-items:center; padding:12px; ${borderB}">
+      <div style="${gridStyle} align-items:center; padding:12px; ${borderB}">
         <div style="min-width:0;"><input id="sn_${p.code}" type="text" maxlength="10" class="dr-input-ghost" style="width:100%; font-size:13px;" value="${shortName}" placeholder="${namePlaceholder}"></div>
         <div style="text-align:right;"><span class="dr-badge gray" style="font-weight:400; padding:3px 4px; font-size:10px;">${p.code}</span></div>
         <div style="min-width:0;"><input id="eq_${p.code}" type="number" step="0.01" min="0" max="1" class="dr-input-ghost num" style="width:100%; text-align:right; font-size:15px; color:var(--accent);" value="${eqVal.toFixed(2)}" placeholder="0.00"></div>
