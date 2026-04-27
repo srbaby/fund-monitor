@@ -15,23 +15,21 @@ function closeAllDrawers() {
 }
 
 // ---- 公共复用模块 (UI Helpers) ----
-// 生成抽屉顶部的“持仓总额 / 当前PE / 当前权益 / 目标权益” 四列核心数据汇总
+// 生成抽屉顶部的“持仓总额 / 当前权益 / 目标权益或预案状态” 三列核心数据汇总
 function _buildSummaryHtml(pe, eqData, targetEq, currentEqVal, eqCol) {
   const totalStr = eqData ? fmtMoney(eqData.total) : "--";
   const curEqStr = currentEqVal != null ? fmt(currentEqVal, 2) + "%" : "--";
-  const peStr = pe != null ? fmt(pe.value, 2) + "%" : "--";
 
   let html = `<div class="dr-card dr-pad dr-sec dr-summary-box">
-    <div class="dr-summary-item"><div class="dr-lbl">持仓总额</div><div class="dr-val" style="color:var(--accent)">${totalStr}</div></div>
-    <div class="dr-summary-item" style="border-left:1px solid var(--bd2); border-right:1px solid var(--bd2); padding:0 4px;"><div class="dr-lbl">当前PE</div><div class="dr-val">${peStr}</div></div>
-    <div class="dr-summary-item"><div class="dr-lbl">当前权益</div><div class="dr-val" style="color:${eqCol}">${curEqStr}</div></div>
-    <div class="dr-summary-item" style="border-left:1px solid var(--bd2); padding-left:4px;">`;
+    <div class="dr-summary-item"><div class="dr-lbl">持仓总额</div><div class="dr-val" style="color:var(--accent); font-weight:600;">${totalStr}</div></div>
+    <div class="dr-summary-item" style="border-left:1px solid var(--bd2); border-right:1px solid var(--bd2); padding:0 4px;"><div class="dr-lbl">当前权益</div><div class="dr-val" style="color:${eqCol}; font-weight:600;">${curEqStr}</div></div>
+    <div class="dr-summary-item">`;
   
   if (targetEq != null) {
-      // 预案抽屉：第4列显示预案状态
-      html += `<div class="dr-lbl">预案状态</div><div class="dr-val">${targetEq}</div></div></div>`;
+      // 预案抽屉：第3列显示预案状态
+      html += `<div class="dr-lbl">预案状态</div><div class="dr-val" style="font-weight:600;">${targetEq}</div></div></div>`;
   } else {
-      // 持仓抽屉：第4列展示带 Badge 的目标权益
+      // 持仓抽屉：第3列展示带 Badge 的目标权益
       const targetStr = getDynamicTarget("neutral") + "%";
       const diff = eqData ? eqData.equity - getDynamicTarget("neutral") : null;
       const wrongDir = isEquityWrongDir(pe?.value, diff);
@@ -39,8 +37,8 @@ function _buildSummaryHtml(pe, eqData, targetEq, currentEqVal, eqCol) {
       const bBg = wrongDir ? "var(--up-dim)" : isNeutral ? "transparent" : diff > 0 ? "var(--sell-bg)" : "var(--buy-bg)";
       const bBd = wrongDir ? "var(--up-bd)" : isNeutral ? "var(--bd2)" : diff > 0 ? "var(--sell-bd)" : "var(--buy-bd)";
 
-      html += `<div class="dr-lbl">目标权益</div><div style="display:flex;align-items:center;justify-content:center;gap:4px;"><span class="dr-val">${targetStr}</span>
-        ${diff != null ? `<span class="dr-badge" style="color:${eqCol};background:${bBg};border-color:${bBd}">${(diff > 0 ? "+" : "")}${fmt(diff, 2)}%</span>` : ''}
+      html += `<div class="dr-lbl">目标权益</div><div style="display:flex;align-items:center;justify-content:center;gap:4px;"><span class="dr-val" style="font-weight:600;">${targetStr}</span>
+        ${diff != null ? `<span class="dr-badge" style="color:${eqCol};background:${bBg};border-color:${bBd};font-weight:500;">${(diff > 0 ? "+" : "")}${fmt(diff, 2)}%</span>` : ''}
       </div></div></div>`;
   }
   return html;
@@ -252,25 +250,22 @@ function openHoldingDrawer() {
   const isNeutral = diff != null && Math.abs(diff) < 1 && !wrongDir;
   const diffCol = diff == null ? "var(--t3)" : wrongDir ? "var(--warn)" : isNeutral ? "var(--t1)" : diff > 0 ? "var(--sell)" : "var(--buy)";
 
-  // 统一声明的共享网格，保证上下区域 100% 像素级对齐
   const gridStyle = 'display:grid; grid-template-columns: minmax(70px, 1.3fr) minmax(65px, 1fr) 52px minmax(85px, 1.2fr); gap:8px;';
 
-  // 1. 顶部汇总 (已恢复 4 列布局)
-  let html = `<div class="dr-header"><span class="dr-tag">📊 权益校对汇总</span></div>`;
+  let html = `<div class="dr-header"><span class="dr-tag" style="font-weight:500;">📊 权益校对汇总</span></div>`;
   html += _buildSummaryHtml(currentPE, eqData, null, eqData?.equity, diffCol);
 
-  // 2. 资产价值明细
   const eqAmt = eqData ? (eqData.total * eqData.equity) / 100 : null;
   const eqAmtStr = eqAmt != null ? fmtMoney(eqAmt) : "--";
   
   html += `
   <div class="dr-sec">
     <div class="dr-header">
-      <span class="dr-tag">📋 资产价值明细</span>
-      <span class="dr-lbl">权益总额 <span class="dr-val" style="color:var(--accent);font-size:13px">${eqAmtStr}</span></span>
+      <span class="dr-tag" style="font-weight:500;">📋 资产价值明细</span>
+      <span class="dr-lbl">权益总额 <span class="dr-val" style="color:var(--accent);font-size:13px;font-weight:500;">${eqAmtStr}</span></span>
     </div>
     <div class="dr-card" style="padding:4px 0">
-      <div style="${gridStyle} padding:8px 12px; border-bottom:1px solid var(--bd2); font-size:11px; color:var(--t3); font-weight:500;">
+      <div style="${gridStyle} padding:8px 12px; border-bottom:1px solid var(--bd2); font-size:11px; color:var(--t3); font-weight:400;">
         <div>产品</div>
         <div style="text-align:right">市值</div>
         <div style="text-align:right">权益档</div>
@@ -286,20 +281,19 @@ function openHoldingDrawer() {
     
     html += `
       <div style="${gridStyle} align-items:center; padding:12px; ${isLast ? '' : 'border-bottom:1px solid var(--bd);'}">
-        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
-        <div class="dr-val" style="text-align:right;font-size:13px;font-weight:500;color:var(--t2)">${val ? fmtMoney(val) : "--"}</div>
-        <div style="text-align:right;"><span class="dr-badge gray">${fmt(p.equity, 2)}</span></div>
-        <div class="dr-val" style="text-align:right;font-size:13px;color:var(--accent)">${val && p.equity > 0 ? fmtMoney(val * p.equity) : p.equity === 0 ? "¥0.00" : "--"}</div>
+        <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
+        <div class="dr-val" style="text-align:right;font-size:13px;font-weight:400;color:var(--t2)">${val ? fmtMoney(val) : "--"}</div>
+        <div style="text-align:right;"><span class="dr-badge gray" style="font-weight:400;">${fmt(p.equity, 2)}</span></div>
+        <div class="dr-val" style="text-align:right;font-size:13px;color:var(--accent);font-weight:400;">${val && p.equity > 0 ? fmtMoney(val * p.equity) : p.equity === 0 ? "¥0.00" : "--"}</div>
       </div>`;
   });
   html += `</div></div>`;
 
-  // 3. 持仓录入 (复用网格模板，交换权益与份额，右对齐代码)
   html += `
   <div class="dr-sec">
-    <div class="dr-header"><span class="dr-tag">⚙️ 持仓配置</span></div>
+    <div class="dr-header"><span class="dr-tag" style="font-weight:500;">⚙️ 持仓配置</span></div>
     <div class="dr-card">
-      <div style="${gridStyle} padding:10px 12px; border-bottom:1px solid var(--bd); background:var(--bg4); font-size:11px; color:var(--t3); font-weight:500;">
+      <div style="${gridStyle} padding:10px 12px; border-bottom:1px solid var(--bd); background:var(--bg4); font-size:11px; color:var(--t3); font-weight:400;">
         <div>产品</div>
         <div style="text-align:right;">代码</div>
         <div style="text-align:right;">权益档</div>
@@ -319,15 +313,14 @@ function openHoldingDrawer() {
 
     html += `
       <div style="${gridStyle} align-items:center; padding:12px; ${borderB}">
-        <div style="min-width:0;"><input id="sn_${p.code}" type="text" maxlength="10" class="dr-input-ghost" style="width:100%; font-size:13px;" value="${shortName}" placeholder="${namePlaceholder}"></div>
+        <div style="min-width:0;"><input id="sn_${p.code}" type="text" maxlength="10" class="dr-input-ghost" style="width:100%; font-size:13px; font-weight:500;" value="${shortName}" placeholder="${namePlaceholder}"></div>
         <div style="text-align:right;"><span class="dr-badge gray" style="font-weight:400; padding:3px 4px; font-size:10px;">${p.code}</span></div>
-        <div style="min-width:0;"><input id="eq_${p.code}" type="number" step="0.01" min="0" max="1" class="dr-input-ghost num" style="width:100%; text-align:right; font-size:15px; color:var(--accent);" value="${eqVal.toFixed(2)}" placeholder="0.00"></div>
-        <div style="min-width:0;"><input id="hi_${p.code}" type="number" step="0.01" class="dr-input-ghost num" style="width:100%; text-align:right; font-size:15px;" value="${shares > 0 ? shares.toFixed(2) : ""}" placeholder="0.00"></div>
+        <div style="min-width:0;"><input id="eq_${p.code}" type="number" step="0.01" min="0" max="1" class="dr-input-ghost num" style="width:100%; text-align:right; font-size:15px; color:var(--accent); font-weight:400;" value="${eqVal.toFixed(2)}" placeholder="0.00"></div>
+        <div style="min-width:0;"><input id="hi_${p.code}" type="number" step="0.01" class="dr-input-ghost num" style="width:100%; text-align:right; font-size:15px; font-weight:400;" value="${shares > 0 ? shares.toFixed(2) : ""}" placeholder="0.00"></div>
       </div>`;
   });
   html += `</div></div></div>`;
 
-  // 4. 底部按钮
   html += `
   <div style="display:flex;gap:10px;margin-top:24px">
     <button onclick="exportToken()" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--bd2);background:var(--bg3);color:var(--t2);font-size:13px;font-weight:500;cursor:pointer;">🔑 导出</button>
@@ -439,41 +432,66 @@ function renderPlanDrawer() {
   const isNeutral = Math.abs(diff) < 1 && !wrongDir;
   const curEqCol = wrongDir ? "var(--warn)" : isNeutral ? "var(--t1)" : diff > 0 ? "var(--sell)" : "var(--buy)";
 
-  // 1. 顶部汇总
-  let html = _buildSummaryHtml(currentPE, {total: buyData.totalVal}, "预案模式", buyData.currentEq, curEqCol);
+  let activeAction = 'none'; 
+  let planStatusHtml = '<span style="color:var(--t1); font-weight:600;">待机</span>';
 
-  // 2. 增权预案
+  if (currentPE && currentPE.bounds) {
+      if (currentPE.value <= currentPE.bounds.buyPct) {
+          activeAction = 'buy';
+          planStatusHtml = '<span style="color:var(--buy); font-weight:600;">▲ 增权</span>';
+      } else if (currentPE.value >= currentPE.bounds.sellPct) {
+          activeAction = 'sell';
+          planStatusHtml = '<span style="color:var(--sell); font-weight:600;">▼ 降权</span>';
+      }
+  }
+
+  if (activeAction === 'none' && !isNeutral) {
+      if (diff > 0) {
+          activeAction = 'sell';
+          planStatusHtml = '<span style="color:var(--sell); font-weight:600;">▼ 降权</span>';
+      } else if (diff < 0) {
+          activeAction = 'buy';
+          planStatusHtml = '<span style="color:var(--buy); font-weight:600;">▲ 增权</span>';
+      }
+  }
+
+  const inactiveStyle = 'opacity:0.4; filter:grayscale(1); pointer-events:none; transition:all 0.3s ease;';
+  const activeStyle = 'transition:all 0.3s ease;';
+  const buyBlockStyle = (activeAction === 'sell' || activeAction === 'none') ? inactiveStyle : activeStyle;
+  const sellBlockStyle = (activeAction === 'buy' || activeAction === 'none') ? inactiveStyle : activeStyle;
+
+  let html = _buildSummaryHtml(currentPE, {total: buyData.totalVal}, planStatusHtml, buyData.currentEq, curEqCol);
+
   html += `
-  <div class="dr-sec">
-    <div class="dr-header"><span class="dr-tag buy">▲ 增权预案评估</span></div>
+  <div class="dr-sec" style="${buyBlockStyle}">
+    <div class="dr-header"><span class="dr-tag buy" style="font-weight:500;">▲ 增权预案评估</span></div>
     <div class="dr-card dr-pad" style="background:var(--buy-bg);border-color:var(--buy-bd);">
       <div class="dr-flex" style="margin-bottom:12px;align-items:center;">
-        <div class="dr-col" style="align-items:flex-start;"><div class="dr-lbl">当前权益</div><div class="dr-val" style="color:${curEqCol}">${fmt(buyData.currentEq, 2)}%</div></div>
-        <div class="dr-col" style="align-items:center;"><div class="dr-lbl">触发后目标</div><div class="dr-val" style="color:var(--buy)">${buyData.targetEq}%</div></div>
-        <div class="dr-col" style="align-items:flex-end;"><div class="dr-lbl">需调配金额</div><div class="dr-val" style="color:var(--buy)">${fmtMoney(buyData.buyAmt)}</div></div>
+        <div class="dr-col" style="align-items:flex-start;"><div class="dr-lbl">当前权益</div><div class="dr-val" style="color:${curEqCol}; font-weight:400;">${fmt(buyData.currentEq, 2)}%</div></div>
+        <div class="dr-col" style="align-items:center;"><div class="dr-lbl">触发后目标</div><div class="dr-val" style="color:var(--buy); font-weight:400;">${buyData.targetEq}%</div></div>
+        <div class="dr-col" style="align-items:flex-end;"><div class="dr-lbl">需调配金额</div><div class="dr-val" style="color:var(--buy); font-weight:600;">${fmtMoney(buyData.buyAmt)}</div></div>
       </div>
       
       <div class="dr-lbl" style="margin-bottom:6px">资金筹集 (转出 ${getProductName(SYS_CONFIG.CODE_XQ)})</div>
-      <div class="dr-plan-box sell" style="margin-bottom:12px;">
-        <div style="font-size:13px;font-weight:600">转出份数</div>
-        <div class="dr-val lg" style="color:var(--up)">${fmt(buyData.sellXqShares, 2)} <span style="font-size:11px;font-weight:500;color:var(--t2)">份</span></div>
+      <div class="dr-plan-box sell" style="margin-bottom:12px; background:rgba(0,0,0,0.1);">
+        <div style="font-size:13px;font-weight:500">转出份数</div>
+        <div class="dr-val lg" style="color:var(--up); font-weight:600;">${fmt(buyData.sellXqShares, 2)} <span style="font-size:11px;font-weight:400;color:var(--t2)">份</span></div>
       </div>
       
       <div class="dr-lbl" style="margin-bottom:6px">目标分配 (优先A500C，溢出至中证500C)</div>
       <div class="dr-col" style="gap:6px;">
-        <div class="dr-plan-box">
-          <div style="font-size:13px;font-weight:600">转入 A500C</div>
-          <div class="dr-val lg" style="color:var(--buy)">${fmtMoney(buyData.allocA500C)}</div>
+        <div class="dr-plan-box" style="background:rgba(255,255,255,0.03);">
+          <div style="font-size:13px;font-weight:500">转入 A500C</div>
+          <div class="dr-val lg" style="color:var(--buy); font-weight:600;">${fmtMoney(buyData.allocA500C)}</div>
         </div>
-        ${buyData.allocZZ500C > 1 ? `<div class="dr-plan-box"><div style="font-size:13px;font-weight:600">转入 中证500C</div><div class="dr-val lg" style="color:var(--buy)">${fmtMoney(buyData.allocZZ500C)}</div></div>` : ""}
+        ${buyData.allocZZ500C > 1 ? `<div class="dr-plan-box" style="background:rgba(255,255,255,0.03);"><div style="font-size:13px;font-weight:500">转入 中证500C</div><div class="dr-val lg" style="color:var(--buy); font-weight:600;">${fmtMoney(buyData.allocZZ500C)}</div></div>` : ""}
       </div>
     </div>
   </div>`;
 
-  // 3. 降权预案
   html += `
-  <div>
-    <div class="dr-header"><span class="dr-tag sell">▼ 降权预案评估</span></div>
+  <div style="${sellBlockStyle}">
+    <div class="dr-header"><span class="dr-tag sell" style="font-weight:500;">▼ 降权预案评估</span></div>
     <div class="dr-card dr-pad" style="background:var(--up-dim);border-color:var(--up-bg);">
       <div id="sell_summary_area"></div>
       <div class="dr-lbl" style="margin-bottom:10px">配置减仓比例（空=不参与），摩擦费率 ${fmt(SYS_CONFIG.FEE * 100, 1)}%</div>`;
@@ -482,12 +500,12 @@ function renderPlanDrawer() {
     const isPri = window._prioritySellCode === p.code;
     html += `
     <div class="dr-card dr-pad" style="margin-bottom:8px;">
-      <div class="dr-flex" style="margin-bottom:4px;"><div style="font-size:13px;font-weight:600">${p.name}</div><div id="sell_calc_shares_${p.code}" class="dr-val" style="color:var(--t3);font-size:13px;">-- <span style="font-size:11px;font-weight:500">份</span></div></div>
-      <div class="dr-flex"><div class="dr-lbl">持仓: <span class="num">${fmt(holdings[p.code] || 0, 2)}</span> 份 · 权益 <span class="num">${Math.round(p.equity * 100)}%</span></div><div id="sell_calc_fiat_${p.code}" class="dr-val" style="color:var(--t3);font-size:13px;">-- 元</div></div>
+      <div class="dr-flex" style="margin-bottom:4px;"><div style="font-size:13px;font-weight:500">${p.name}</div><div id="sell_calc_shares_${p.code}" class="dr-val" style="color:var(--t3);font-size:13px; font-weight:400;">-- <span style="font-size:11px;font-weight:400">份</span></div></div>
+      <div class="dr-flex"><div class="dr-lbl">持仓: <span class="num" style="font-weight:400;">${fmt(holdings[p.code] || 0, 2)}</span> 份 · 权益 <span class="num" style="font-weight:400;">${Math.round(p.equity * 100)}%</span></div><div id="sell_calc_fiat_${p.code}" class="dr-val" style="color:var(--t3);font-size:13px; font-weight:400;">-- 元</div></div>
       <div class="dr-flex" style="margin-top:8px;padding-top:10px;border-top:1px dashed var(--bd2);">
-        <button class="pri-btn ${isPri ? 'active' : ''}" data-code="${p.code}" onclick="togglePrioritySell('${p.code}')">${isPri ? "★ 优先" : "☆ 优先"}</button>
+        <button class="pri-btn ${isPri ? 'active' : ''}" data-code="${p.code}" onclick="togglePrioritySell('${p.code}')" style="font-weight:500;">${isPri ? "★ 优先" : "☆ 优先"}</button>
         <div style="display:flex;align-items:center;gap:8px"><span class="dr-lbl">减仓权重</span>
-          <input type="tel" style="width:60px;height:28px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);text-align:center;font-family:var(--f-num);font-size:14px;outline:none;" id="ratio_${p.code}" value="${savedPlan[p.code] || ""}" oninput="calcSellPreview()">
+          <input type="tel" style="width:60px;height:28px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);text-align:center;font-family:var(--f-num);font-size:14px;outline:none;font-weight:400;" id="ratio_${p.code}" value="${savedPlan[p.code] || ""}" oninput="calcSellPreview()">
         </div>
       </div>
     </div>`;
@@ -517,9 +535,9 @@ function calcSellPreview() {
 
     summaryEl.innerHTML = `
     <div class="dr-flex" style="margin-bottom:12px;align-items:center;">
-      <div class="dr-col" style="align-items:flex-start;"><div class="dr-lbl">当前权益</div><div class="dr-val" style="color:${curEqCol}">${fmt(draft.currentEq, 2)}%</div></div>
-      <div class="dr-col" style="align-items:center;"><div class="dr-lbl">触发后目标</div><div class="dr-val" style="color:var(--warn)">${draft.targetEq}%</div></div>
-      <div class="dr-col" style="align-items:flex-end;"><div class="dr-lbl">需减比例</div><div class="dr-val" style="color:var(--sell)">${fmt(draft.diffEqPct, 2)}%</div></div>
+      <div class="dr-col" style="align-items:flex-start;"><div class="dr-lbl">当前权益</div><div class="dr-val" style="color:${curEqCol}; font-weight:400;">${fmt(draft.currentEq, 2)}%</div></div>
+      <div class="dr-col" style="align-items:center;"><div class="dr-lbl">触发后目标</div><div class="dr-val" style="color:var(--warn); font-weight:400;">${draft.targetEq}%</div></div>
+      <div class="dr-col" style="align-items:flex-end;"><div class="dr-lbl">需减比例</div><div class="dr-val" style="color:var(--sell); font-weight:400;">${fmt(draft.diffEqPct, 2)}%</div></div>
     </div>`;
   }
 
@@ -528,10 +546,10 @@ function calcSellPreview() {
     const elS = document.getElementById("sell_calc_shares_" + p.code);
     const elF = document.getElementById("sell_calc_fiat_" + p.code);
     if (res && res.amt > 0) {
-      elS.innerHTML = `<span style="color:var(--up);">${fmt(res.shares, 2)}</span> <span style="font-size:11px;color:var(--t2);font-weight:500;">份</span>`;
-      elF.innerHTML = `<span style="color:var(--sell);font-size:11px;margin-right:8px;font-weight:400">降权 ${fmt(res.eqDropPct, 2)}%</span><span style="color:var(--t1);">${fmtMoney(res.amt)}</span>`;
+      elS.innerHTML = `<span style="color:var(--up); font-weight:600;">${fmt(res.shares, 2)}</span> <span style="font-size:11px;color:var(--t2);font-weight:400;">份</span>`;
+      elF.innerHTML = `<span style="color:var(--sell);font-size:11px;margin-right:8px;font-weight:400">降权 ${fmt(res.eqDropPct, 2)}%</span><span style="color:var(--t1);font-weight:500;">${fmtMoney(res.amt)}</span>`;
     } else {
-      elS.innerHTML = `-- <span style="font-size:11px;font-weight:500;">份</span>`;
+      elS.innerHTML = `-- <span style="font-size:11px;font-weight:400;">份</span>`;
       elF.innerHTML = `-- 元`;
     }
   });
@@ -540,12 +558,12 @@ function calcSellPreview() {
   if (draft.hasAnySell) {
     resultEl.innerHTML = `
     <div class="dr-flex" style="align-items:center;">
-      <div class="dr-col" style="align-items:flex-start;"><div class="dr-lbl">操作后权益</div><div class="dr-val lg" style="color:var(--dn)">${fmt(draft.afterEqPct, 2)}%</div></div>
-      <div class="dr-col" style="align-items:center;"><div class="dr-lbl">转出到账</div><div class="dr-val lg">${fmtMoney(draft.totalCashOut)}</div></div>
-      <div class="dr-col" style="align-items:flex-end;"><div class="dr-lbl">总摩擦</div><div class="dr-val lg" style="color:var(--warn)">${fmtMoney(draft.totalFriction)}</div></div>
+      <div class="dr-col" style="align-items:flex-start;"><div class="dr-lbl">操作后权益</div><div class="dr-val lg" style="color:var(--dn); font-weight:400;">${fmt(draft.afterEqPct, 2)}%</div></div>
+      <div class="dr-col" style="align-items:center;"><div class="dr-lbl">转出到账</div><div class="dr-val lg" style="font-weight:600;">${fmtMoney(draft.totalCashOut)}</div></div>
+      <div class="dr-col" style="align-items:flex-end;"><div class="dr-lbl">总摩擦</div><div class="dr-val lg" style="color:var(--warn); font-weight:400;">${fmtMoney(draft.totalFriction)}</div></div>
     </div>`;
   } else {
-    resultEl.innerHTML = `<span class="dr-lbl">请填写比例或设为优先卖出</span>`;
+    resultEl.innerHTML = `<span class="dr-lbl" style="font-weight:400;">请填写比例或设为优先卖出</span>`;
   }
 }
 
