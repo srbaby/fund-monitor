@@ -108,9 +108,11 @@ async function fetchSingleFund(code) {
 }
 
 // ---- 指数拉取 ----
+let _idxCounter = 0; // 引入自增计数器，防止并发毫秒级冲突
+
 function fetchIndices() {
   return new Promise(resolve => {
-    const cb  = '_idx_' + Date.now();
+    const cb  = '_idx_' + Date.now() + '_' + (_idxCounter++);
     let done  = false;
     const s   = document.createElement('script');
     const fin = () => { if (!done) { done = true; s.remove(); resolve(); } };
@@ -129,7 +131,9 @@ function fetchIndices() {
 
     s.src     = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f12,f14&secids=1.000300,1.000510,1.000905,2.H30269,1.000012,116.HSI,124.HSI,100.HSI&cb=${cb}&_=${Date.now()}`;
     s.onerror = fin;
-    setTimeout(fin, 5000);
+    
+    // 超时兜底：如果5秒后请求才回来，赋空函数防止幽灵请求报错
+    setTimeout(() => { if (!done) { window[cb] = function(){}; fin(); } }, 5000);
     document.head.appendChild(s);
   });
 }
