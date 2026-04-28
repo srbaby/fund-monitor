@@ -7,14 +7,12 @@
 function openDrawer(id) {
   document.getElementById("drawerMask").classList.add("open");
   document.getElementById(id).classList.add("open");
-  document.body.style.overflow = "hidden"; // 锁定背景滚动
 }
 function closeAllDrawers() {
   document.getElementById("drawerMask").classList.remove("open");
   document
     .querySelectorAll(".drawer")
     .forEach((d) => d.classList.remove("open"));
-  document.body.style.overflow = ""; // 恢复背景滚动
 }
 
 function toggleRefreshBtn(isFetching) {
@@ -59,7 +57,6 @@ async function refreshData(force = false) {
         .map((el) => el.dataset.code)
         .filter(Boolean);
       if (o.length === funds.length) {
-        // [架构师优化]：不再直接覆写全局变量，调用暴露的 API 更新，捍卫 MVC 隔离墙
         updateFundsList(o);
       }
     };
@@ -143,7 +140,6 @@ function confirmPe() {
 }
 
 function openHoldingDrawer() {
-  // [架构师优化]：严禁越权调用 store.js 的下划线内部私有函数，改走标准的 getter
   const holdings = loadHoldings(),
         equityMap = loadHoldingsEquity(),
         shortNameMap = loadShortNames();
@@ -170,7 +166,6 @@ function openHoldingDrawer() {
 }
 
 function saveHoldings() {
-  // 保持原有对象的内存合并逻辑
   const shares = loadHoldings(),
         equity = loadHoldingsEquity(),
         shortNames = loadShortNames();
@@ -239,7 +234,6 @@ function importToken() {
   });
 }
 
-// [架构师优化]：消除污染全局 window 的僵尸变量，替换为局部状态控制变量
 let _prioritySellCodeDraft = null;
 
 function openPlanDrawer() {
@@ -265,7 +259,6 @@ function renderPlanDrawer() {
     targetEqBuy,
   );
 
-  // [架构师优化]：消除越权，统一通过 store.js 读取预案
   const savedPlan = loadSellPlanConfig();
   const targetEqNeutral = getDynamicTarget("neutral", peData?.bucketStr);
 
@@ -296,9 +289,12 @@ function calcSellPreview() {
   const peData = loadPe();
   const targetEqSell = getDynamicTarget("sell", peData?.bucketStr);
   const targetEqNeutral = getDynamicTarget("neutral", peData?.bucketStr);
+  
+  // 必须读取实时持仓，用于 UI 计算个体卖出占比
+  const holdings = loadHoldings(); 
 
   const draft = calcSellExecutionDraft(
-    loadHoldings(),
+    holdings,
     activeProds,
     getNavByCode,
     targetEqSell,
@@ -307,7 +303,8 @@ function calcSellPreview() {
   );
   const currentPE = getCurrentPE(peData, window._rt_csi300_price);
 
-  UI_updateSellPreview(draft, equityProducts, currentPE, targetEqNeutral);
+  // 【致命修复】确保传入了完整的 5 个参数，其中第 5 个为 holdings
+  UI_updateSellPreview(draft, equityProducts, currentPE, targetEqNeutral, holdings);
 }
 
 function togglePrioritySell(code) {
@@ -333,7 +330,6 @@ function saveSellPlan() {
       const cleaned = vStr.replace(/,/g, '').trim();
       if (cleaned) plan[p.code] = cleaned;
     });
-  // [架构师优化]：通过 store 通信，禁止控制器跨级直接触碰 localStorage
   saveSellPlanConfig(plan);
 }
 
