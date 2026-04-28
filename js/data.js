@@ -1,5 +1,5 @@
 // ============================================================
-// data.js - 数据获取层
+// data.js - 数据获取层 (v3.1 架构师重构版 - 消灭并发冲突)
 // 职责：网络请求、数据标准化输出、更新 store 状态
 // ============================================================
 
@@ -13,7 +13,8 @@ window.jsonpgz = function (data) {
   }
 };
 
-function injectScript(url, timeoutMs, onResolve) {
+// [架构师优化]：增加了 onScriptLoad 闭包传参，精确锁定宿主元素，彻底解决 DOM 抓取引发的并发劫持
+function injectScript(url, timeoutMs, onResolve, onScriptLoad) {
   let done = false;
   const s = document.createElement("script");
   const fin = (val) => {
@@ -24,7 +25,9 @@ function injectScript(url, timeoutMs, onResolve) {
     }
   };
   s.src = url;
-  s.onload = () => {};
+  if (onScriptLoad) {
+    s.onload = () => onScriptLoad(fin);
+  }
   s.onerror = () => fin(null);
   setTimeout(() => fin(null), timeoutMs);
   document.head.appendChild(s);
@@ -49,11 +52,18 @@ const offCache = {};
 const offQ = [];
 let offBusy = false;
 
+window.expireOffCache = function() {
+  for (let k in offCache) {
+    offCache[k].ts = 0; 
+  }
+};
+
 function fetchOff(code) {
   const now = new Date(),
     timeNum = now.getHours() * 60 + now.getMinutes(),
     day = now.getDay(),
     cached = offCache[code];
+
   if (cached) {
     const isTodayData = cached.data?.date === todayDateStr();
     const ttl =
@@ -64,12 +74,22 @@ function fetchOff(code) {
           : 3600000;
     if (now.getTime() - cached.ts < ttl) return Promise.resolve(cached.data);
   }
+
   return new Promise((resolve) => {
     offQ.push({
       code,
       resolve: (val) => {
-        if (val) offCache[code] = { ts: Date.now(), data: val };
-        resolve(val);
+        if (val) {
+          offCache[code] = { ts: Date.now(), data: val };
+          resolve(val);
+        } else {
+          if (cached) {
+            offCache[code].ts = Date.now(); 
+            resolve(cached.data);
+          } else {
+            resolve(null);
+          }
+        }
       },
     });
     drainOff();
@@ -81,7 +101,8 @@ function drainOff() {
   offBusy = true;
   const { code, resolve } = offQ.shift();
 
-  const fin = injectScript(
+  // [架构师优化]：直接通过第四个参数将解析逻辑绑定在当前脚本的 onload 上，逻辑绝对严密
+  injectScript(
     `https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz&code=${code}&page=1&per=1&v=${Date.now()}`,
     3000,
     (v) => {
@@ -90,11 +111,7 @@ function drainOff() {
       resolve(v);
       setTimeout(drainOff, 30);
     },
-  );
-
-  const s = document.head.lastElementChild;
-  if (s && s.tagName === "SCRIPT") {
-    s.onload = () => {
+    (fin) => {
       try {
         const html = window.apidata?.content;
         if (html) {
@@ -120,8 +137,8 @@ function drainOff() {
       } catch (e) {
         fin(null);
       }
-    };
-  }
+    }
+  );
 }
 
 async function fetchSingleFund(code) {
@@ -168,7 +185,6 @@ function fetchIndices() {
       if (map["000300"]?.f2)
         window._rt_csi300_price = parseFloat(map["000300"].f2);
 
-      // 核心修改：不再调用 ui.js，而是把数据交给 store，由 store 通知所有人
       setIndices(map);
     };
   });
