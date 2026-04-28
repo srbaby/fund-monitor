@@ -1,210 +1,516 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="基金看板" />
-    <meta name="theme-color" content="#0a0e14" media="(prefers-color-scheme: dark)" />
-    <meta name="theme-color" content="#f0f4f8" media="(prefers-color-scheme: light)" />
-    
-    <title>Jany基金看板</title>
-    
-    <link rel="icon" href="favicon.png" />
-    <link rel="apple-touch-icon" href="favicon.png" />
-    <link rel="stylesheet" href="css/style.css" />
-    
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-</head>
-<body>
-    <header class="header">
-        <div class="hd-left">
-            <img src="favicon.png" alt="logo" style="width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;" />
-            <div>
-                <div class="hd-title">Jany基金看板</div>
-                <div class="hd-sub">
-                    <span class="mkt-dot" id="mktDot"></span>
-                    <span id="mktLabel">检测中</span>
-                </div>
-            </div>
-        </div>
-        <div class="hd-right">
-            <div class="hd-time num" id="liveTime">--:--:--</div>
-            <div class="hd-date num" id="liveDate">----/--/--</div>
-        </div>
-    </header>
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+        />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta
+            name="apple-mobile-web-app-status-bar-style"
+            content="black-translucent"
+        />
+        <meta name="apple-mobile-web-app-title" content="基金看板" />
+        <meta
+            name="theme-color"
+            content="#0a0e14"
+            media="(prefers-color-scheme: dark)"
+        />
+        <meta
+            name="theme-color"
+            content="#f0f4f8"
+            media="(prefers-color-scheme: light)"
+        />
 
-    <div class="idx-bar" id="idxBar"></div>
+        <title>Jany基金看板</title>
 
-    <div class="pe-bar" id="peBar">
-        <div class="pe-bar-top">
-            <div class="pe-bar-left">
-                <span class="pe-label">PE</span>
-                <span class="pe-value pe-normal num" id="peDisplay">--.--%</span>
-                <span class="pe-status normal" id="peStatus">待机</span>
-            </div>
+        <link rel="icon" href="favicon.png" />
+        <link rel="apple-touch-icon" href="favicon.png" />
+        <link rel="stylesheet" href="css/style.css" />
 
-            <div id="pcProfitArea" style="margin-left: 32px; align-items: center; gap: 8px;">
-                <span style="font-size: 13px; color: var(--t3); font-weight: 500;">今日涨跌</span>
-                <span id="todayProfitPc" class="num" style="font-size: 18px; font-weight: 700; display: flex; align-items: center;"></span>
-            </div>
-
-            <div style="flex: 1"></div>
-
-            <button class="chb-btn" id="miniRefBtnPc" onclick="refreshData()" style="margin-right: 24px;">↻ 刷新</button>
-            <button class="pe-input-btn" onclick="openPeModal()">定锚</button>
-            <button class="pe-input-btn" onclick="openHoldingDrawer()">持仓</button>
-            <button class="pe-plan-btn neutral" id="planBtn" onclick="openPlanDrawer()">预案</button>
-        </div>
-        
-        <div class="pe-bar-bottom">
-            <div class="pe-track" id="peTrack" title="高精度二次抛物线追踪">
-                <div class="pe-track-lo" id="peTrackLo" style="display: none;"></div>
-                <div class="pe-track-hi" id="peTrackHi" style="display: none;"></div>
-                <div class="pe-track-marker" id="peTrackMarker" style="display: none;"></div>
-            </div>
-            <div id="peEquityInfo" style="display: none; font-size: 11px; color: var(--t3); gap: 4px; align-items: center; flex-shrink: 0; white-space: nowrap; margin-left: auto;"></div>
-        </div>
-    </div>
-
-    <main>
-        <div class="card-header-bar" id="cardHeaderBar">
-            <div style="flex: 1; display: flex; align-items: center; min-width: 0; overflow: hidden; padding-right: 12px;">
-                <span class="chb-title" style="flex: none; padding-right: 8px;">今日涨跌</span>
-                <span id="todayProfit" class="num" style="font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center;"></span>
-            </div>
-            <div class="chb-actions">
-                <button class="chb-btn" id="miniRefBtn" onclick="refreshData()">↻ 刷新</button>
-                <button class="chb-btn" id="cycleBtn" onclick="cycleMiniMode()">估算</button>
-                <button class="chb-btn" id="colBtn" onclick="toggleAllCollapse()">展开</button>
-            </div>
-        </div>
-
-        <div class="card-view" id="cardView">
-            <div class="empty-state">
-                <div class="empty-icon">💰</div>
-                <div>数据加载中...</div>
-            </div>
-        </div>
-
-        <div class="table-view" id="tableView">
-            <table class="fund-table">
-                <thead>
-                    <tr>
-                        <th>代码 / 名称</th>
-                        <th>盘中估算</th>
-                        <th>官方数据</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody id="fundTbody">
-                    <tr>
-                        <td colspan="4" style="text-align: center; padding: 50px; color: var(--t3);">
-                            数据加载中...
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-
-        <div class="toolbar">
-            <div class="search-wrap">
-                <span class="si">⌕</span>
-                <input id="codeInput" type="tel" class="num" inputmode="numeric" pattern="[0-9]*" placeholder="输入6位基金代码" maxlength="6" style="font-size: 16px;" />
-            </div>
-            <button class="tbtn tbtn-p" onclick="addFund()">添加</button>
-        </div>
-    </main>
-
-    <div class="pe-modal" id="peModal" style="display: none;">
-        <div class="pe-modal-mask" onclick="closePeModal()"></div>
-        <div class="pe-modal-box">
-            <div class="pe-modal-title">高精定锚 (Lagrange Curve)</div>
-            <div class="pe-modal-sub">通过3个精准坐标系拟合历史估值抛物线</div>
-
-            <div style="display: flex; flex-direction: column; gap: 14px;">
+        <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    </head>
+    <body>
+        <header class="header">
+            <div class="hd-left">
+                <img
+                    src="favicon.png"
+                    alt="logo"
+                    style="
+                        width: 32px;
+                        height: 32px;
+                        border-radius: 8px;
+                        flex-shrink: 0;
+                    "
+                />
                 <div>
-                    <div style="font-size: 11px; color: var(--t3); margin-bottom: 4px;">1. 明确当前所处档位 (锁定缓冲带)</div>
-                    <select class="pe-modal-select" id="peModalBucket">
-                        <option value="80,100">80% 以上 (极度泡沫)</option>
-                        <option value="75,80">75% - 80% (疯狂期)</option>
-                        <option value="70,75">70% - 75% (平稳撤军)</option>
-                        <option value="65,70" selected>65% - 70% (高位警戒)</option>
-                        <option value="60,65">60% - 65% (常态偏高)</option>
-                        <option value="55,60">55% - 60% (印钞带上沿)</option>
-                        <option value="50,55">50% - 55% (物理重心)</option>
-                        <option value="45,50">45% - 50% (吸筹带)</option>
-                        <option value="40,45">40% - 45% (深水激活)</option>
-                        <option value="35,40">35% - 40% (活塞预警)</option>
-                        <option value="30,35">30% - 35% (破窗I)</option>
-                        <option value="0,30">30% 以下 (破窗II)</option>
-                    </select>
-                </div>
-
-                <div style="display: flex; gap: 10px;">
-                    <div style="flex: 1;">
-                        <div style="font-size: 11px; color: var(--t3); margin-bottom: 4px;">2. 基准 PE (%)</div>
-                        <input class="pe-modal-input num" id="peModalInputPct" type="number" step="0.01" style="font-size: 18px; padding: 8px;" placeholder="67.93" />
-                    </div>
-                    <div style="flex: 1;">
-                        <div style="font-size: 11px; color: var(--t3); margin-bottom: 4px;">基准点位 (即今日收盘)</div>
-                        <input class="pe-modal-input num" id="peModalPriceAnchor" type="number" step="0.01" style="font-size: 18px; padding: 8px;" placeholder="4799.63" />
+                    <div class="hd-title">Jany基金看板</div>
+                    <div class="hd-sub">
+                        <span class="mkt-dot" id="mktDot"></span>
+                        <span id="mktLabel">检测中</span>
                     </div>
                 </div>
+            </div>
+            <div class="hd-right">
+                <div class="hd-time num" id="liveTime">--:--:--</div>
+                <div class="hd-date num" id="liveDate">----/--/--</div>
+            </div>
+        </header>
 
-                <div style="display: flex; gap: 10px;">
-                    <div style="flex: 1; background: var(--buy-bg); border: 1px solid var(--buy-bd); padding: 10px; border-radius: 10px;">
-                        <div style="font-size: 11px; color: var(--buy); margin-bottom: 4px; font-weight: 600;">📉 跌破触发点位</div>
-                        <input class="pe-modal-input num" id="peModalBuyPrice" type="number" style="margin-bottom: 0; font-size: 18px; padding: 6px; width: 100%; border: none; background: transparent; color: var(--t1);" placeholder="4634" />
+        <div class="idx-bar" id="idxBar"></div>
+
+        <div class="pe-bar" id="peBar">
+            <div class="pe-bar-top">
+                <div class="pe-bar-left">
+                    <span class="pe-label">PE</span>
+                    <span class="pe-value pe-normal num" id="peDisplay"
+                        >--.--%</span
+                    >
+                    <span class="pe-status normal" id="peStatus">待机</span>
+                </div>
+
+                <div
+                    id="pcProfitArea"
+                    style="margin-left: 32px; align-items: center; gap: 8px"
+                >
+                    <span
+                        style="
+                            font-size: 13px;
+                            color: var(--t3);
+                            font-weight: 500;
+                        "
+                        >今日涨跌</span
+                    >
+                    <span
+                        id="todayProfitPc"
+                        class="num"
+                        style="
+                            font-size: 18px;
+                            font-weight: 700;
+                            display: flex;
+                            align-items: center;
+                        "
+                    ></span>
+                </div>
+
+                <div style="flex: 1"></div>
+
+                <button
+                    class="chb-btn"
+                    id="miniRefBtnPc"
+                    onclick="refreshData()"
+                    style="margin-right: 24px"
+                >
+                    ↻ 刷新
+                </button>
+                <button class="pe-input-btn" onclick="openPeModal()">
+                    定锚
+                </button>
+                <button class="pe-input-btn" onclick="openHoldingDrawer()">
+                    持仓
+                </button>
+                <button
+                    class="pe-plan-btn neutral"
+                    id="planBtn"
+                    onclick="openPlanDrawer()"
+                >
+                    预案
+                </button>
+            </div>
+
+            <div class="pe-bar-bottom">
+                <div class="pe-track" id="peTrack" title="高精度二次抛物线追踪">
+                    <div
+                        class="pe-track-lo"
+                        id="peTrackLo"
+                        style="display: none"
+                    ></div>
+                    <div
+                        class="pe-track-hi"
+                        id="peTrackHi"
+                        style="display: none"
+                    ></div>
+                    <div
+                        class="pe-track-marker"
+                        id="peTrackMarker"
+                        style="display: none"
+                    ></div>
+                </div>
+                <div
+                    id="peEquityInfo"
+                    style="
+                        display: none;
+                        font-size: 11px;
+                        color: var(--t3);
+                        gap: 4px;
+                        align-items: center;
+                        flex-shrink: 0;
+                        white-space: nowrap;
+                        margin-left: auto;
+                    "
+                ></div>
+            </div>
+        </div>
+
+        <main>
+            <div class="card-header-bar" id="cardHeaderBar">
+                <div
+                    style="
+                        flex: 1;
+                        display: flex;
+                        align-items: center;
+                        min-width: 0;
+                        overflow: hidden;
+                        padding-right: 12px;
+                    "
+                >
+                    <span
+                        class="chb-title"
+                        style="flex: none; padding-right: 8px"
+                        >今日涨跌</span
+                    >
+                    <span
+                        id="todayProfit"
+                        class="num"
+                        style="
+                            font-size: 16px;
+                            font-weight: 700;
+                            white-space: nowrap;
+                            overflow: hidden;
+                            text-overflow: ellipsis;
+                            display: flex;
+                            align-items: center;
+                        "
+                    ></span>
+                </div>
+                <div class="chb-actions">
+                    <button
+                        class="chb-btn"
+                        id="miniRefBtn"
+                        onclick="refreshData()"
+                    >
+                        ↻ 刷新
+                    </button>
+                    <button
+                        class="chb-btn"
+                        id="cycleBtn"
+                        onclick="cycleMiniMode()"
+                    >
+                        估算
+                    </button>
+                    <button
+                        class="chb-btn"
+                        id="colBtn"
+                        onclick="toggleAllCollapse()"
+                    >
+                        展开
+                    </button>
+                </div>
+            </div>
+
+            <div class="card-view" id="cardView">
+                <div class="empty-state loading-pulse">
+                    <div class="empty-icon">⏳</div>
+                    <div
+                        style="
+                            font-size: 15px;
+                            font-weight: 600;
+                            color: var(--t2);
+                            margin-bottom: 6px;
+                        "
+                    >
+                        系统初始化中
                     </div>
-                    <div style="flex: 1; background: var(--sell-bg); border: 1px solid var(--sell-bd); padding: 10px; border-radius: 10px;">
-                        <div style="font-size: 11px; color: var(--sell); margin-bottom: 4px; font-weight: 600;">📈 涨破触发点位</div>
-                        <input class="pe-modal-input num" id="peModalSellPrice" type="number" style="margin-bottom: 0; font-size: 18px; padding: 6px; width: 100%; border: none; background: transparent; color: var(--t1);" placeholder="4955" />
+                    <div style="font-size: 12px; color: var(--t3)">
+                        正在连接数据源并进行测算...
                     </div>
                 </div>
             </div>
 
-            <div class="pe-modal-btns">
-                <button class="pe-modal-cancel" onclick="closePeModal()">取消</button>
-                <button class="pe-modal-confirm" onclick="confirmPe()">开启抛物线追踪</button>
+            <div class="table-view" id="tableView">
+                <table class="fund-table">
+                    <thead>
+                        <tr>
+                            <th>代码 / 名称</th>
+                            <th>盘中估算</th>
+                            <th>官方数据</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="fundTbody">
+                        <tr>
+                            <td
+                                colspan="4"
+                                style="
+                                    background: transparent;
+                                    border: none;
+                                    padding: 0;
+                                "
+                            >
+                                <div class="empty-state loading-pulse">
+                                    <div class="empty-icon">⏳</div>
+                                    <div
+                                        style="
+                                            font-size: 15px;
+                                            font-weight: 600;
+                                            color: var(--t2);
+                                            margin-bottom: 6px;
+                                        "
+                                    >
+                                        系统初始化中
+                                    </div>
+                                    <div
+                                        style="
+                                            font-size: 12px;
+                                            color: var(--t3);
+                                        "
+                                    >
+                                        正在连接数据源并进行测算...
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="toolbar">
+                <div class="search-wrap">
+                    <span class="si">⌕</span>
+                    <input
+                        id="codeInput"
+                        type="tel"
+                        class="num"
+                        inputmode="numeric"
+                        pattern="[0-9]*"
+                        placeholder="输入6位基金代码"
+                        maxlength="6"
+                        style="font-size: 16px"
+                    />
+                </div>
+                <button class="tbtn tbtn-p" onclick="addFund()">添加</button>
+            </div>
+        </main>
+
+        <div class="pe-modal" id="peModal" style="display: none">
+            <div class="pe-modal-mask" onclick="closePeModal()"></div>
+            <div class="pe-modal-box">
+                <div class="pe-modal-title">高精定锚 (Lagrange Curve)</div>
+                <div class="pe-modal-sub">
+                    通过3个精准坐标系拟合历史估值抛物线
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 14px">
+                    <div>
+                        <div
+                            style="
+                                font-size: 11px;
+                                color: var(--t3);
+                                margin-bottom: 4px;
+                            "
+                        >
+                            1. 明确当前所处档位 (锁定缓冲带)
+                        </div>
+                        <select class="pe-modal-select" id="peModalBucket">
+                            <option value="80,100">80% 以上 (极度泡沫)</option>
+                            <option value="75,80">75% - 80% (疯狂期)</option>
+                            <option value="70,75">70% - 75% (平稳撤军)</option>
+                            <option value="65,70" selected>
+                                65% - 70% (高位警戒)
+                            </option>
+                            <option value="60,65">60% - 65% (常态偏高)</option>
+                            <option value="55,60">
+                                55% - 60% (印钞带上沿)
+                            </option>
+                            <option value="50,55">50% - 55% (物理重心)</option>
+                            <option value="45,50">45% - 50% (吸筹带)</option>
+                            <option value="40,45">40% - 45% (深水激活)</option>
+                            <option value="35,40">35% - 40% (活塞预警)</option>
+                            <option value="30,35">30% - 35% (破窗I)</option>
+                            <option value="0,30">30% 以下 (破窗II)</option>
+                        </select>
+                    </div>
+
+                    <div style="display: flex; gap: 10px">
+                        <div style="flex: 1">
+                            <div
+                                style="
+                                    font-size: 11px;
+                                    color: var(--t3);
+                                    margin-bottom: 4px;
+                                "
+                            >
+                                2. 基准 PE (%)
+                            </div>
+                            <input
+                                class="pe-modal-input num"
+                                id="peModalInputPct"
+                                type="number"
+                                step="0.01"
+                                style="font-size: 18px; padding: 8px"
+                                placeholder="67.93"
+                            />
+                        </div>
+                        <div style="flex: 1">
+                            <div
+                                style="
+                                    font-size: 11px;
+                                    color: var(--t3);
+                                    margin-bottom: 4px;
+                                "
+                            >
+                                基准点位 (即今日收盘)
+                            </div>
+                            <input
+                                class="pe-modal-input num"
+                                id="peModalPriceAnchor"
+                                type="number"
+                                step="0.01"
+                                style="font-size: 18px; padding: 8px"
+                                placeholder="4799.63"
+                            />
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px">
+                        <div
+                            style="
+                                flex: 1;
+                                background: var(--buy-bg);
+                                border: 1px solid var(--buy-bd);
+                                padding: 10px;
+                                border-radius: 10px;
+                            "
+                        >
+                            <div
+                                style="
+                                    font-size: 11px;
+                                    color: var(--buy);
+                                    margin-bottom: 4px;
+                                    font-weight: 600;
+                                "
+                            >
+                                📉 跌破触发点位
+                            </div>
+                            <input
+                                class="pe-modal-input num"
+                                id="peModalBuyPrice"
+                                type="number"
+                                style="
+                                    margin-bottom: 0;
+                                    font-size: 18px;
+                                    padding: 6px;
+                                    width: 100%;
+                                    border: none;
+                                    background: transparent;
+                                    color: var(--t1);
+                                "
+                                placeholder="4634"
+                            />
+                        </div>
+                        <div
+                            style="
+                                flex: 1;
+                                background: var(--sell-bg);
+                                border: 1px solid var(--sell-bd);
+                                padding: 10px;
+                                border-radius: 10px;
+                            "
+                        >
+                            <div
+                                style="
+                                    font-size: 11px;
+                                    color: var(--sell);
+                                    margin-bottom: 4px;
+                                    font-weight: 600;
+                                "
+                            >
+                                📈 涨破触发点位
+                            </div>
+                            <input
+                                class="pe-modal-input num"
+                                id="peModalSellPrice"
+                                type="number"
+                                style="
+                                    margin-bottom: 0;
+                                    font-size: 18px;
+                                    padding: 6px;
+                                    width: 100%;
+                                    border: none;
+                                    background: transparent;
+                                    color: var(--t1);
+                                "
+                                placeholder="4955"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pe-modal-btns">
+                    <button class="pe-modal-cancel" onclick="closePeModal()">
+                        取消
+                    </button>
+                    <button class="pe-modal-confirm" onclick="confirmPe()">
+                        开启抛物线追踪
+                    </button>
+                </div>
             </div>
         </div>
-    </div>
 
-    <div class="drawer-mask" id="drawerMask" onclick="closeAllDrawers()"></div>
+        <div
+            class="drawer-mask"
+            id="drawerMask"
+            onclick="closeAllDrawers()"
+        ></div>
 
-    <div class="drawer" id="planDrawer">
-        <div class="drawer-handle"></div>
-        <div class="drawer-header">
-            <span class="drawer-title">待机预案</span>
-            <button class="drawer-close" onclick="closeAllDrawers()">×</button>
+        <div class="drawer" id="planDrawer">
+            <div class="drawer-handle"></div>
+            <div class="drawer-header">
+                <span class="drawer-title">待机预案</span>
+                <button class="drawer-close" onclick="closeAllDrawers()">
+                    ×
+                </button>
+            </div>
+            <div class="drawer-body" id="planDrawerBody"></div>
+            <div class="drawer-footer">
+                <button class="drawer-footer-btn" onclick="saveAndClosePlan()">
+                    保存预案
+                </button>
+            </div>
         </div>
-        <div class="drawer-body" id="planDrawerBody"></div>
-        <div class="drawer-footer">
-            <button class="drawer-footer-btn" onclick="saveAndClosePlan()">保存预案</button>
-        </div>
-    </div>
 
-    <div class="drawer" id="holdingDrawer">
-        <div class="drawer-handle"></div>
-        <div class="drawer-header">
-            <span class="drawer-title">编辑持仓份额</span>
-            <button class="drawer-close" onclick="closeAllDrawers()">×</button>
+        <div class="drawer" id="holdingDrawer">
+            <div class="drawer-handle"></div>
+            <div class="drawer-header">
+                <span class="drawer-title">编辑持仓份额</span>
+                <button class="drawer-close" onclick="closeAllDrawers()">
+                    ×
+                </button>
+            </div>
+            <div class="drawer-body" id="holdingDrawerBody"></div>
+            <div class="drawer-footer">
+                <button
+                    class="drawer-footer-btn drawer-footer-btn--cancel"
+                    onclick="closeAllDrawers()"
+                >
+                    取消
+                </button>
+                <button
+                    class="drawer-footer-btn drawer-footer-btn--primary"
+                    onclick="saveHoldings()"
+                >
+                    保存持仓
+                </button>
+            </div>
         </div>
-        <div class="drawer-body" id="holdingDrawerBody"></div>
-        <div class="drawer-footer">
-            <button class="drawer-footer-btn drawer-footer-btn--cancel" onclick="closeAllDrawers()">取消</button>
-            <button class="drawer-footer-btn drawer-footer-btn--primary" onclick="saveHoldings()">保存持仓</button>
-        </div>
-    </div>
 
-    <script src="js/config.js"></script>
-    <script src="js/store.js"></script>
-    <script src="js/data.js"></script>
-    <script src="js/engine.js"></script>
-    <script src="js/ui.js"></script>
-    <script src="js/interact.js"></script>
-    <script src="js/main.js"></script>
-</body>
+        <script src="js/config.js"></script>
+        <script src="js/store.js"></script>
+        <script src="js/data.js"></script>
+        <script src="js/engine.js"></script>
+        <script src="js/ui.js"></script>
+        <script src="js/interact.js"></script>
+        <script src="js/main.js"></script>
+    </body>
 </html>

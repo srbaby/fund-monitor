@@ -1,20 +1,28 @@
 // ============================================================
-// store.js - 存储层
-// 职责：全局内存状态、localStorage 读写、口令备份恢复、公共工具函数
-// 不含 DOM 操作，不含网络请求
+// store.js - 存储层 (v3.0 响应式状态中心)
+// 职责：全局内存状态、localStorage、广播通知 (Observer)
 // ============================================================
 
 // ---- 全局内存状态 ----
 let funds = [];
 let _lastResults = [];
+let _indicesMap = {};
+
+// ---- 广播电台 (频道化 Observer) ----
+const _observers = {};
+function observeState(topic, fn) {
+  if (!_observers[topic]) _observers[topic] = [];
+  _observers[topic].push(fn);
+}
+function dispatchUpdate(topic) {
+  if (_observers[topic]) _observers[topic].forEach((fn) => fn());
+}
 
 // ---- 纯工具 ----
 function todayDateStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-
-// 防御性 JSON 解析
 function safeParse(str, fallback) {
   if (!str) return fallback;
   try {
@@ -24,11 +32,10 @@ function safeParse(str, fallback) {
   }
 }
 
-// 核心逻辑重构：严格基于实时抓取数据，预置库仅作兜底
+// ---- 核心获取业务产品 ----
 function getActiveProducts() {
   const equityMap = loadHoldingsEquity();
   const shortNameMap = loadShortNames();
-
   return funds.map((code) => {
     const preset = PRODUCTS.find((p) => p.code === code);
     const equity =
@@ -36,7 +43,6 @@ function getActiveProducts() {
     const fetched = _lastResults.find((r) => r.code === code);
     const fetchedName =
       fetched && !fetched.error && fetched.name ? fetched.name : null;
-
     const name =
       shortNameMap[code] ||
       SHORT_NAMES[code] ||
@@ -47,36 +53,48 @@ function getActiveProducts() {
   });
 }
 
-// ---- 基金列表 ----
+// ---- 数据读写与定向广播 ----
+function getLastResults() {
+  return _lastResults;
+}
+function setLastResults(res) {
+  _lastResults = res;
+  dispatchUpdate("FUNDS"); // 频道：基金
+}
+
+function getIndices() {
+  return _indicesMap;
+}
+function setIndices(map) {
+  _indicesMap = map;
+  dispatchUpdate("INDICES"); // 频道：指数
+}
+
 function loadFunds() {
   const c = localStorage.getItem(STORE_CODES);
   funds = c ? safeParse(c, [...DEFAULT_CODES]) : [...DEFAULT_CODES];
 }
 function saveFunds() {
   localStorage.setItem(STORE_CODES, JSON.stringify(funds));
+  dispatchUpdate("FUNDS"); // 频道：基金
 }
 
-// ---- PE 定锚 ----
 function loadPe() {
   return safeParse(localStorage.getItem(STORE_PE), null);
 }
 function savePe(dataObj) {
   localStorage.setItem(STORE_PE, JSON.stringify(dataObj));
+  dispatchUpdate("LOCAL_CONFIG"); // 频道：本地配置
 }
 
-// ---- 持仓份额 ----
 let _holdingsCache = null;
-
 function _loadRaw() {
   if (_holdingsCache) return _holdingsCache;
   const raw = safeParse(localStorage.getItem(STORE_HOLDINGS), null);
-
   if (!raw) return null;
-  if (typeof raw === "object" && !raw.shares && !raw.equity) {
+  if (typeof raw === "object" && !raw.shares && !raw.equity)
     _holdingsCache = { shares: raw, equity: {}, shortNames: {} };
-  } else {
-    _holdingsCache = raw;
-  }
+  else _holdingsCache = raw;
   return _holdingsCache;
 }
 
@@ -96,20 +114,21 @@ function saveHoldingsData(shares, equity, shortNames) {
     STORE_HOLDINGS,
     JSON.stringify({ shares, equity, shortNames }),
   );
+  dispatchUpdate("LOCAL_CONFIG"); // 频道：本地配置
 }
 
-// ---- 优先卖出品种 ----
 function loadPrioritySell() {
   return localStorage.getItem(STORE_PRIORITY_SELL);
 }
 function savePrioritySell(code) {
   localStorage.setItem(STORE_PRIORITY_SELL, code);
+  dispatchUpdate("LOCAL_CONFIG"); // 频道：本地配置
 }
 function clearPrioritySell() {
   localStorage.removeItem(STORE_PRIORITY_SELL);
+  dispatchUpdate("LOCAL_CONFIG"); // 频道：本地配置
 }
 
-// ---- 口令备份与恢复 ----
 function exportSnapshot() {
   const data = {
     f: funds,
@@ -136,6 +155,8 @@ function importSnapshot(str) {
     if (data.s) localStorage.setItem(STORE_SELL_PLAN, JSON.stringify(data.s));
     if (data.pr) savePrioritySell(data.pr);
     else clearPrioritySell();
+    dispatchUpdate("FUNDS");
+    dispatchUpdate("LOCAL_CONFIG");
     return true;
   } catch (e) {
     return false;

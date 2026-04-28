@@ -1,6 +1,7 @@
 // ============================================================
-// ui.js - 渲染层
-// 职责：所有 DOM 更新，时钟、指数栏、PE 栏、卡片、表格、今日盈亏渲染
+// ui.js - 渲染层 (v3.0 响应式与微模板版)
+// 职责：所有 DOM 更新，时钟、指数栏、PE 栏、卡片、表格、今日盈亏渲染、抽屉 HTML 生成
+// 铁律：不含业务计算，不含 localStorage 读写
 // ============================================================
 
 let _mktState = null,
@@ -52,6 +53,400 @@ function isStructureUnchanged(containerId, targetCodes) {
     currentCodes.length > 0 && currentCodes.join(",") === targetCodes.join(",")
   );
 }
+
+// ============================================================
+// UI 微模板工厂 (UI Template Factory)
+// ============================================================
+
+function UI_showDialog(options) {
+  const modal = document.createElement("div");
+  modal.style.cssText =
+    "position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;";
+
+  const mask = document.createElement("div");
+  mask.style.cssText = "position:absolute;inset:0;background:rgba(0,0,0,.6);";
+  mask.onclick = () => document.body.removeChild(modal);
+
+  const box = document.createElement("div");
+  box.style.cssText =
+    "position:relative;background:var(--bg2);border-radius:16px;padding:24px;width:100%;max-width:320px;border:1px solid var(--bd2);display:flex;flex-direction:column;gap:12px;";
+
+  const title = document.createElement("div");
+  title.style.cssText = "font-size:15px;font-weight:600;color:var(--t1);";
+  title.textContent = options.title;
+  box.appendChild(title);
+
+  if (options.desc) {
+    const desc = document.createElement("div");
+    desc.style.cssText = "font-size:12px;color:var(--t3);line-height:1.4;";
+    desc.textContent = options.desc;
+    box.appendChild(desc);
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.className = "token-textarea";
+  if (options.placeholder) textarea.placeholder = options.placeholder;
+  if (options.value) textarea.value = options.value;
+  if (options.readOnly) textarea.readOnly = true;
+  box.appendChild(textarea);
+
+  const btnWrap = document.createElement("div");
+  btnWrap.style.cssText = "display:flex;gap:8px;margin-top:8px;";
+
+  if (options.showCancel) {
+    const cancelBtn = document.createElement("button");
+    cancelBtn.textContent = "取消";
+    cancelBtn.className = "modal-btn-cancel";
+    cancelBtn.onclick = () => document.body.removeChild(modal);
+    btnWrap.appendChild(cancelBtn);
+  }
+
+  const confirmBtn = document.createElement("button");
+  confirmBtn.textContent = options.confirmText;
+  confirmBtn.className = "modal-btn-zh";
+  if (options.showCancel) confirmBtn.style.flex = "2";
+  confirmBtn.onclick = () => options.onConfirm(textarea, modal);
+  btnWrap.appendChild(confirmBtn);
+
+  box.appendChild(btnWrap);
+  modal.appendChild(mask);
+  modal.appendChild(box);
+  document.body.appendChild(modal);
+}
+
+function UI_renderEmptyState() {
+  const emptyHtml = `
+    <div class="empty-state">
+      <div class="empty-icon">📭</div>
+      <div style="font-size:15px; font-weight:600; color:var(--t2); margin-bottom:6px;">暂无关注产品</div>
+      <div style="font-size:12px; color:var(--t3);">请在下方输入 6 位基金代码，构建你的配置看板</div>
+    </div>
+  `;
+  document.getElementById("cardView").innerHTML = emptyHtml;
+  // PC端：去除表格 td 的白底和边框，让空状态直接融入背景，视觉更通透
+  document.getElementById("fundTbody").innerHTML =
+    `<tr><td colspan="4" style="background:transparent; border:none; padding:0;">${emptyHtml}</td></tr>`;
+}
+
+function UI_buildSummaryHtml(
+  currentPE,
+  eqData,
+  targetEqStr,
+  currentEqVal,
+  eqCol,
+  targetNeutralNum,
+) {
+  const totalStr = eqData ? fmtMoney(eqData.total) : "--";
+  const curEqStr = currentEqVal != null ? fmt(currentEqVal, 2) + "%" : "--";
+
+  let html = `<div class="dr-card dr-pad dr-sec dr-summary-box">
+    <div class="dr-summary-item"><div class="dr-lbl">持仓总额</div><div class="dr-val" style="color:var(--accent); font-weight:600;">${totalStr}</div></div>
+    <div class="dr-summary-item" style="border-left:1px solid var(--bd2); border-right:1px solid var(--bd2); padding:0 4px;"><div class="dr-lbl">当前权益</div><div class="dr-val" style="color:${eqCol}; font-weight:600;">${curEqStr}</div></div>
+    <div class="dr-summary-item">`;
+
+  if (targetEqStr != null && typeof targetEqStr === "string") {
+    html += `<div class="dr-lbl">预案状态</div><div class="dr-val" style="font-weight:600;">${targetEqStr}</div></div></div>`;
+  } else {
+    const targetStr = targetNeutralNum != null ? targetNeutralNum + "%" : "--";
+    const diff =
+      eqData && targetNeutralNum != null
+        ? eqData.equity - targetNeutralNum
+        : null;
+    const wrongDir = isEquityWrongDir(currentPE?.value, diff);
+    const isNeutral = diff != null && Math.abs(diff) < 1 && !wrongDir;
+    const bBg = wrongDir
+      ? "var(--up-dim)"
+      : isNeutral
+        ? "transparent"
+        : diff > 0
+          ? "var(--sell-bg)"
+          : "var(--buy-bg)";
+    const bBd = wrongDir
+      ? "var(--up-bd)"
+      : isNeutral
+        ? "var(--bd2)"
+        : diff > 0
+          ? "var(--sell-bd)"
+          : "var(--buy-bd)";
+
+    html += `<div class="dr-lbl">目标权益</div><div style="display:flex;align-items:center;justify-content:center;gap:4px;"><span class="dr-val" style="font-weight:600;">${targetStr}</span>
+        ${diff != null ? `<span class="dr-badge" style="color:${eqCol};background:${bBg};border-color:${bBd};font-weight:500;">${diff > 0 ? "+" : ""}${fmt(diff, 2)}%</span>` : ""}
+      </div></div></div>`;
+  }
+  return html;
+}
+
+function UI_renderHoldingDrawerBody(
+  activeProds,
+  holdings,
+  equityMap,
+  shortNameMap,
+  getNavFn,
+  eqData,
+  currentPE,
+  targetEqNeutral,
+  lastResults,
+) {
+  const diff =
+    eqData && targetEqNeutral != null ? eqData.equity - targetEqNeutral : null;
+  const wrongDir = isEquityWrongDir(currentPE?.value, diff);
+  const isNeutral = diff != null && Math.abs(diff) < 1 && !wrongDir;
+  const diffCol =
+    diff == null
+      ? "var(--t3)"
+      : wrongDir
+        ? "var(--warn)"
+        : isNeutral
+          ? "var(--t1)"
+          : diff > 0
+            ? "var(--sell)"
+            : "var(--buy)";
+
+  const gridStyle =
+    "display:grid; grid-template-columns: minmax(70px, 1.3fr) minmax(65px, 1fr) 52px minmax(85px, 1.2fr); gap:8px;";
+  let html =
+    `<div class="dr-header"><span class="dr-tag" style="font-weight:500;">📊 权益校对汇总</span></div>` +
+    UI_buildSummaryHtml(
+      currentPE,
+      eqData,
+      null,
+      eqData?.equity,
+      diffCol,
+      targetEqNeutral,
+    );
+
+  const eqAmtStr = eqData
+    ? fmtMoney((eqData.total * eqData.equity) / 100)
+    : "--";
+
+  html += `
+  <div class="dr-sec">
+    <div class="dr-header"><span class="dr-tag" style="font-weight:500;">📋 资产价值明细</span><span class="dr-lbl">权益总额 <span class="dr-val" style="color:var(--accent);font-size:13px;font-weight:500;">${eqAmtStr}</span></span></div>
+    <div class="dr-card" style="padding:4px 0">
+      <div style="${gridStyle} padding:8px 12px; border-bottom:1px solid var(--bd2); font-size:11px; color:var(--t3); font-weight:400;">
+        <div>产品</div><div style="display:flex;justify-content:flex-end;">市值(¥)</div><div style="display:flex;justify-content:flex-end;">权益档</div><div style="display:flex;justify-content:flex-end;">权益金额(¥)</div>
+      </div>`;
+
+  activeProds.forEach((p, idx) => {
+    const val = (holdings[p.code] || 0) * (getNavFn(p.code) || 0);
+    html += `
+      <div style="${gridStyle} align-items:center; padding:12px; ${idx === activeProds.length - 1 ? "" : "border-bottom:1px solid var(--bd);"}">
+        <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
+        <div class="dr-val" style="display:flex;justify-content:flex-end;font-size:13px;font-weight:400;color:var(--t2)">${val ? fmt(val, 2) : "--"}</div>
+        <div style="display:flex;justify-content:flex-end;"><span class="dr-badge gray" style="font-weight:400;">${fmt(p.equity, 2)}</span></div>
+        <div class="dr-val" style="display:flex;justify-content:flex-end;font-size:13px;color:var(--accent);font-weight:400;">${val && p.equity > 0 ? fmt(val * p.equity, 2) : p.equity === 0 ? "0.00" : "--"}</div>
+      </div>`;
+  });
+  html += `</div></div>`;
+
+  html += `
+  <div class="dr-sec">
+    <div class="dr-header"><span class="dr-tag" style="font-weight:500;">⚙️ 持仓配置</span></div>
+    <div class="dr-card">
+      <div style="${gridStyle} padding:10px 12px; border-bottom:1px solid var(--bd); background:var(--bg4); font-size:11px; color:var(--t3); font-weight:400;">
+        <div>产品</div><div style="text-align:right;">代码</div><div style="text-align:right;">权益档</div><div style="text-align:right;">份额</div>
+      </div><div class="dr-col" style="gap:0;">`;
+
+  activeProds.forEach((p, idx) => {
+    const fetchedResult = lastResults.find((r) => r.code === p.code);
+    html += `
+      <div style="${gridStyle} align-items:center; padding:12px; ${idx === activeProds.length - 1 ? "" : "border-bottom:1px dashed var(--bd2);"}">
+        <div style="min-width:0;"><input id="sn_${p.code}" type="text" maxlength="10" class="dr-input-ghost" style="width:100%; font-size:13px; font-weight:500;" value="${shortNameMap[p.code] || ""}" placeholder="${fetchedResult?.name || NAMES[p.code] || p.code}"></div>
+        <div style="text-align:right;"><span class="dr-badge gray" style="font-weight:400; padding:3px 4px; font-size:10px;">${p.code}</span></div>
+        <div style="min-width:0;"><input id="eq_${p.code}" type="number" step="0.01" min="0" max="1" class="dr-input-ghost num" style="width:100%; text-align:right; font-size:15px; color:var(--accent); font-weight:400;" value="${(equityMap[p.code] != null ? equityMap[p.code] : p.equity).toFixed(2)}" placeholder="0.00"></div>
+        <div style="min-width:0;"><input id="hi_${p.code}" type="number" step="0.01" class="dr-input-ghost num" style="width:100%; text-align:right; font-size:15px; font-weight:400;" value="${holdings[p.code] > 0 ? holdings[p.code].toFixed(2) : ""}" placeholder="0.00"></div>
+      </div>`;
+  });
+  html += `</div></div></div>
+  <div style="display:flex;gap:10px;margin-top:24px">
+    <button onclick="exportToken()" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--bd2);background:var(--bg3);color:var(--t2);font-size:13px;font-weight:500;cursor:pointer;">🔑 导出</button>
+    <button onclick="importToken()" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--bd2);background:var(--bg3);color:var(--t2);font-size:13px;font-weight:500;cursor:pointer;">📥 恢复</button>
+  </div>`;
+
+  return html;
+}
+
+function UI_renderPlanDrawerBody(
+  currentPE,
+  buyData,
+  holdings,
+  activeProds,
+  getNavFn,
+  savedPlan,
+  priorityCode,
+  targetEqNeutral,
+) {
+  const equityProducts = activeProds.filter((p) => p.equity > 0);
+  const diff = buyData.currentEq - targetEqNeutral,
+    wrongDir = isEquityWrongDir(currentPE?.value, diff),
+    isNeutral = Math.abs(diff) < 1 && !wrongDir;
+  const curEqCol = wrongDir
+    ? "var(--warn)"
+    : isNeutral
+      ? "var(--t1)"
+      : diff > 0
+        ? "var(--sell)"
+        : "var(--buy)";
+
+  let activeAction = "none",
+    planStatusHtml =
+      '<span style="color:var(--t1); font-weight:600;">待机</span>';
+
+  if (currentPE?.bounds) {
+    if (currentPE.value <= currentPE.bounds.buyPct) {
+      activeAction = "buy";
+      planStatusHtml =
+        '<span style="color:var(--buy); font-weight:600;">▲ 增权</span>';
+    } else if (currentPE.value >= currentPE.bounds.sellPct) {
+      activeAction = "sell";
+      planStatusHtml =
+        '<span style="color:var(--sell); font-weight:600;">▼ 降权</span>';
+    }
+  }
+
+  if (activeAction === "none" && !isNeutral) {
+    if (diff > 0) {
+      activeAction = "sell";
+      planStatusHtml =
+        '<span style="color:var(--sell); font-weight:600;">▼ 降权</span>';
+    } else if (diff < 0) {
+      activeAction = "buy";
+      planStatusHtml =
+        '<span style="color:var(--buy); font-weight:600;">▲ 增权</span>';
+    }
+  }
+
+  const actSty = "transition:all 0.3s ease;",
+    inactSty =
+      "opacity:0.4; filter:grayscale(1); pointer-events:none; transition:all 0.3s ease;";
+
+  let html = UI_buildSummaryHtml(
+    currentPE,
+    { total: buyData.totalVal },
+    planStatusHtml,
+    buyData.currentEq,
+    curEqCol,
+    targetEqNeutral,
+  );
+
+  html += `
+  <div class="dr-sec" style="${activeAction === "sell" || activeAction === "none" ? inactSty : actSty}">
+    <div class="dr-header"><span class="dr-tag buy" style="font-weight:500;">▲ 增权预案评估</span></div>
+    <div class="dr-card dr-pad" style="background:var(--buy-bg);border-color:var(--buy-bd);">
+      <div class="dr-flex" style="margin-bottom:12px;align-items:center;">
+        <div class="dr-col" style="align-items:flex-start;"><div class="dr-lbl">当前权益</div><div class="dr-val" style="color:${curEqCol}; font-weight:400;">${fmt(buyData.currentEq, 2)}%</div></div>
+        <div class="dr-col" style="align-items:center;"><div class="dr-lbl">触发后目标</div><div class="dr-val" style="color:var(--buy); font-weight:400;">${buyData.targetEq}%</div></div>
+        <div class="dr-col" style="align-items:flex-end;"><div class="dr-lbl">需调配金额</div><div class="dr-val" style="color:var(--buy); font-weight:600;">${fmtMoney(buyData.buyAmt)}</div></div>
+      </div>
+      <div class="dr-lbl" style="margin-bottom:6px">资金筹集 (转出 ${getProductName(SYS_CONFIG.CODE_XQ)})</div>
+      <div class="dr-plan-box sell" style="margin-bottom:12px; background:rgba(0,0,0,0.1);">
+        <div style="font-size:13px;font-weight:500">转出份数</div><div class="dr-val lg" style="color:var(--up); font-weight:400;">${fmt(buyData.sellXqShares, 2)} <span style="font-size:11px;font-weight:400;color:var(--t2)">份</span></div>
+      </div>
+      <div class="dr-lbl" style="margin-bottom:6px">目标分配 (优先A500C，溢出至中证500C)</div><div class="dr-col" style="gap:6px;">
+        <div class="dr-plan-box" style="background:rgba(255,255,255,0.03);"><div style="font-size:13px;font-weight:500">转入 A500C</div><div class="dr-val lg" style="color:var(--buy); font-weight:400;">${fmtMoney(buyData.allocA500C)}</div></div>
+        ${buyData.allocZZ500C > 1 ? `<div class="dr-plan-box" style="background:rgba(255,255,255,0.03);"><div style="font-size:13px;font-weight:500">转入 中证500C</div><div class="dr-val lg" style="color:var(--buy); font-weight:400;">${fmtMoney(buyData.allocZZ500C)}</div></div>` : ""}
+      </div>
+    </div>
+  </div>`;
+
+  html += `
+  <div style="${activeAction === "buy" || activeAction === "none" ? inactSty : actSty}">
+    <div class="dr-header"><span class="dr-tag sell" style="font-weight:500;">▼ 降权预案评估</span></div>
+    <div class="dr-card dr-pad" style="background:var(--up-dim);border-color:var(--up-bg);">
+      <div id="sell_summary_area"></div><div class="dr-lbl" style="margin-bottom:10px">配置减仓比例（空=不参与），摩擦费率 ${fmt(SYS_CONFIG.FEE * 100, 1)}%</div>`;
+
+  equityProducts.forEach((p) => {
+    const isPri = priorityCode === p.code,
+      shares = holdings[p.code] || 0;
+    const nav = getNavFn(p.code);
+    const holdingVal = nav ? shares * nav : 0;
+    const holdingValStr = holdingVal ? fmtMoney(holdingVal) : "--";
+
+    html += `
+    <div class="dr-card dr-pad" style="margin-bottom:8px;">
+      <div style="display:grid; grid-template-columns: 115px 50px 1fr; align-items:center; margin-bottom:6px;">
+        <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
+        <div><span class="dr-badge gray" style="font-weight:400;">${fmt(p.equity, 2)}</span></div>
+        <div id="sell_calc_shares_${p.code}" class="dr-val" style="text-align:right; color:var(--t3); font-size:13px; font-weight:400;">-- <span style="font-size:11px;font-weight:400">份</span></div>
+      </div>
+      <div class="dr-flex" style="margin-bottom:2px;">
+        <div class="dr-lbl" style="display:flex;align-items:center;white-space:nowrap;">
+          持仓 <span class="num" style="margin-left:4px;font-weight:400;color:var(--t1)">${fmt(shares, 2)}</span> <span style="margin-left:2px">份</span>
+          <span style="color:var(--bd2);margin:0 8px">|</span>
+          <span class="num" style="font-weight:400;color:var(--t1)">${holdingValStr}</span>
+        </div>
+        <div id="sell_calc_fiat_${p.code}" class="dr-val" style="color:var(--t3);font-size:13px; font-weight:400;">-- 元</div>
+      </div>
+      <div class="dr-flex" style="margin-top:8px;padding-top:10px;border-top:1px dashed var(--bd2);">
+        <button class="pri-btn ${isPri ? "active" : ""}" data-code="${p.code}" onclick="togglePrioritySell('${p.code}')" style="font-weight:500;">${isPri ? "★ 优先" : "☆ 优先"}</button>
+        <div style="display:flex;align-items:center;gap:8px"><span class="dr-lbl">减仓权重</span>
+          <input type="tel" style="width:60px;height:28px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;color:var(--t1);text-align:center;font-family:var(--f-num);font-size:14px;outline:none;font-weight:400;" id="ratio_${p.code}" value="${savedPlan[p.code] || ""}" oninput="calcSellPreview()">
+        </div>
+      </div>
+    </div>`;
+  });
+
+  html += `<div class="dr-card dr-pad" style="margin-top:12px;" id="sell_preview_result"><span class="dr-lbl">等待输入比例...</span></div></div></div>`;
+  return html;
+}
+
+function UI_updateSellPreview(
+  draft,
+  equityProducts,
+  currentPE,
+  targetEqNeutral,
+) {
+  const summaryEl = document.getElementById("sell_summary_area");
+  if (summaryEl && !draft.error) {
+    const diff = draft.currentEq - targetEqNeutral,
+      wrongDir = isEquityWrongDir(currentPE?.value, diff);
+    const curEqCol = wrongDir
+      ? "var(--warn)"
+      : Math.abs(diff) < 1 && !wrongDir
+        ? "var(--t1)"
+        : diff > 0
+          ? "var(--sell)"
+          : "var(--buy)";
+    summaryEl.innerHTML = `
+    <div class="dr-flex" style="margin-bottom:12px;align-items:center;">
+      <div class="dr-col" style="align-items:flex-start;"><div class="dr-lbl">当前权益</div><div class="dr-val" style="color:${curEqCol}; font-weight:400;">${fmt(draft.currentEq, 2)}%</div></div>
+      <div class="dr-col" style="align-items:center;"><div class="dr-lbl">触发后目标</div><div class="dr-val" style="color:var(--warn); font-weight:400;">${draft.targetEq}%</div></div>
+      <div class="dr-col" style="align-items:flex-end;"><div class="dr-lbl">需减比例</div><div class="dr-val" style="color:var(--sell); font-weight:400;">${fmt(draft.diffEqPct, 2)}%</div></div>
+    </div>`;
+  }
+
+  equityProducts.forEach((p) => {
+    const res = draft.results?.[p.code],
+      elS = document.getElementById("sell_calc_shares_" + p.code),
+      elF = document.getElementById("sell_calc_fiat_" + p.code);
+    if (res && res.amt > 0) {
+      if (elS)
+        elS.innerHTML = `<span style="color:var(--up); font-weight:600;">${fmt(res.shares, 2)}</span> <span style="font-size:11px;color:var(--t2);font-weight:400;">份</span>`;
+      if (elF)
+        elF.innerHTML = `<span style="color:var(--sell);font-size:11px;margin-right:8px;font-weight:400">降权 ${fmt(res.eqDropPct, 2)}%</span><span style="color:var(--t1);font-weight:500;">${fmtMoney(res.amt)}</span>`;
+    } else {
+      if (elS)
+        elS.innerHTML = `-- <span style="font-size:11px;font-weight:400;">份</span>`;
+      if (elF) elF.innerHTML = `-- 元`;
+    }
+  });
+
+  const resultEl = document.getElementById("sell_preview_result");
+  if (resultEl) {
+    resultEl.innerHTML = draft.hasAnySell
+      ? `
+      <div class="dr-flex" style="align-items:center;">
+        <div class="dr-col" style="align-items:flex-start;"><div class="dr-lbl">操作后权益</div><div class="dr-val lg" style="color:var(--dn); font-weight:400;">${fmt(draft.afterEqPct, 2)}%</div></div>
+        <div class="dr-col" style="align-items:center;"><div class="dr-lbl">转出到账</div><div class="dr-val lg" style="font-weight:600;">${fmtMoney(draft.totalCashOut)}</div></div>
+        <div class="dr-col" style="align-items:flex-end;"><div class="dr-lbl">总摩擦</div><div class="dr-val lg" style="color:var(--warn); font-weight:400;">${fmtMoney(draft.totalFriction)}</div></div>
+      </div>`
+      : `<span class="dr-lbl" style="font-weight:400;">请填写比例或设为优先卖出</span>`;
+  }
+}
+
+// ============================================================
+// DOM 渲染器 (DOM Renderers)
+// ============================================================
 
 function updateClock() {
   const n = new Date();
@@ -109,6 +504,7 @@ function calcFlash(results) {
 }
 
 function renderIndices(map) {
+  if (!map || Object.keys(map).length === 0) return;
   document.getElementById("idxBar").innerHTML = INDICES.map((idx) => {
     const d = map[idx.id];
     if (!d || !d.f2)
@@ -140,7 +536,9 @@ function updatePeBar() {
     _peDOM.hiEl = document.getElementById("peTrackHi");
   }
 
-  const currentPE = getCurrentPE();
+  const peData = loadPe();
+  const currentPE = getCurrentPE(peData, window._rt_csi300_price);
+
   if (!currentPE) {
     _peDOM.display.textContent = "--.--%";
     _peDOM.display.className = "pe-value pe-normal";
@@ -175,8 +573,12 @@ function updatePeBar() {
   }
 
   if (_peDOM.eqDiv) {
-    const eqData = calcCurrentEquity(loadHoldings());
-    const target = getDynamicTarget("neutral");
+    const eqData = calcCurrentEquity(
+      loadHoldings(),
+      getActiveProducts(),
+      getNavByCode,
+    );
+    const target = getDynamicTarget("neutral", peData?.bucketStr);
     if (eqData && target != null) {
       const diff = eqData.equity - target,
         wrongDir = isEquityWrongDir(v, diff);
@@ -258,21 +660,19 @@ function renderCards(results, fl, today, tradingDay) {
       results.map((r) => r.code),
     )
   ) {
-    container.innerHTML =
-      results
-        .map((f) => {
-          const cc =
-            f.estPct != null && !f.error
-              ? f.estPct > 0
-                ? "up-card"
-                : f.estPct < 0
-                  ? "down-card"
-                  : ""
-              : "";
-          return `<div class="fund-card ${cc}${collapsed ? " collapsed" : ""}" data-code="${f.code}">${buildCardInnerHtml(f, fl, today, tradingDay)}</div>`;
-        })
-        .join("") ||
-      `<div class="empty-state"><div class="empty-icon">📭</div><div>暂无关注基金</div></div>`;
+    container.innerHTML = results
+      .map((f) => {
+        const cc =
+          f.estPct != null && !f.error
+            ? f.estPct > 0
+              ? "up-card"
+              : f.estPct < 0
+                ? "down-card"
+                : ""
+            : "";
+        return `<div class="fund-card ${cc}${collapsed ? " collapsed" : ""}" data-code="${f.code}">${buildCardInnerHtml(f, fl, today, tradingDay)}</div>`;
+      })
+      .join("");
     return;
   }
   results.forEach((f) => {
@@ -351,7 +751,13 @@ function renderTodayProfit(results, mktState, todayStr) {
     allUpdated,
     hasHoldings,
     isWaitingForOpen,
-  } = calcTodayProfit(results, loadHoldings(), mktState, todayStr);
+  } = calcTodayProfit(
+    results,
+    loadHoldings(),
+    getActiveProducts(),
+    mktState,
+    todayStr,
+  );
   let html = isWaitingForOpen ? `<span style="color:var(--t3)">-</span>` : "";
 
   if (!isWaitingForOpen && hasHoldings) {
@@ -371,9 +777,31 @@ function renderTodayProfit(results, mktState, todayStr) {
   if (profitElPc) profitElPc.innerHTML = html;
 }
 
-function renderAll(results) {
-  _lastResults = results;
-  updatePeBar();
+// ============================================================
+// 响应式订阅更新器 (Topic-based Renderers)
+// ============================================================
+
+// 1. 仅指数更新时触发 (每10秒)
+function UI_updateIndices() {
+  renderIndices(getIndices());
+  updatePeBar(); // 沪深300变动会影响 PE 追踪点的位置
+}
+
+// 2. 本地配置(定锚/持仓)更新时触发 (手动触发)
+function UI_updateLocalConfig() {
+  const results = getLastResults(),
+    mktState = getMarketState(),
+    today = todayDateStr();
+  const resultMap = new Map(results.map((r) => [r.code, r]));
+  const uiResults = funds.map((c) => resultMap.get(c)).filter(Boolean);
+
+  updatePeBar(); // 重新计算实际权益偏差
+  renderTodayProfit(uiResults, mktState, today); // 持仓变了，盈亏也会变
+}
+
+// 3. 基金净值更新、或列表增删时触发 (每60秒 / 手动增删)
+function UI_updateFunds() {
+  const results = getLastResults();
   const fl = calcFlash(results),
     today = todayDateStr(),
     mktState = getMarketState();
@@ -381,9 +809,15 @@ function renderAll(results) {
   const resultMap = new Map(results.map((r) => [r.code, r]));
   const uiResults = funds.map((c) => resultMap.get(c)).filter(Boolean);
 
-  renderCards(uiResults, fl, today, tradingDay);
-  renderTable(uiResults, fl, today, tradingDay);
+  if (funds.length === 0) {
+    UI_renderEmptyState();
+  } else if (uiResults.length > 0) {
+    renderCards(uiResults, fl, today, tradingDay);
+    renderTable(uiResults, fl, today, tradingDay);
+  }
+
   renderTodayProfit(uiResults, mktState, today);
+  updatePeBar(); // 净值变动会导致权益市值改变
 
   const hasData = uiResults.length > 0;
   if (document.getElementById("cardHeaderBar"))
@@ -400,6 +834,7 @@ function renderAll(results) {
       : "hidden";
 }
 
+// 修改原有的界面交互按钮，让它们复用 UI_updateFunds
 function toggleAllCollapse() {
   if (window.matchMedia("(max-width:767px)").matches) {
     mobileExpanded = !mobileExpanded;
@@ -419,11 +854,11 @@ function toggleAllCollapse() {
       : "none";
     document.body.classList.toggle("collapsed-mode", allCollapsed);
   }
-  if (_lastResults.length) renderAll(_lastResults);
+  UI_updateFunds();
 }
 
 function cycleMiniMode() {
   miniMode = (miniMode + 1) % 3;
   document.getElementById("cycleBtn").textContent = miniLabels[miniMode];
-  if (_lastResults.length) renderAll(_lastResults);
+  UI_updateFunds();
 }

@@ -1,12 +1,13 @@
 // ============================================================
-// engine.js - 计算引擎层
-// 职责：市场状态、Lagrange 插值、PE 推算、权益计算、增降权推演、今日盈亏计算
+// engine.js - 计算引擎层 (v2.0 纯净版)
+// 职责：纯粹的数学推演与业务计算。
+// 铁律：不含任何 DOM 操作，不含 localStorage 读写，不调用 store/data 的函数。
+// 所有依赖必须通过参数传入 (Dependency Injection)。
 // ============================================================
 
-function getMarketState() {
-  const n = new Date();
-  const d = n.getDay(),
-    t = n.getHours() * 60 + n.getMinutes();
+function getMarketState(now = new Date()) {
+  const d = now.getDay(),
+    t = now.getHours() * 60 + now.getMinutes();
   if (d === 0 || d === 6) return "WEEKEND";
   if (t < SYS_CONFIG.T_PRE_MARKET) return "BEFORE_PRE";
   if (t < SYS_CONFIG.T_OPEN) return "PRE_MARKET";
@@ -30,8 +31,8 @@ function isEquityWrongDir(peVal, diff) {
   );
 }
 
-function getCurrentPE() {
-  const peData = loadPe();
+// [依赖注入]: 传入存储的 peData 和实时的 currentIdxPrice
+function getCurrentPE(peData, currentIdxPrice) {
   if (!peData || !peData.bucketStr) return null;
 
   const [loStr, hiStr] = peData.bucketStr.split(",");
@@ -42,12 +43,12 @@ function getCurrentPE() {
     isDynamic = false;
 
   if (
-    window._rt_csi300_price &&
+    currentIdxPrice &&
     peData.priceAnchor &&
     peData.priceBuy &&
     peData.priceSell
   ) {
-    const x = window._rt_csi300_price;
+    const x = currentIdxPrice;
     const { priceBuy: x1, priceAnchor: x2, priceSell: x3 } = peData;
     const y1 = buyPct,
       y2 = peData.peYest,
@@ -71,10 +72,10 @@ function getCurrentPE() {
   return { value: v, isDynamic, rawData: peData, bounds: { buyPct, sellPct } };
 }
 
-function getDynamicTarget(mode) {
-  const currentPE = getCurrentPE();
-  if (!currentPE?.rawData?.bucketStr) return null;
-  const lo = parseFloat(currentPE.rawData.bucketStr.split(",")[0]);
+// [依赖注入]: 传入档位字符串即可
+function getDynamicTarget(mode, peBucketStr) {
+  if (!peBucketStr) return null;
+  const lo = parseFloat(peBucketStr.split(",")[0]);
   const idx = PE_EQUITY_TABLE.findIndex((x) => lo >= x.lo && lo < x.hi);
   if (idx === -1) return null;
 
@@ -85,13 +86,14 @@ function getDynamicTarget(mode) {
   return PE_EQUITY_TABLE[idx].target;
 }
 
-function calcCurrentEquity(holdings) {
+// [依赖注入]: 传入持仓、活跃产品列表、以及一个获取净值的回调函数 getNavFn
+function calcCurrentEquity(holdings, activeProducts, getNavFn) {
   let total = 0,
     eq = 0;
-  getActiveProducts().forEach((p) => {
+  activeProducts.forEach((p) => {
     const shares = holdings[p.code] || 0;
     if (!shares) return;
-    const nav = getNavByCode(p.code);
+    const nav = getNavFn(p.code);
     if (nav == null) return;
     const val = shares * nav;
     total += val;
@@ -100,16 +102,16 @@ function calcCurrentEquity(holdings) {
   return total > 0 ? { equity: (eq / total) * 100, total } : null;
 }
 
-function calcBuyPlanDraft(holdings) {
-  const eqResult = calcCurrentEquity(holdings);
-  if (!eqResult) return null;
-  const { total: totalVal, equity: currentEq } = eqResult;
-  const targetEq = getDynamicTarget("buy");
-  if (targetEq == null) return null;
+// [依赖注入]: 组装推演参数
+function calcBuyPlanDraft(holdings, activeProducts, getNavFn, targetEq) {
+  const eqResult = calcCurrentEquity(holdings, activeProducts, getNavFn);
+  if (!eqResult || targetEq == null) return null;
 
+  const { total: totalVal, equity: currentEq } = eqResult;
   const buyAmt = Math.max(0, (totalVal * (targetEq - currentEq)) / 100);
-  const xqNav = getNavByCode(SYS_CONFIG.CODE_XQ) || 1.0;
-  const a500cNav = getNavByCode(SYS_CONFIG.CODE_A500) || 1.0;
+
+  const xqNav = getNavFn(SYS_CONFIG.CODE_XQ) || 1.0;
+  const a500cNav = getNavFn(SYS_CONFIG.CODE_A500) || 1.0;
 
   const currA500CVal = (holdings[SYS_CONFIG.CODE_A500] || 0) * a500cNav;
   const a500cRoom = Math.max(
@@ -131,16 +133,21 @@ function calcBuyPlanDraft(holdings) {
   };
 }
 
-function calcSellExecutionDraft(holdings, ratios, priorityCode) {
-  const eqResult = calcCurrentEquity(holdings);
-  if (!eqResult) return { error: true };
-  const targetEq = getDynamicTarget("sell");
-  if (targetEq == null) return { error: true };
+function calcSellExecutionDraft(
+  holdings,
+  activeProducts,
+  getNavFn,
+  targetEq,
+  ratios,
+  priorityCode,
+) {
+  const eqResult = calcCurrentEquity(holdings, activeProducts, getNavFn);
+  if (!eqResult || targetEq == null) return { error: true };
 
   const { equity: currentEq, total: totalVal } = eqResult;
   let sellNeededEq = Math.max(0, (totalVal * (currentEq - targetEq)) / 100);
 
-  const sellProducts = getActiveProducts().filter((p) => p.equity > 0);
+  const sellProducts = activeProducts.filter((p) => p.equity > 0);
   const totalRatio = sellProducts
     .filter((p) => p.code !== priorityCode)
     .reduce((s, p) => s + (ratios[p.code] || 0), 0);
@@ -154,7 +161,7 @@ function calcSellExecutionDraft(holdings, ratios, priorityCode) {
   if (priorityCode) {
     const pPri = sellProducts.find((p) => p.code === priorityCode);
     if (pPri) {
-      const nav = getNavByCode(pPri.code) || 1.0;
+      const nav = getNavFn(pPri.code) || 1.0;
       const actualEqToSell = Math.min(
         sellNeededEq,
         (holdings[pPri.code] || 0) * nav * pPri.equity,
@@ -169,7 +176,7 @@ function calcSellExecutionDraft(holdings, ratios, priorityCode) {
 
   sellProducts.forEach((p) => {
     if (p.code === priorityCode) return;
-    const nav = getNavByCode(p.code) || 1.0;
+    const nav = getNavFn(p.code) || 1.0;
     if (totalRatio <= 0 || !ratios[p.code]) {
       results[p.code] = { amt: 0, nav };
       return;
@@ -209,14 +216,20 @@ function calcSellExecutionDraft(holdings, ratios, priorityCode) {
   };
 }
 
-function calcTodayProfit(results, holdings, mktState, todayStr) {
+function calcTodayProfit(
+  results,
+  holdings,
+  activeProducts,
+  mktState,
+  todayStr,
+) {
   let totalProfit = 0,
     totalYestVal = 0,
     allUpdated = true,
     hasHoldings = false;
   let isWaitingForOpen = mktState === "PRE_MARKET";
 
-  getActiveProducts().forEach((p) => {
+  activeProducts.forEach((p) => {
     const shares = holdings[p.code] || 0;
     if (shares <= 0) return;
     const f = results.find((r) => r.code === p.code);

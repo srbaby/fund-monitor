@@ -1,6 +1,6 @@
 // ============================================================
 // data.js - 数据获取层
-// 职责：所有网络请求、JSONP 管理、TTL 缓存、数据标准化输出
+// 职责：网络请求、数据标准化输出、更新 store 状态
 // ============================================================
 
 window._rt_csi300_price = null;
@@ -9,10 +9,10 @@ window.jsonpResolvers = {};
 window.jsonpgz = function (data) {
   if (data?.fundcode && window.jsonpResolvers[data.fundcode]) {
     window.jsonpResolvers[data.fundcode](data);
+    delete window.jsonpResolvers[data.fundcode];
   }
 };
 
-// 提取共用的 Script 注入机制，保证绝对销毁
 function injectScript(url, timeoutMs, onResolve) {
   let done = false;
   const s = document.createElement("script");
@@ -24,16 +24,13 @@ function injectScript(url, timeoutMs, onResolve) {
     }
   };
   s.src = url;
-  s.onload = () => {
-    /* 仅供非JSONP回调作为备用 */
-  };
+  s.onload = () => {};
   s.onerror = () => fin(null);
   setTimeout(() => fin(null), timeoutMs);
   document.head.appendChild(s);
   return fin;
 }
 
-// ---- 估算数据 ----
 function fetchEst(code) {
   return new Promise((resolve) => {
     const fin = injectScript(
@@ -48,17 +45,15 @@ function fetchEst(code) {
   });
 }
 
-// ---- 官方净值（串行队列 + TTL 缓存）----
 const offCache = {};
 const offQ = [];
 let offBusy = false;
 
 function fetchOff(code) {
-  const now = new Date();
-  const timeNum = now.getHours() * 60 + now.getMinutes();
-  const day = now.getDay();
-  const cached = offCache[code];
-
+  const now = new Date(),
+    timeNum = now.getHours() * 60 + now.getMinutes(),
+    day = now.getDay(),
+    cached = offCache[code];
   if (cached) {
     const isTodayData = cached.data?.date === todayDateStr();
     const ttl =
@@ -69,7 +64,6 @@ function fetchOff(code) {
           : 3600000;
     if (now.getTime() - cached.ts < ttl) return Promise.resolve(cached.data);
   }
-
   return new Promise((resolve) => {
     offQ.push({
       code,
@@ -98,7 +92,6 @@ function drainOff() {
     },
   );
 
-  // 覆写默认的 onload 提取数据
   const s = document.head.lastElementChild;
   if (s && s.tagName === "SCRIPT") {
     s.onload = () => {
@@ -131,7 +124,6 @@ function drainOff() {
   }
 }
 
-// ---- 单只基金合并拉取 ----
 async function fetchSingleFund(code) {
   const [est, off] = await Promise.all([fetchEst(code), fetchOff(code)]);
   if (!est && !off) return { code, error: true };
@@ -151,13 +143,11 @@ async function fetchSingleFund(code) {
   };
 }
 
-// ---- 指数拉取 ----
 let _idxCounter = 0;
 
 function fetchIndices() {
   return new Promise((resolve) => {
     const cb = "_idx_" + Date.now() + "_" + _idxCounter++;
-
     const fin = injectScript(
       `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f12,f14&secids=1.000300,1.000510,1.000905,2.H30269,1.000012,116.HSI,124.HSI,100.HSI&cb=${cb}&_=${Date.now()}`,
       5000,
@@ -168,32 +158,27 @@ function fetchIndices() {
     );
 
     window[cb] = function (data) {
+      fin();
       const diff = data?.data?.diff;
-      if (!diff) {
-        fin();
-        return;
-      }
+      if (!diff) return;
       const map = {};
       diff.forEach((d) => {
         map[d.f12] = d;
       });
-      if (map["000300"]?.f2) {
+      if (map["000300"]?.f2)
         window._rt_csi300_price = parseFloat(map["000300"].f2);
-        if (document.getElementById("peModal")?.style.display !== "flex")
-          updatePeBar();
-      }
-      renderIndices(map);
-      fin();
+
+      // 核心修改：不再调用 ui.js，而是把数据交给 store，由 store 通知所有人
+      setIndices(map);
     };
   });
 }
 
-// ---- 净值取用 ----
 function getNavByCode(code) {
-  const f = _lastResults.find((r) => r.code === code);
+  const f = getLastResults().find((r) => r.code === code);
   if (!f) return null;
-  const offD = f.offDate ? f.offDate.slice(0, 10) : "";
-  const estD = f.estTime ? f.estTime.slice(0, 10) : "";
+  const offD = f.offDate ? f.offDate.slice(0, 10) : "",
+    estD = f.estTime ? f.estTime.slice(0, 10) : "";
   if (f.offVal && (!estD || offD >= estD)) return parseFloat(f.offVal);
   if (f.estVal) return parseFloat(f.estVal);
   return null;
