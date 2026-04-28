@@ -367,19 +367,19 @@ function UI_renderPlanDrawerBody(
 
     html += `
     <div class="dr-card dr-pad" style="margin-bottom:10px;">
-      <div style="display:grid; grid-template-columns: 200px 1fr; gap:8px; align-items:center; margin-bottom:12px;">
+      <div style="display:grid; grid-template-columns: auto 1fr; gap:8px 12px; align-items:center; margin-bottom:12px;">
         <div style="display:flex; align-items:center; gap:8px;">
-          <div class="dr-item-name" style="width:85px; flex-shrink:0;">${p.name}</div>
+          <div class="dr-item-name">${p.name}</div>
           <span class="dr-badge gray">${fmt(p.equity, 2)}</span>
         </div>
-        <div id="sell_calc_shares_${p.code}" class="dr-val-sm" style="color:var(--t3); text-align:left;">-- <span class="dr-lbl">份</span></div>
+        <div id="sell_calc_shares_${p.code}" class="dr-val-sm" style="color:var(--t3); text-align:right;">-- <span class="dr-lbl">份</span></div>
 
         <div class="dr-lbl" style="white-space:nowrap;">
           <span class="num" style="color:var(--t1)">${fmt(shares, 2)}</span> 份
           <span style="color:var(--bd2);margin:0 4px">|</span>
           <span class="num" style="color:var(--t1)">${holdingValStr}</span>
         </div>
-        <div id="sell_calc_fiat_${p.code}" class="dr-val-sm" style="color:var(--t3); white-space:nowrap; text-align:left;">-- 元</div>
+        <div id="sell_calc_fiat_${p.code}" class="dr-val-sm" style="color:var(--t3); white-space:nowrap; text-align:right;">-- 元</div>
       </div>
       <div class="dr-flex" style="padding-top:12px; border-top:1px dashed var(--bd2);">
         <button class="pri-btn ${isPri ? "active" : ""}" data-code="${p.code}" onclick="togglePrioritySell('${p.code}')">${isPri ? "★ 优先" : "☆ 优先"}</button>
