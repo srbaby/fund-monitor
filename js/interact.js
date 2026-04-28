@@ -1,10 +1,9 @@
 // ============================================================
-// interact.js - 控制器层 (v3.0 纯净调度版)
+// interact.js - 控制器层 (v3.1 架构师重构版 - 肃清越权污染)
 // 职责：接收用户事件，调 Engine 计算，向 Store 写数据，或触发 UI 工厂生成抽屉
-// 铁律：不再包含任何 HTML 拼接，不含手动 renderAll，全靠 store 通知
+// 铁律：不再包含任何 HTML 拼接，严禁裸写 localStorage 读写
 // ============================================================
 
-// ---- 抽屉基础控制 ----
 function openDrawer(id) {
   document.getElementById("drawerMask").classList.add("open");
   document.getElementById(id).classList.add("open");
@@ -26,11 +25,15 @@ function toggleRefreshBtn(isFetching) {
   });
 }
 
-// ---- 数据刷新调度 ----
 let _isFetchingData = false;
 
-async function refreshData() {
+async function refreshData(force = false) {
   if (_isFetchingData) return;
+
+  if (force && typeof window.expireOffCache === "function") {
+    window.expireOffCache();
+  }
+
   _isFetchingData = true;
   toggleRefreshBtn(true);
 
@@ -44,10 +47,8 @@ async function refreshData() {
     }
 
     const results = await Promise.all(funds.map(fetchSingleFund));
-    // 💥 核心：只管把数据塞给 store，由于引入了观察者模式，store 内部会自动触发界面的 renderAll
     setLastResults(results);
 
-    // 重置拖拽插件（若有新基金加入）
     if (cardSortable) cardSortable.destroy();
     if (tblSortable) tblSortable.destroy();
 
@@ -56,8 +57,8 @@ async function refreshData() {
         .map((el) => el.dataset.code)
         .filter(Boolean);
       if (o.length === funds.length) {
-        funds = o;
-        saveFunds();
+        // [架构师优化]：不再直接覆写全局变量，调用暴露的 API 更新，捍卫 MVC 隔离墙
+        updateFundsList(o);
       }
     };
 
@@ -79,13 +80,11 @@ async function refreshData() {
   }
 }
 
-// ---- 基金增删操作 ----
 function addFund() {
   const input = document.getElementById("codeInput");
   const code = input.value.trim();
   if (/^\d{6}$/.test(code) && !funds.includes(code)) {
-    funds.push(code);
-    saveFunds();
+    updateFundsList([...funds, code]);
     input.value = "";
     refreshData();
   } else input.value = "";
@@ -98,12 +97,10 @@ function delFund(code) {
       ? fetchedResult.name
       : NAMES[code] || code;
   if (!confirm(`确认删除「${name}」？`)) return;
-  funds = funds.filter((c) => c !== code);
-  saveFunds();
+  updateFundsList(funds.filter((c) => c !== code));
   refreshData();
 }
 
-// ---- PE 定锚操作 ----
 function openPeModal() {
   const peData = loadPe() || {};
   document.getElementById("peModalBucket").value = peData.bucketStr || "65,70";
@@ -133,7 +130,6 @@ function confirmPe() {
   if (isNaN(peYest) || isNaN(priceAnchor))
     return alert("请填写完整的【基准PE】与【基准点位】！");
 
-  // 💥 核心：调用 store 保存。store 会通过 observer 广播更改，界面自动更新 peBar，不再手动调 updatePeBar()
   savePe({
     bucketStr,
     peYest,
@@ -144,12 +140,12 @@ function confirmPe() {
   closePeModal();
 }
 
-// ---- 持仓抽屉调度 ----
 function openHoldingDrawer() {
-  const raw = _loadRaw() || {},
-    holdings = raw.shares || {},
-    equityMap = raw.equity || {},
-    shortNameMap = raw.shortNames || {};
+  // [架构师优化]：严禁越权调用 store.js 的下划线内部私有函数，改走标准的 getter
+  const holdings = loadHoldings(),
+        equityMap = loadHoldingsEquity(),
+        shortNameMap = loadShortNames();
+        
   const activeProds = getActiveProducts();
   const peData = loadPe();
   const currentPE = getCurrentPE(peData, window._rt_csi300_price);
@@ -172,14 +168,17 @@ function openHoldingDrawer() {
 }
 
 function saveHoldings() {
-  const raw = _loadRaw() || {},
-    shares = raw.shares || {},
-    equity = raw.equity || {},
-    shortNames = raw.shortNames || {};
+  // 保持原有对象的内存合并逻辑
+  const shares = loadHoldings(),
+        equity = loadHoldingsEquity(),
+        shortNames = loadShortNames();
 
   getActiveProducts().forEach((p) => {
-    const sv = parseFloat(document.getElementById("hi_" + p.code)?.value) || 0;
-    const ev = parseFloat(document.getElementById("eq_" + p.code)?.value) || 0;
+    const svStr = document.getElementById("hi_" + p.code)?.value || "";
+    const evStr = document.getElementById("eq_" + p.code)?.value || "";
+    
+    const sv = parseFloat(svStr.replace(/,/g, '')) || 0;
+    const ev = parseFloat(evStr.replace(/,/g, '')) || 0;
     const sn = (document.getElementById("sn_" + p.code)?.value || "").trim();
 
     shares[p.code] = Math.max(0, sv);
@@ -193,7 +192,6 @@ function saveHoldings() {
   alert("✅ 持仓已保存");
 }
 
-// ---- 口令备份调度 ----
 function exportToken() {
   const token = exportSnapshot();
   UI_showDialog({
@@ -239,14 +237,15 @@ function importToken() {
   });
 }
 
-// ---- 预案抽屉调度 ----
-window._prioritySellCode = loadPrioritySell();
+// [架构师优化]：消除污染全局 window 的僵尸变量，替换为局部状态控制变量
+let _prioritySellCodeDraft = null;
 
 function openPlanDrawer() {
   const peData = loadPe();
   if (!getCurrentPE(peData, window._rt_csi300_price))
     return alert("请先定锚！") || openPeModal();
-  window._prioritySellCode = loadPrioritySell();
+    
+  _prioritySellCodeDraft = loadPrioritySell();
   renderPlanDrawer();
   openDrawer("planDrawer");
 }
@@ -264,7 +263,8 @@ function renderPlanDrawer() {
     targetEqBuy,
   );
 
-  const savedPlan = safeParse(localStorage.getItem(STORE_SELL_PLAN), {});
+  // [架构师优化]：消除越权，统一通过 store.js 读取预案
+  const savedPlan = loadSellPlanConfig();
   const targetEqNeutral = getDynamicTarget("neutral", peData?.bucketStr);
 
   if (!buyData) return;
@@ -276,7 +276,7 @@ function renderPlanDrawer() {
     activeProds,
     getNavByCode,
     savedPlan,
-    window._prioritySellCode,
+    _prioritySellCodeDraft,
     targetEqNeutral,
   );
   calcSellPreview();
@@ -287,8 +287,8 @@ function calcSellPreview() {
   const equityProducts = activeProds.filter((p) => p.equity > 0);
   const ratios = {};
   equityProducts.forEach((p) => {
-    ratios[p.code] =
-      parseFloat(document.getElementById("ratio_" + p.code)?.value) || 0;
+    const rStr = document.getElementById("ratio_" + p.code)?.value || "";
+    ratios[p.code] = parseFloat(rStr.replace(/,/g, '')) || 0;
   });
 
   const peData = loadPe();
@@ -301,7 +301,7 @@ function calcSellPreview() {
     getNavByCode,
     targetEqSell,
     ratios,
-    window._prioritySellCode,
+    _prioritySellCodeDraft,
   );
   const currentPE = getCurrentPE(peData, window._rt_csi300_price);
 
@@ -309,13 +309,13 @@ function calcSellPreview() {
 }
 
 function togglePrioritySell(code) {
-  window._prioritySellCode = window._prioritySellCode === code ? null : code;
-  window._prioritySellCode
-    ? savePrioritySell(window._prioritySellCode)
+  _prioritySellCodeDraft = _prioritySellCodeDraft === code ? null : code;
+  _prioritySellCodeDraft
+    ? savePrioritySell(_prioritySellCodeDraft)
     : clearPrioritySell();
 
   document.querySelectorAll(".pri-btn").forEach((btn) => {
-    const isPri = btn.dataset.code === window._prioritySellCode;
+    const isPri = btn.dataset.code === _prioritySellCodeDraft;
     btn.className = `pri-btn ${isPri ? "active" : ""}`;
     btn.innerHTML = isPri ? "★ 优先" : "☆ 优先";
   });
@@ -327,13 +327,22 @@ function saveSellPlan() {
   getActiveProducts()
     .filter((p) => p.equity > 0)
     .forEach((p) => {
-      const v = document.getElementById("ratio_" + p.code)?.value || "";
-      if (v) plan[p.code] = v;
+      const vStr = document.getElementById("ratio_" + p.code)?.value || "";
+      const cleaned = vStr.replace(/,/g, '').trim();
+      if (cleaned) plan[p.code] = cleaned;
     });
-  localStorage.setItem(STORE_SELL_PLAN, JSON.stringify(plan));
+  // [架构师优化]：通过 store 通信，禁止控制器跨级直接触碰 localStorage
+  saveSellPlanConfig(plan);
 }
 
 function saveAndClosePlan() {
   saveSellPlan();
   closeAllDrawers();
 }
+
+setTimeout(() => {
+  const _mBtn = document.getElementById("miniRefBtn");
+  const _pcBtn = document.getElementById("miniRefBtnPc");
+  if (_mBtn) _mBtn.onclick = () => refreshData(true);
+  if (_pcBtn) _pcBtn.onclick = () => refreshData(true);
+}, 0);
