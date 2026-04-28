@@ -7,12 +7,14 @@
 function openDrawer(id) {
   document.getElementById("drawerMask").classList.add("open");
   document.getElementById(id).classList.add("open");
+  document.body.style.overflow = "hidden"; // 锁定背景滚动
 }
 function closeAllDrawers() {
   document.getElementById("drawerMask").classList.remove("open");
   document
     .querySelectorAll(".drawer")
     .forEach((d) => d.classList.remove("open"));
+  document.body.style.overflow = ""; // 恢复背景滚动
 }
 
 function toggleRefreshBtn(isFetching) {
