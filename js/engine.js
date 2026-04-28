@@ -1,184 +1,238 @@
 // ============================================================
 // engine.js - 计算引擎层
 // 职责：市场状态、Lagrange 插值、PE 推算、权益计算、增降权推演、今日盈亏计算
-// 纯函数，不含 DOM 操作，不含 localStorage 读写
 // ============================================================
 
-// ---- 市场状态机 ----
 function getMarketState() {
   const n = new Date();
-  const d = n.getDay(), t = n.getHours() * 60 + n.getMinutes();
-  if (d === 0 || d === 6) return 'WEEKEND';
-  if (t < SYS_CONFIG.T_PRE_MARKET) return 'BEFORE_PRE';
-  if (t < SYS_CONFIG.T_OPEN) return 'PRE_MARKET';
-  if ((t >= SYS_CONFIG.T_OPEN && t < SYS_CONFIG.T_MID_BREAK) ||
-      (t >= SYS_CONFIG.T_AFTERNOON && t < SYS_CONFIG.T_CLOSE)) return 'TRADING';
-  if (t >= SYS_CONFIG.T_MID_BREAK && t < SYS_CONFIG.T_AFTERNOON) return 'MID_BREAK';
-  return 'POST_MARKET';
+  const d = n.getDay(),
+    t = n.getHours() * 60 + n.getMinutes();
+  if (d === 0 || d === 6) return "WEEKEND";
+  if (t < SYS_CONFIG.T_PRE_MARKET) return "BEFORE_PRE";
+  if (t < SYS_CONFIG.T_OPEN) return "PRE_MARKET";
+  if (
+    (t >= SYS_CONFIG.T_OPEN && t < SYS_CONFIG.T_MID_BREAK) ||
+    (t >= SYS_CONFIG.T_AFTERNOON && t < SYS_CONFIG.T_CLOSE)
+  )
+    return "TRADING";
+  if (t >= SYS_CONFIG.T_MID_BREAK && t < SYS_CONFIG.T_AFTERNOON)
+    return "MID_BREAK";
+  return "POST_MARKET";
 }
 
-// ---- 权益方向警告判断（三处调用统一入口）----
-// peVal: 当前PE百分位；diff: 实际权益 - 目标权益
-// 高估区（PE >= 阈值）权益偏高超限 或 低估区权益偏低超限，均视为方向错误
 function isEquityWrongDir(peVal, diff) {
   if (peVal == null || diff == null) return false;
-  const dev = SYS_CONFIG.EQUITY_DEV_LIMIT;
-  const thr = SYS_CONFIG.PE_HIGH_THRESHOLD;
-  return (peVal >= thr && diff > dev) || (peVal < thr && diff < -dev);
+  return (
+    (peVal >= SYS_CONFIG.PE_HIGH_THRESHOLD &&
+      diff > SYS_CONFIG.EQUITY_DEV_LIMIT) ||
+    (peVal < SYS_CONFIG.PE_HIGH_THRESHOLD &&
+      diff < -SYS_CONFIG.EQUITY_DEV_LIMIT)
+  );
 }
 
-// ---- Lagrange 三点插值，推算实时 PE ----
 function getCurrentPE() {
   const peData = loadPe();
   if (!peData || !peData.bucketStr) return null;
 
-  const [loStr, hiStr] = peData.bucketStr.split(',');
-  const buyPct  = parseFloat(loStr) - SYS_CONFIG.BUFFER_ZONE;
+  const [loStr, hiStr] = peData.bucketStr.split(",");
+  const buyPct = parseFloat(loStr) - SYS_CONFIG.BUFFER_ZONE;
   const sellPct = parseFloat(hiStr) + SYS_CONFIG.BUFFER_ZONE;
 
-  let v = peData.peYest, isDynamic = false;
+  let v = peData.peYest,
+    isDynamic = false;
 
-  if (window._rt_csi300_price && peData.priceAnchor && peData.priceBuy && peData.priceSell) {
-    const x  = window._rt_csi300_price;
-    const x1 = peData.priceBuy,    y1 = buyPct;
-    const x2 = peData.priceAnchor, y2 = peData.peYest;
-    const x3 = peData.priceSell,   y3 = sellPct;
+  if (
+    window._rt_csi300_price &&
+    peData.priceAnchor &&
+    peData.priceBuy &&
+    peData.priceSell
+  ) {
+    const x = window._rt_csi300_price;
+    const { priceBuy: x1, priceAnchor: x2, priceSell: x3 } = peData;
+    const y1 = buyPct,
+      y2 = peData.peYest,
+      y3 = sellPct;
 
     if (x === x2) {
-      v = y2; isDynamic = true;
-    } else if (x1 !== x2 && x2 !== x3 && x1 !== x3) {
-      v = y1 * ((x-x2)*(x-x3)) / ((x1-x2)*(x1-x3))
-        + y2 * ((x-x1)*(x-x3)) / ((x2-x1)*(x2-x3))
-        + y3 * ((x-x1)*(x-x2)) / ((x3-x1)*(x3-x2));
+      v = y2;
       isDynamic = true;
-    } else {
-      const range = x3 - x1;
-      if (range > 0) { v = y1 + ((x-x1)/range)*(y3-y1); isDynamic = true; }
+    } else if (x1 !== x2 && x2 !== x3 && x1 !== x3) {
+      v =
+        (y1 * ((x - x2) * (x - x3))) / ((x1 - x2) * (x1 - x3)) +
+        (y2 * ((x - x1) * (x - x3))) / ((x2 - x1) * (x2 - x3)) +
+        (y3 * ((x - x1) * (x - x2))) / ((x3 - x1) * (x3 - x2));
+      isDynamic = true;
+    } else if (x3 !== x1) {
+      v = y1 + ((x - x1) / (x3 - x1)) * (y3 - y1);
+      isDynamic = true;
     }
   }
 
-  return {value: v, isDynamic, rawData: peData, bounds: {buyPct, sellPct}};
+  return { value: v, isDynamic, rawData: peData, bounds: { buyPct, sellPct } };
 }
 
-// ---- 当前档位目标权益 ----
 function getDynamicTarget(mode) {
   const currentPE = getCurrentPE();
   if (!currentPE?.rawData?.bucketStr) return null;
-  const lo  = parseFloat(currentPE.rawData.bucketStr.split(',')[0]);
-  const idx = PE_EQUITY_TABLE.findIndex(x => lo >= x.lo && lo < x.hi);
+  const lo = parseFloat(currentPE.rawData.bucketStr.split(",")[0]);
+  const idx = PE_EQUITY_TABLE.findIndex((x) => lo >= x.lo && lo < x.hi);
   if (idx === -1) return null;
-  if (mode === 'buy')  return PE_EQUITY_TABLE[Math.min(idx + 1, PE_EQUITY_TABLE.length - 1)].target;
-  if (mode === 'sell') return PE_EQUITY_TABLE[Math.max(idx - 1, 0)].target;
+
+  if (mode === "buy")
+    return PE_EQUITY_TABLE[Math.min(idx + 1, PE_EQUITY_TABLE.length - 1)]
+      .target;
+  if (mode === "sell") return PE_EQUITY_TABLE[Math.max(idx - 1, 0)].target;
   return PE_EQUITY_TABLE[idx].target;
 }
 
-// ---- 当前权益计算 ----
 function calcCurrentEquity(holdings) {
-  let total = 0, eq = 0;
-  getActiveProducts().forEach(p => {
-    const shares = holdings[p.code] || 0; if (!shares) return;
-    const nav    = getNavByCode(p.code); if (nav == null) return;
-    const val    = shares * nav;
-    total += val; eq += val * p.equity;
+  let total = 0,
+    eq = 0;
+  getActiveProducts().forEach((p) => {
+    const shares = holdings[p.code] || 0;
+    if (!shares) return;
+    const nav = getNavByCode(p.code);
+    if (nav == null) return;
+    const val = shares * nav;
+    total += val;
+    eq += val * p.equity;
   });
-  return total > 0 ? {equity: eq / total * 100, total} : null;
+  return total > 0 ? { equity: (eq / total) * 100, total } : null;
 }
 
-// ---- 增权推演 ----
 function calcBuyPlanDraft(holdings) {
   const eqResult = calcCurrentEquity(holdings);
   if (!eqResult) return null;
-  const {total: totalVal, equity: currentEq} = eqResult;
-  const targetEq = getDynamicTarget('buy');
+  const { total: totalVal, equity: currentEq } = eqResult;
+  const targetEq = getDynamicTarget("buy");
   if (targetEq == null) return null;
 
-  const buyAmt     = Math.max(0, totalVal * (targetEq - currentEq) / 100);
-  const xqNav      = getNavByCode(SYS_CONFIG.CODE_XQ)   || 1.0;
-  const a500cNav   = getNavByCode(SYS_CONFIG.CODE_A500)  || 1.0;
-  const zz500cNav  = getNavByCode(SYS_CONFIG.CODE_ZZ500) || 1.0;
+  const buyAmt = Math.max(0, (totalVal * (targetEq - currentEq)) / 100);
+  const xqNav = getNavByCode(SYS_CONFIG.CODE_XQ) || 1.0;
+  const a500cNav = getNavByCode(SYS_CONFIG.CODE_A500) || 1.0;
+
   const currA500CVal = (holdings[SYS_CONFIG.CODE_A500] || 0) * a500cNav;
-  const a500cRoom  = Math.max(0, totalVal * SYS_CONFIG.LIMIT_A500C - currA500CVal);
-  const allocA500C  = Math.min(buyAmt, a500cRoom);
+  const a500cRoom = Math.max(
+    0,
+    totalVal * SYS_CONFIG.LIMIT_A500C - currA500CVal,
+  );
+
+  const allocA500C = Math.min(buyAmt, a500cRoom);
   const allocZZ500C = buyAmt - allocA500C;
 
-  return {totalVal, currentEq, targetEq, buyAmt, sellXqShares: buyAmt / xqNav, allocA500C, allocZZ500C, a500cNav, zz500cNav};
+  return {
+    totalVal,
+    currentEq,
+    targetEq,
+    buyAmt,
+    sellXqShares: buyAmt / xqNav,
+    allocA500C,
+    allocZZ500C,
+  };
 }
 
-// ---- 降权推演 ----
 function calcSellExecutionDraft(holdings, ratios, priorityCode) {
   const eqResult = calcCurrentEquity(holdings);
-  if (!eqResult) return {error: true};
-  const targetEq = getDynamicTarget('sell');
-  if (targetEq == null) return {error: true};
+  if (!eqResult) return { error: true };
+  const targetEq = getDynamicTarget("sell");
+  if (targetEq == null) return { error: true };
 
-  const {equity: currentEq, total: totalVal} = eqResult;
-  let sellNeededEq = Math.max(0, totalVal * (currentEq - targetEq) / 100);
+  const { equity: currentEq, total: totalVal } = eqResult;
+  let sellNeededEq = Math.max(0, (totalVal * (currentEq - targetEq)) / 100);
 
-  const sellProducts = getActiveProducts().filter(p => p.equity > 0);
-  const totalRatio   = sellProducts.filter(p => p.code !== priorityCode).reduce((s, p) => s + (ratios[p.code] || 0), 0);
+  const sellProducts = getActiveProducts().filter((p) => p.equity > 0);
+  const totalRatio = sellProducts
+    .filter((p) => p.code !== priorityCode)
+    .reduce((s, p) => s + (ratios[p.code] || 0), 0);
 
-  let afterEqVal = totalVal * currentEq / 100;
-  let totalCashOut = 0, totalFriction = 0, hasAnySell = false;
+  let afterEqVal = (totalVal * currentEq) / 100;
+  let totalCashOut = 0,
+    totalFriction = 0,
+    hasAnySell = false;
   const results = {};
 
-  // 优先卖出
   if (priorityCode) {
-    const pPri = sellProducts.find(p => p.code === priorityCode);
+    const pPri = sellProducts.find((p) => p.code === priorityCode);
     if (pPri) {
-      const nav               = getNavByCode(pPri.code) || 1.0;
-      const maxEqContribution = (holdings[pPri.code] || 0) * nav * pPri.equity;
-      const actualEqToSell    = Math.min(sellNeededEq, maxEqContribution);
-      results[pPri.code]      = {amt: actualEqToSell / pPri.equity, nav};
+      const nav = getNavByCode(pPri.code) || 1.0;
+      const actualEqToSell = Math.min(
+        sellNeededEq,
+        (holdings[pPri.code] || 0) * nav * pPri.equity,
+      );
+      results[pPri.code] = {
+        amt: pPri.equity > 0 ? actualEqToSell / pPri.equity : 0,
+        nav,
+      };
       sellNeededEq -= actualEqToSell;
     }
   }
 
-  // 按比例分配剩余
-  sellProducts.forEach(p => {
+  sellProducts.forEach((p) => {
     if (p.code === priorityCode) return;
     const nav = getNavByCode(p.code) || 1.0;
-    if (!totalRatio || !ratios[p.code]) { results[p.code] = {amt: 0, nav}; return; }
-    const eqQuota    = sellNeededEq * (ratios[p.code] / totalRatio);
-    const maxSellAmt = (holdings[p.code] || 0) * nav;
-    results[p.code]  = {amt: Math.min(eqQuota / p.equity, maxSellAmt), nav};
+    if (totalRatio <= 0 || !ratios[p.code]) {
+      results[p.code] = { amt: 0, nav };
+      return;
+    }
+
+    const eqQuota = sellNeededEq * (ratios[p.code] / totalRatio);
+    results[p.code] = {
+      amt: Math.min(eqQuota / p.equity, (holdings[p.code] || 0) * nav),
+      nav,
+    };
   });
 
-  // 计算摩擦与到账
-  sellProducts.forEach(p => {
+  sellProducts.forEach((p) => {
     const res = results[p.code];
     if (!res || !res.amt) return;
     hasAnySell = true;
-    const feeAmt    = res.amt * SYS_CONFIG.FEE;
+    const feeAmt = res.amt * SYS_CONFIG.FEE;
     const eqDropVal = res.amt * p.equity;
-    afterEqVal    -= eqDropVal;
-    totalCashOut  += res.amt - feeAmt;
+
+    afterEqVal -= eqDropVal;
+    totalCashOut += res.amt - feeAmt;
     totalFriction += feeAmt;
-    res.fee        = feeAmt;
-    res.cashOut    = res.amt - feeAmt;
-    res.eqDropPct  = eqDropVal / totalVal * 100;
-    res.shares     = res.amt / res.nav;
+    res.shares = res.amt / res.nav;
+    res.eqDropPct = (eqDropVal / totalVal) * 100;
   });
 
-  return {totalVal, currentEq, targetEq, diffEqPct: Math.max(0, currentEq - targetEq), hasAnySell, totalCashOut, totalFriction, afterEqPct: afterEqVal / totalVal * 100, results};
+  return {
+    totalVal,
+    currentEq,
+    targetEq,
+    diffEqPct: Math.max(0, currentEq - targetEq),
+    hasAnySell,
+    totalCashOut,
+    totalFriction,
+    afterEqPct: (afterEqVal / totalVal) * 100,
+    results,
+  };
 }
 
-// ---- 今日盈亏计算 ----
 function calcTodayProfit(results, holdings, mktState, todayStr) {
-  let totalProfit = 0, totalYestVal = 0, allUpdated = true, hasHoldings = false;
-  let isWaitingForOpen = (mktState === 'PRE_MARKET');
+  let totalProfit = 0,
+    totalYestVal = 0,
+    allUpdated = true,
+    hasHoldings = false;
+  let isWaitingForOpen = mktState === "PRE_MARKET";
 
-  getActiveProducts().forEach(p => {
+  getActiveProducts().forEach((p) => {
     const shares = holdings[p.code] || 0;
     if (shares <= 0) return;
-    const f = results.find(r => r.code === p.code);
-    if (!f || f.error) { allUpdated = false; return; }
+    const f = results.find((r) => r.code === p.code);
+    if (!f || f.error) {
+      allUpdated = false;
+      return;
+    }
     hasHoldings = true;
 
-    const estD = f.estTime ? f.estTime.slice(0, 10) : '';
-    const offD = f.offDate ? f.offDate.slice(0, 10) : '';
-    const isOfficialUpdated = offD === todayStr
-      || mktState === 'WEEKEND' || mktState === 'BEFORE_PRE'
-      || (estD && offD && offD >= estD);
+    const estD = f.estTime ? f.estTime.slice(0, 10) : "";
+    const offD = f.offDate ? f.offDate.slice(0, 10) : "";
+    const isOfficialUpdated =
+      offD === todayStr ||
+      mktState === "WEEKEND" ||
+      mktState === "BEFORE_PRE" ||
+      (estD && offD && offD >= estD);
 
     if (!isOfficialUpdated) allUpdated = false;
 
@@ -187,32 +241,34 @@ function calcTodayProfit(results, holdings, mktState, todayStr) {
 
     if (!isNaN(nav)) {
       let yestNav = null;
+      const isBaseNavValid =
+        f.baseNav &&
+        f.baseDate &&
+        ((isOfficialUpdated && f.baseDate < offD) ||
+          (!isOfficialUpdated && f.baseDate < todayStr));
 
-      // 判断 baseNav 是否是当前 nav 对应的精确昨日基准：
-      // 官方数据：基准日期必须早于官方发布日期，否则已向后翻滚；
-      // 估算数据：基准日期早于今天即有效。
-      const isBaseNavValid = f.baseNav && f.baseDate && (
-        (isOfficialUpdated && f.baseDate < offD) ||
-        (!isOfficialUpdated && f.baseDate < todayStr)
-      );
+      if (isBaseNavValid) yestNav = f.baseNav;
+      else if (!isNaN(pct)) yestNav = nav / (1 + pct / 100);
+      else return;
 
-      if (isBaseNavValid) {
-        yestNav = f.baseNav;
-      } else if (!isNaN(pct)) {
-        yestNav = nav / (1 + pct / 100); // 兜底：百分比反推
-      } else {
-        return;
-      }
+      totalYestVal += shares * yestNav;
+      totalProfit += shares * (nav - yestNav);
 
-      const yestVal = shares * yestNav;
-      totalYestVal += yestVal;
-      totalProfit  += shares * (nav - yestNav);
-
-      if (!isOfficialUpdated && estD !== todayStr && (mktState === 'PRE_MARKET' || mktState === 'TRADING')) {
+      if (
+        !isOfficialUpdated &&
+        estD !== todayStr &&
+        (mktState === "PRE_MARKET" || mktState === "TRADING")
+      ) {
         isWaitingForOpen = true;
       }
     }
   });
 
-  return {totalProfit, totalYestVal, allUpdated, hasHoldings, isWaitingForOpen};
+  return {
+    totalProfit,
+    totalYestVal,
+    allUpdated,
+    hasHoldings,
+    isWaitingForOpen,
+  };
 }
