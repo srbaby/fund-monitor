@@ -167,16 +167,16 @@ body {
 /* ════════ 指数栏 ════════ */
 .idx-bar {
     width: 100%;
-    background: var(--bg2);
+    background: var(--bd);
     border-bottom: 1px solid var(--bd);
     display: grid;
     grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
 }
 .idx-cell {
+    background: var(--bg2);
     font-family: var(--f-num);
     padding: 10px 8px;
-    border-right: 1px solid var(--bd);
-    border-bottom: 1px solid var(--bd);
     overflow: hidden;
     position: relative;
 }
@@ -201,12 +201,7 @@ body {
     background: var(--flat);
     opacity: 1;
 }
-.idx-cell:nth-child(3n) {
-    border-right: none;
-}
-.idx-cell:nth-child(n + 4) {
-    border-bottom: none;
-}
+/* 此处代码直接彻底删除，由于使用了 gap，再也不需要手动清除边缘了 */
 .idx-lbl {
     font-family: var(--f-zh);
     font-size: 10px;
@@ -1285,15 +1280,7 @@ main {
     .idx-bar {
         grid-template-columns: repeat(6, 1fr);
     }
-    .idx-cell {
-        border-bottom: none;
-    }
-    .idx-cell:nth-child(3n) {
-        border-right: 1px solid var(--bd);
-    }
-    .idx-cell:nth-child(6) {
-        border-right: none;
-    }
+    /* 此处代码直接彻底删除。桌面端只需保留 .idx-bar 的 repeat(6, 1fr) 即可，gap 自动处理 5 条竖线，0 条横线 */
     .card-header-bar,
     #cycleBtn,
     #colBtn,
