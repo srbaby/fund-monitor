@@ -122,16 +122,17 @@ function calcBuyPlanDraft(holdings, activeProducts, getNavFn, targetEq) {
   const allocA500C = Math.min(buyAmt, a500cRoom);
   const allocZZ500C = buyAmt - allocA500C;
 
+  const amtByCode = {
+    [SYS_CONFIG.CODE_XQ]: buyAmt,
+    [SYS_CONFIG.CODE_A500]: allocA500C,
+    [SYS_CONFIG.CODE_ZZ500]: allocZZ500C,
+  };
   let totalFriction = 0;
-  const pXq = activeProducts.find((p) => p.code === SYS_CONFIG.CODE_XQ);
-  if (pXq && pXq.equity !== 0 && pXq.equity !== 1)
-    totalFriction += buyAmt * SYS_CONFIG.FEE;
-  const pA500 = activeProducts.find((p) => p.code === SYS_CONFIG.CODE_A500);
-  if (pA500 && pA500.equity !== 0 && pA500.equity !== 1)
-    totalFriction += allocA500C * SYS_CONFIG.FEE;
-  const pZZ = activeProducts.find((p) => p.code === SYS_CONFIG.CODE_ZZ500);
-  if (pZZ && pZZ.equity !== 0 && pZZ.equity !== 1)
-    totalFriction += allocZZ500C * SYS_CONFIG.FEE;
+  activeProducts.forEach((p) => {
+    const amt = amtByCode[p.code];
+    if (amt && p.equity !== 0 && p.equity !== 1)
+      totalFriction += amt * SYS_CONFIG.FEE;
+  });
 
   return {
     totalVal,
@@ -220,11 +221,9 @@ function calcSellExecutionDraft(
     totalVal,
     currentEq,
     targetEq,
-    diffEqPct: Math.max(0, currentEq - targetEq),
     hasAnySell,
     totalCashOut,
     totalFriction,
-    afterEqPct: (afterEqVal / totalVal) * 100,
     results,
   };
 }
