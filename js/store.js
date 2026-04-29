@@ -154,7 +154,7 @@ function importSnapshot(str) {
     const data = JSON.parse(decodeURIComponent(atob(str)));
     if (data.f && Array.isArray(data.f)) saveFunds(data.f);
     if (data.h) {
-      _holdingsCache = null; // 修复：清除缓存，防止读到旧数据
+      _holdingsCache = null;
       localStorage.setItem(STORE_HOLDINGS, JSON.stringify(data.h));
     }
     if (data.p) savePe(data.p);
