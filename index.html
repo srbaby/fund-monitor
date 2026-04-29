@@ -137,7 +137,7 @@
                         font-size: 11px;
                         color: var(--t3);
                         gap: 4px;
-                        align-items: center;
+                        align-items: baseline;
                         flex-shrink: 0;
                         white-space: nowrap;
                         margin-left: auto;
@@ -192,14 +192,8 @@
                     >
                         估算
                     </button>
-                    <button
-                        class="chb-btn"
-                        id="colBtn"
-                        onclick="toggleAllCollapse()"
-                    >
-                        展开
-                    </button>
                 </div>
+                <div id="colBtn" class="col-handle" onclick="toggleAllCollapse()">▾</div>
             </div>
 
             <div class="card-view" id="cardView">

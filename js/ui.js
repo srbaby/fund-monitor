@@ -140,9 +140,9 @@ function UI_buildSummaryHtml(
   const curEqStr = currentEqVal != null ? fmt(currentEqVal, 2) + "%" : "--";
 
   let html = `<div class="dr-card dr-pad dr-sec dr-summary-box">
-    <div class="dr-summary-item" style="flex:1.3;"><div class="dr-lbl">持仓总额</div><div class="dr-val" style="color:var(--accent); font-weight:600;">${totalStr}</div></div>
-    <div class="dr-summary-item" style="flex:1.2;border-left:1px solid var(--bd2); border-right:1px solid var(--bd2); padding:0 4px;"><div class="dr-lbl">当前权益</div><div style="display:flex;align-items:center;justify-content:center;gap:4px;"><span class="dr-val" style="color:${eqCol}; font-weight:600;">${curEqStr}</span>__BADGE__</div></div>
-    <div class="dr-summary-item" style="flex:0.9;">`;
+    <div class="dr-summary-item" style="flex:1;"><div class="dr-lbl">持仓总额</div><div class="dr-val" style="color:var(--accent); font-weight:600;">${totalStr}</div></div>
+    <div class="dr-summary-item" style="flex:1;border-left:1px solid var(--bd2); border-right:1px solid var(--bd2); padding:0 4px;"><div class="dr-lbl">当前权益</div><div style="display:flex;align-items:baseline;justify-content:center;gap:3px;"><span class="dr-val" style="color:${eqCol}; font-weight:600;">${curEqStr}</span>__BADGE__</div></div>
+    <div class="dr-summary-item" style="flex:1;">`;
 
   if (targetEqStr != null && typeof targetEqStr === "string") {
     html = html.replace("__BADGE__", "");
@@ -171,7 +171,7 @@ function UI_buildSummaryHtml(
           : "var(--buy-bd)";
     const badgeCol = isNeutral ? "var(--t2)" : eqCol;
     const badgeHtml = diff != null
-      ? `<span class="dr-badge" style="color:${badgeCol};background:${bBg};border-color:${bBd};font-weight:500;">${diff > 0 ? "+" : ""}${fmt(diff, 2)}%</span>`
+      ? `<span class="num" style="color:${badgeCol};font-size:11px;font-weight:500;">${diff > 0 ? "+" : ""}${fmt(diff, 2)}%</span>`
       : "";
 
     html = html.replace("__BADGE__", badgeHtml);
@@ -380,7 +380,7 @@ function UI_buildHoldingPlanHtml(
         <div style="display:grid; grid-template-columns: repeat(3, 1fr); text-align:center; gap:8px; margin-bottom:10px;">
           <div class="dr-col" style="align-items:center;"><div class="dr-lbl" style="margin-bottom:2px;">当前权益</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600;">${fmt(eqData.equity, 2)}%</div></div>
           <div class="dr-col" style="align-items:center;"><div class="dr-lbl" style="margin-bottom:2px;">触发后目标</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600;">${buyDraft.targetEq}%</div></div>
-          <div class="dr-col" style="align-items:center;"><div class="dr-lbl" style="margin-bottom:2px;">需要增权</div><div class="num" style="color:var(--buy); font-size:16px; font-weight:600;">${fmt(diffPct, 2)}%</div></div>
+          <div class="dr-col" style="align-items:center;"><div class="dr-lbl" style="margin-bottom:2px;">需要增权</div><div class="num" style="color:var(--buy); font-size:16px; font-weight:600;">${fmt(buyDraft.targetEq - eqData.equity, 2)}%</div></div>
         </div>
 
         <div class="dr-lbl" style="margin-bottom:6px; font-family:var(--f-zh);">资金调配 (固定转出)</div>
@@ -406,7 +406,7 @@ function UI_buildHoldingPlanHtml(
         <div style="display:grid; grid-template-columns: repeat(3, 1fr); text-align:center; gap:8px; margin-bottom:10px;">
           <div class="dr-col" style="align-items:center;"><div class="dr-lbl" style="margin-bottom:2px;">当前权益</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600;">${fmt(eqData.equity, 2)}%</div></div>
           <div class="dr-col" style="align-items:center;"><div class="dr-lbl" style="margin-bottom:2px;">触发后目标</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600;">${sellDraft.targetEq}%</div></div>
-          <div class="dr-col" style="align-items:center;"><div class="dr-lbl" style="margin-bottom:2px;">需要降权</div><div class="num" style="color:var(--sell); font-size:16px; font-weight:600;">${fmt(diff, 2)}%</div></div>
+          <div class="dr-col" style="align-items:center;"><div class="dr-lbl" style="margin-bottom:2px;">需要降权</div><div class="num" style="color:var(--sell); font-size:16px; font-weight:600;">${fmt(eqData.equity - sellDraft.targetEq, 2)}%</div></div>
         </div>
 
         <div class="dr-lbl" style="margin-bottom:6px; font-family:var(--f-zh);">资金调配 (按权重转出)</div>
@@ -585,7 +585,7 @@ function updatePeBar() {
             ? "var(--sell)"
             : "var(--buy)";
       const diffCol = (Math.abs(diff) < 1 && !wrongDir) ? "var(--t2)" : col;
-      _peDOM.eqDiv.innerHTML = `权益<b class="num" style="color:${col};margin-left:2px;">${eqData.equity.toFixed(2)}%</b><span class="num" style="color:${diffCol};margin-left:3px;font-size:10px;">${diff > 0 ? "+" : ""}${diff.toFixed(2)}%</span> 目标<b class="num" style="margin-left:2px;">${target}%</b>`;
+      _peDOM.eqDiv.innerHTML = `权益<b class="num" style="color:${col};margin-left:2px;">${eqData.equity.toFixed(2)}%</b><span class="num" style="color:${diffCol};margin-left:2px;margin-right:4px;font-size:10px;vertical-align:baseline;">${diff > 0 ? "+" : ""}${diff.toFixed(2)}%</span><span style="display:inline-block;width:1px;height:10px;background:var(--bd2);vertical-align:middle;margin-right:4px;"></span>目标<b class="num" style="margin-left:2px;">${target}%</b>`;
       _peDOM.eqDiv.style.display = "flex";
     } else _peDOM.eqDiv.style.display = "none";
   }
@@ -832,20 +832,10 @@ function UI_updateFunds() {
 function toggleAllCollapse() {
   if (window.matchMedia("(max-width:767px)").matches) {
     mobileExpanded = !mobileExpanded;
-    document.getElementById("colBtn").textContent = mobileExpanded
-      ? "收窄"
-      : "展开";
-    document.getElementById("cycleBtn").style.display = mobileExpanded
-      ? "none"
-      : "";
+    document.getElementById("colBtn").textContent = mobileExpanded ? "▴" : "▾";
   } else {
     allCollapsed = !allCollapsed;
-    document.getElementById("colBtn").textContent = allCollapsed
-      ? "展开"
-      : "收窄";
-    document.getElementById("cycleBtn").style.display = allCollapsed
-      ? ""
-      : "none";
+    document.getElementById("colBtn").textContent = allCollapsed ? "▾" : "▴";
     document.body.classList.toggle("collapsed-mode", allCollapsed);
   }
   UI_updateFunds();

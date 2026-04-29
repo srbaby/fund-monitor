@@ -1,16 +1,16 @@
 # Jany 基金看板 · 项目规范
 
-> 本文档是项目唯一的开发决策来源，覆盖架构分层、数据流、跨文件约定、视觉样式四个维度。所有 UI 改动和功能开发前必须先对照本文档，不符合规范的写法直接打回。
+> 本文档是项目唯一的开发决策来源。**收到任何需求，先通读本文档，再读相关源文件，最后动手。** 不符合本规范的写法直接打回。
 
 ---
 
-## 一、项目总览
+## 一、项目定位
 
-纯原生前端，零构建工具，零框架依赖。唯一外部库：CDN 加载的 `Sortable.js`（拖拽排序）。
+纯原生前端，零构建工具，零框架依赖，唯一外部库：CDN 加载的 `Sortable.js`（拖拽排序）。
 
-**定位**：个人量化配置执行终端。不连接券商，只输出操作数字，人工执行。
+个人量化配置执行终端：实时推算 PE 百分位 → 对照权益映射表 → 触发信号 → 精确输出操作份额。不连接券商，只输出数字，人工执行。
 
-**文件总数上限：9个**（7 JS + 1 HTML + 1 CSS），禁止为新功能新建文件。
+**文件上限：9个，不可突破。** 禁止为任何新功能新建文件。
 
 ```
 fund-monitor/
@@ -19,536 +19,299 @@ fund-monitor/
 ├── css/
 │   └── style.css
 └── js/
-    ├── config.js      # 第1层：静态配置
-    ├── store.js       # 第2层：状态与存储
-    ├── data.js        # 第3层：网络数据
-    ├── engine.js      # 第4层：计算引擎
-    ├── ui.js          # 第5层：渲染
-    ├── interact.js    # 第6层：控制器
-    └── main.js        # 第7层：启动入口
+    ├── config.js      # 第1层：静态配置（常量，无逻辑）
+    ├── store.js       # 第2层：全局状态、存储、Observer 广播
+    ├── data.js        # 第3层：网络请求与数据标准化
+    ├── engine.js      # 第4层：纯函数计算引擎（依赖注入）
+    ├── ui.js          # 第5层：DOM 渲染、格式化、抽屉 HTML 工厂
+    ├── interact.js    # 第6层：用户事件调度器
+    └── main.js        # 第7层：启动、定时器、订阅绑定（始终只有十几行）
 ```
+
+脚本加载顺序固定：`config → store → data → engine → ui → interact → main`
 
 ---
 
-## 二、分层架构与职责边界
+## 二、分层架构
 
-七个 JS 文件通过 `index.html` 按顺序加载，共享同一个全局作用域（`window`）。**依赖方向单向向下**：上层可调用下层，下层绝对不能调用上层。
+七个 JS 文件共享同一个全局作用域（`window`）。**依赖方向单向向下，下层绝对不能调用上层函数。**
 
 ```
-config.js
-    ↓
-store.js
-    ↓
-data.js  ←→  engine.js   （平级，互不依赖；engine 通过 store 读数据，data 通过 store 写结果）
-    ↓              ↓
-         ui.js
-            ↓
-       interact.js
-            ↓
-         main.js
+config → store → data ─┐
+                        ├→ ui → interact → main
+              engine ──┘
 ```
 
-### config.js — 静态配置层
+`data` 与 `engine` 平级，互不依赖。
 
-**允许**：`const` 常量声明、对象字面量、数组字面量。
+### 各层职责边界
 
-**禁止**：任何函数声明、任何逻辑计算、任何条件判断。
+| 层 | 核心职责 | 绝对禁止 |
+|---|---|---|
+| **config.js** | 所有业务常量（费率、阈值、代码、时间点、名称表、映射表）。只有 `const` 声明，无函数无逻辑。 | 函数、条件判断、业务数字散落到其他文件 |
+| **store.js** | 全局内存变量、localStorage 读写、Observer 广播（`observeState` / `dispatchUpdate`）、口令备份恢复、公共工具函数。 | DOM 操作、网络请求、业务推演计算 |
+| **data.js** | JSONP 请求、TTL 缓存、数据标准化（`fetchSingleFund`）、净值取用（`getNavByCode`）。拿到数据后写入 store，由 store 触发广播。 | DOM 操作（动态创建 `<script>` 除外）、业务计算、localStorage 读写 |
+| **engine.js** | 纯函数计算：市场状态、Lagrange PE 插值、权益计算、增降权推演、今日盈亏。**所有依赖通过参数传入（依赖注入），不主动读取任何全局状态。** | DOM 操作、localStorage 读写、直接读 store/data 的全局变量 |
+| **ui.js** | DOM 读写、格式化工具函数、订阅响应函数（`UI_update*`）、抽屉 HTML 工厂（`UI_render*` 只返回字符串，不直接操作 DOM）。 | 业务推演计算、localStorage 读写 |
+| **interact.js** | 响应用户事件，协调 store/engine/ui 完成操作，管理抽屉打开/关闭。 | 核心数学公式（委托 engine）、直接改全局状态（通过 store 函数） |
+| **main.js** | 系统初始化、定时器、将 Observer 订阅与 UI 响应函数绑定。**始终只有十几行。** | HTML 拼接、业务逻辑、直接 DOM 操作（事件绑定除外） |
 
-所有可调参数（费率、阈值、代码、时间点）必须在此声明，禁止在其他文件中硬编码业务参数。
+---
+
+## 三、Observer 数据驱动架构
+
+这是本项目的核心架构决策，理解它才能理解数据流向。
+
+store 扮演「广播电台」角色。数据更新时，调用方只需把数据写入 store，store 自动通知所有订阅者，UI 自动重绘。**调用方不需要、也不应该手动调用任何渲染函数。**
+
+```
+数据变化 → store.dispatchUpdate(topic)
+                    ↓
+        main.js 中绑定的订阅者自动响应
+                    ↓
+             UI_update*(...)
+```
+
+### 三个广播频道
+
+| 频道 | 触发时机 | 对应 UI 响应函数 |
+|---|---|---|
+| `FUNDS` | 基金净值刷新、基金列表增删 | `UI_updateFunds()` — 重绘卡片、表格、今日盈亏、PE 栏 |
+| `INDICES` | 指数行情刷新（10秒轮询） | `UI_updateIndices()` — 更新指数行情、PE 追踪点 |
+| `LOCAL_CONFIG` | PE 定锚修改、持仓/降权预案保存 | `UI_updateLocalConfig()` — 更新 PE 栏、今日盈亏 |
 
 ```javascript
-// ✅ 正确
-const SYS_CONFIG = { FEE: 0.005, LIMIT_A500C: 0.20 };
+// ✅ 正确：写入 store，广播自动驱动 UI
+setLastResults(results);
 
-// ❌ 错误：把配置散落在 engine.js 或 interact.js 里
-const fee = 0.005;
+// ❌ 错误：写完 store 还手动调渲染，导致双重渲染
+setLastResults(results);
+renderAll(results);
 ```
-
-### store.js — 状态与存储层
-
-**允许**：全局内存变量声明（`funds`、`_lastResults`）、localStorage 读写封装、口令备份/恢复（`exportSnapshot`/`importSnapshot`）、公共工具函数（`getActiveProducts`）。
-
-**禁止**：DOM 操作、网络请求、业务推演计算。
-
-**关键约定**：
-
-- `funds`：在此声明，修改后必须立即调用 `saveFunds()`。
-- `_lastResults`：在此声明，由 `ui.js` 的 `renderAll()` 负责写入，其他层只读。
-- `getActiveProducts()`：全局唯一实现，禁止在其他文件重复实现。
-
-### data.js — 网络数据层
-
-**允许**：JSONP 请求管理（`fetchEst`、`fetchOff`、`fetchIndices`）、内存 TTL 缓存（`offCache`）、串行请求队列（`offQ`/`drainOff`）、数据标准化输出（`fetchSingleFund`）、净值取用函数（`getNavByCode`）。
-
-**禁止**：DOM 操作（除动态创建 `<script>` 标签外）、业务计算、localStorage 读写。
-
-**关键约定**：
-
-- `window._rt_csi300_price`：沪深300实时点位，由 `fetchIndices()` 写入，供 `engine.js` 读取。
-- `getNavByCode(code)`：从 `_lastResults` 取最优净值（官方优先，否则估算），engine.js 通过此函数取净值，不直接读 `_lastResults`。
-- 官方净值接口使用串行队列（`drainOff`），间隔 30ms 出队，防止并发触发反爬。
-- 估算（`fetchEst`）和官方（`fetchOff`）并发执行，在 `fetchSingleFund` 中通过 `Promise.all` 合并。
-
-**TTL 缓存策略**（`fetchOff`）：
-
-| 条件               | TTL                        |
-| ------------------ | -------------------------- |
-| 已拿到今日官方数据 | 12 小时                    |
-| 周末               | 12 小时                    |
-| 19:30 以后         | 5 分钟（等待当日净值发布） |
-| 其他时段           | 1 小时                     |
-
-### engine.js — 计算引擎层
-
-**允许**：纯函数计算——市场状态判断、Lagrange 插值推算 PE、权益计算、增权/降权推演、今日盈亏计算。
-
-**禁止**：任何 DOM 操作、任何 localStorage 读写。所有输入通过参数传入，所有输出通过返回值传出。
-
-**关键函数**：
-
-| 函数                                                     | 输入                                              | 输出                                                         |
-| -------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------ |
-| `getMarketState()`                                       | 当前系统时间                                      | `'WEEKEND'` / `'BEFORE_PRE'` / `'PRE_MARKET'` / `'TRADING'` / `'MID_BREAK'` / `'POST_MARKET'` |
-| `todayDateStr()`                                         | 当前系统时间                                      | `'YYYY-MM-DD'` 字符串                                        |
-| `getCurrentPE()`                                         | `loadPe()`（内部调用）+ `window._rt_csi300_price` | `{value, isDynamic, rawData, bounds}` 或 `null`              |
-| `getDynamicTarget(mode)`                                 | `'buy'` / `'sell'` / `'neutral'`                  | 目标权益百分比数字或 `null`                                  |
-| `calcCurrentEquity(holdings)`                            | 持仓份额对象                                      | `{equity, total}` 或 `null`                                  |
-| `calcBuyPlanDraft(holdings)`                             | 持仓份额对象                                      | 增权推演结果对象或 `null`                                    |
-| `calcSellExecutionDraft(holdings, ratios, priorityCode)` | 持仓、比例配置、优先品种                          | 降权推演结果对象                                             |
-| `calcTodayProfit(results, holdings, mktState, todayStr)` | 基金数据、持仓、市场状态、日期                    | `{totalProfit, totalYestVal, allUpdated, hasHoldings, isWaitingForOpen}` |
-
-**Lagrange 插值说明**：`getCurrentPE()` 用三点（买入触发点位/昨日基准点位/卖出触发点位）拟合抛物线，将实时沪深300点位映射为 PE 百分位估算值。三点重合时降级为线性插值；锚点缺失时退化为昨日静态 PE 值。
-
-### ui.js — 渲染层
-
-**允许**：所有 DOM 读写、CSS 类切换、HTML 字符串构建（静态部分）、格式化工具函数。
-
-**禁止**：业务推演计算、localStorage 读写。
-
-**格式化工具**（在此声明，供 `interact.js` 复用）：
-
-| 函数                   | 输入        | 输出                                                |
-| ---------------------- | ----------- | --------------------------------------------------- |
-| `fp(v)`                | 数字或 null | `{cls: 'up'/'down'/'flat', txt: '+1.23%'}`          |
-| `fmt(n, decimals)`     | 数字        | 千分位格式字符串，无效值返回 `'--'`                 |
-| `fmtMoney(n)`          | 数字        | `'¥1,234.56'` 格式字符串                            |
-| `getProductName(code)` | 基金代码    | 短名称，查 `SHORT_NAMES` → `PRODUCTS` → 退化为 code |
-
-**渲染总调度 `renderAll(results)`**：写入 `_lastResults` → 调用 `updatePeBar()` → 计算闪烁状态 → 按 `funds` 顺序过滤结果集 → 调用 `renderCards()`、`renderTable()`、`renderTodayProfit()`。
-
-**DOM 更新策略**：结构不变时只更新 `innerHTML`，结构变化（代码列表增删）时全量重建，通过比对 `currentCodes.join(',') === targetCodes.join(',')` 判断。
-
-### interact.js — 控制器层
-
-**允许**：响应用户事件、调用 store/data/engine 取数计算、调用 ui 渲染、管理抽屉状态、动态拼接抽屉内的 HTML。
-
-**禁止**：核心数学计算公式（必须委托给 engine.js）、直接修改全局状态（必须通过 store 的函数操作）。
-
-**关键函数**：
-
-| 函数                                      | 触发来源               | 职责                                             |
-| ----------------------------------------- | ---------------------- | ------------------------------------------------ |
-| `refreshData()`                           | 定时器/按钮/导入口令后 | 拉取所有基金数据，调用 `renderAll()`             |
-| `openHoldingDrawer()`                     | 持仓按钮               | 读取持仓和权益数据，拼接 HTML，打开抽屉          |
-| `openPlanDrawer()` / `renderPlanDrawer()` | 预案按钮               | 读取增降权推演结果，拼接 HTML，打开抽屉          |
-| `calcSellPreview()`                       | 降权区块输入变化       | 实时计算降权预案，更新 DOM                       |
-| `exportToken()` / `importToken()`         | 口令按钮               | 调用 store 的 exportSnapshot/importSnapshot      |
-| `addFund()` / `delFund()`                 | 添加/删除按钮          | 修改 funds，调用 saveFunds()，触发 refreshData() |
-
-### main.js — 启动入口层
-
-**允许**：系统初始化调用、`setInterval` 定时器设置、全局事件监听绑定（`visibilitychange`、`keydown`）。
-
-**禁止**：任何 HTML 拼接、任何业务逻辑计算、任何直接 DOM 操作（事件绑定除外）。
-
-保持极简——`main.js` 应该始终只有十几行。
 
 ---
 
-## 三、数据流
+## 四、核心数据流
 
 ### 主刷新流（60秒轮询）
-
 ```
-main.js setInterval
-    → interact.js refreshData()
-        → store.js loadFunds()
-        → data.js fetchIndices()        // 写 window._rt_csi300_price
-        → data.js fetchSingleFund()×N  // 并发拉取所有基金
-        → ui.js renderAll(results)
-            → store.js _lastResults = results
-            → engine.js calcTodayProfit()
-            → ui.js renderCards() / renderTable() / renderTodayProfit()
+main setInterval → interact.refreshData()
+    → data.fetchIndices()           // setIndices() → 广播 INDICES
+    → data.fetchSingleFund() × N   // Promise.all 并发
+    → store.setLastResults()        // 广播 FUNDS → UI_updateFunds()
+    → Sortable 实例销毁重建
 ```
 
 ### 指数实时流（10秒轮询）
-
 ```
-main.js setInterval
-    → data.js fetchIndices()
-        → window._rt_csi300_price = 最新点位
-        → ui.js updatePeBar()           // Lagrange 实时推算 PE
-        → ui.js renderIndices(map)
+main setInterval → data.fetchIndices()
+    → store.setIndices()            // 广播 INDICES → UI_updateIndices()
+        → ui.renderIndices()
+        → ui.updatePeBar()          // Lagrange 实时推算 PE
 ```
 
-### 持仓/预案抽屉流
-
+### 本地配置变更流
 ```
-用户点击按钮
-    → interact.js openHoldingDrawer() / openPlanDrawer()
-        → store.js loadHoldings() / loadPe()
-        → engine.js calcCurrentEquity() / calcBuyPlanDraft() / calcSellExecutionDraft()
-            → data.js getNavByCode()
-        → interact.js 拼接 HTML → DOM
+interact.confirmPe() / saveHoldings()
+    → store.savePe() / saveHoldingsData()  // 广播 LOCAL_CONFIG → UI_updateLocalConfig()
 ```
 
-### PE 信号链
+### 持仓抽屉流（不触发广播）
+```
+interact.openHoldingDrawer()
+    → 读取 store → engine.calc*()（依赖注入）
+    → ui.UI_renderHoldingDrawerBody() 返回 HTML 字符串 → 写入抽屉 DOM
+    → interact.liveUpdateHoldingPlan()
+        → engine.calcCurrentEquity() / calcBuyPlanDraft() / calcSellExecutionDraft()
+        → ui.UI_buildHoldingPlanHtml(activeProds, currentPE, targetEqNeutral, eqData, buyDraft, sellDraft)
+        → 写入 #holdingPlanArea DOM → 打开抽屉
+```
 
-```
-data.js fetchIndices() 写入 window._rt_csi300_price
-    → ui.js updatePeBar()
-        → engine.js getCurrentPE()      // Lagrange 插值
-            → store.js loadPe()
-        → engine.js getDynamicTarget('neutral')
-        → ui.js 更新 PE 栏 DOM、进度条、权益偏离
-```
+增权预研和降权预案均集成在持仓抽屉内的 `#holdingPlanArea` 容器中，随持仓数据实时更新，**没有独立的预案抽屉**。
 
 ---
 
-## 四、跨文件共享约定
+## 五、engine.js 依赖注入规则
 
-| 名称                                                 | 声明位置    | 可写位置                                           | 可读位置                              |
-| ---------------------------------------------------- | ----------- | -------------------------------------------------- | ------------------------------------- |
-| `funds`                                              | store.js    | store.js / interact.js（改后必须调 `saveFunds()`） | 所有层                                |
-| `_lastResults`                                       | store.js    | ui.js `renderAll()`                                | data.js `getNavByCode()`、interact.js |
-| `window._rt_csi300_price`                            | data.js     | data.js `fetchIndices()`                           | engine.js `getCurrentPE()`            |
-| `getActiveProducts()`                                | store.js    | —                                                  | engine.js、interact.js、ui.js         |
-| `getNavByCode()`                                     | data.js     | —                                                  | engine.js                             |
-| `getMarketState()` / `todayDateStr()`                | engine.js   | —                                                  | ui.js、interact.js                    |
-| `fmt()` / `fmtMoney()` / `fp()` / `getProductName()` | ui.js       | —                                                  | interact.js                           |
-| `updatePeBar()` / `renderAll()`                      | ui.js       | —                                                  | interact.js、data.js                  |
-| `refreshData()`                                      | interact.js | —                                                  | main.js、ui 按钮                      |
-
----
-
-## 五、localStorage 结构
-
-| 常量名            | Key 值                  | 存储内容                                                     |
-| ----------------- | ----------------------- | ------------------------------------------------------------ |
-| `STORE_CODES`     | `'fm_v20'`              | 基金代码数组 `string[]`                                      |
-| `STORE_PE`        | `'jy_pe_v2_lagrange'`   | PE 定锚对象 `{bucketStr, peYest, priceAnchor, priceBuy, priceSell}` |
-| `STORE_HOLDINGS`  | `'jy_holdings_v1'`      | 持仓份额对象 `{[code]: number}`                              |
-| `STORE_SELL_PLAN` | `'jy_sell_plan_v1'`     | 降权减仓权重配置 `{[code]: string}`                          |
-| （硬编码）        | `'jy_priority_sell_v1'` | 优先卖出品种代码，单个字符串                                 |
-
-**口令备份格式**：`base64(encodeURIComponent(JSON.stringify({f, h, p, s})))`，其中 `f`=funds、`h`=holdings、`p`=PE定锚、`s`=降权预案。
-
-`offCache`（官方净值缓存）仅存于内存，页面刷新后重置，不持久化。
-
----
-
-## 六、API 接口
-
-### 估算数据（JSONP）
-
-```
-https://fundgz.1234567.com.cn/js/{code}.js?rt={timestamp}
-```
-
-回调：`window.jsonpgz(data)`。字段：`gszzl` 估算涨跌%、`gsz` 估算净值、`gztime` 估算时间、`dwjz` 昨日净值（baseNav）、`jzrq` 昨日净值日期（baseDate）、`name` 基金名。
-
-### 官方净值（JSONP，串行）
-
-```
-https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz&code={code}&page=1&per=1&v={timestamp}
-```
-
-回调：`window.apidata`。解析 HTML 表格：`tds[0]`=日期、`tds[1]`=净值、`tds[3]`=涨跌幅%。
-
-### 指数行情（JSONP）
-
-```
-https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f12,f14&secids=...&cb={callback}
-```
-
-字段：`f2`=现价、`f3`=涨跌幅%、`f12`=代码、`f14`=名称。
-
----
-
-## 七、`fetchSingleFund` 标准化输出结构
-
-`interact.js` 和 `ui.js` 只消费此结构，不直接处理原始 API 响应：
+engine.js 所有函数必须是纯函数，所有外部依赖通过参数传入，不能自己读全局变量。
 
 ```javascript
-{
-  code: string,
-  error: boolean,
-  name: string,
-  estPct: number | null,    // 盘中估算涨跌幅%
-  estVal: string | null,    // 估算净值
-  estTime: string | null,   // 估算时间 'YYYY-MM-DD HH:mm'
-  offPct: number | null,    // 官方涨跌幅%
-  offVal: string | null,    // 官方净值
-  offDate: string | null,   // 官方净值日期 'YYYY-MM-DD'
-  baseNav: number | null,   // 昨日精确净值（盈亏计算基准）
-  baseDate: string | null   // 昨日净值对应日期
+// ✅ 正确
+calcBuyPlanDraft(holdings, activeProducts, getNavByCode, targetEq)
+
+// ❌ 错误：engine 内部自己调 data.js 的函数
+function calcBuyPlanDraft(holdings) {
+  const nav = getNavByCode(code);  // 违反依赖注入
 }
 ```
 
 ---
 
-## 八、Sortable.js 实例管理
+## 六、资金规则（v7.6 方法论）
 
-卡片区和表格区各一个实例，声明于 `ui.js`（`cardSortable` / `tblSortable`）。每次 `refreshData()` 后先 `destroy()` 旧实例再 `Sortable.create()` 重建。拖拽结束回调（`onEnd`）从 DOM 读取新顺序写回 `funds`，调用 `saveFunds()`。
+- **增权资金来源**：固定卖出兴全中长债（`CODE_XQ`）
+- **增权分配**：优先买入 A500C（`CODE_A500`），单品上限 `LIMIT_A500C`，超出部分买入中证500C（`CODE_ZZ500`）
+- **降权规则**：按用户配置权重比例减仓，支持设置优先卖出品种
+- **摩擦费率**：`SYS_CONFIG.FEE`，仅适用于混合型产品（`equity !== 0 && equity !== 1`）；纯债（equity=0）和纯股C类（equity=1）无交易费，不计入摩擦
+
+所有业务数字在 `config.js` 的 `SYS_CONFIG` 中定义。
+
+### 档位目标计算规则
+
+调仓时使用触发后的目标档位，而非当前中性档位：
+
+- **增权触发**：目标 = `getDynamicTarget("buy", bucketStr)`（下一档，权益更高）
+- **降权触发**：目标 = `getDynamicTarget("sell", bucketStr)`（上一档，权益更低）
+- **权益校对汇总**：显示当前中性档目标 = `getDynamicTarget("neutral", bucketStr)`
 
 ---
 
-## 九、字体系统
+## 七、染色体系
 
-### 两套字体，职责严格分离
+所有权益相关的颜色必须遵循以下语义，**禁止混用**。
 
-| 变量      | 字体栈                                                       | 用途                             |
-| --------- | ------------------------------------------------------------ | -------------------------------- |
-| `--f-num` | Outfit → Helvetica Neue → Arial → sans-serif                 | **所有数字场景**                 |
-| `--f-zh`  | -apple-system → PingFang SC → Helvetica Neue → Microsoft YaHei → sans-serif | **所有中文标签、按钮、说明文字** |
+### CSS 变量语义
 
-`body` 默认字体为 `--f-zh`。凡是输出数字的元素，必须显式指定 `--f-num`。
+| 变量 | 颜色 | 唯一语义 |
+|---|---|---|
+| `--buy` | 蓝 | 增权方向（需要或正在买入） |
+| `--sell` | 橙 | 降权方向（需要或正在卖出）、优先卖出标记 |
+| `--up` | 红 | 行情上涨 |
+| `--dn` | 绿 | 行情下跌、完成/已更新状态 |
+| `--warn` | 浅红 | 方向异常警告（`wrongDir` 为 true） |
+| `--t1` | 主文字 | 已对齐（偏离 < 1%）的权益值 |
+| `--t2` | 次文字 | 偏离 < 1% 的偏差数字、辅助信息 |
+| `--t3` | 弱文字 | 无数据、占位文字 |
+| `--accent` | 主蓝 | 持仓总额、主操作按钮 |
 
-**静态 HTML**：数字容器加 `class="num"`，CSS 已声明 `.num { font-family: var(--f-num) }`。
+### 当前权益染色规则
 
-**JS 动态拼接 HTML（`interact.js`）**：CSS 类继承不可靠，必须在每个输出数字的元素上写 `font-family:var(--f-num)`，或使用 `class="num"`。
+| 状态 | 条件 | 颜色 |
+|---|---|---|
+| 无数据 | `eqData == null` | `--t3` |
+| 方向异常 | `isEquityWrongDir()` 为 true | `--warn` |
+| 已对齐 | `\|diff\| < 1%` 且无异常 | `--t1` |
+| 偏高需降权 | `diff >= 1%` | `--sell` |
+| 偏低需增权 | `diff <= -1%` | `--buy` |
+
+### 偏离值染色规则
+
+| 状态 | 条件 | 颜色 |
+|---|---|---|
+| 无需操作 | `\|diff\| < 1%` 且无异常 | `--t2`（灰，静默） |
+| 需降权 | `diff >= 1%` | `--sell` |
+| 需增权 | `diff <= -1%` | `--buy` |
+| 方向异常 | `wrongDir` | `--warn` |
+
+### `isEquityWrongDir` 触发条件
+
+高估区（PE ≥ `PE_HIGH_THRESHOLD`=65）但权益反而偏**低**超过 `EQUITY_DEV_LIMIT`(1.8%)，或低估区但权益反而偏**高**超过阈值，触发异常警告。
 
 ```javascript
-// ✅ 正确
-`<div style="font-size:15px;font-weight:600;font-family:var(--f-num)">${value.toFixed(2)}%</div>`
-`<span class="num">${shares.toFixed(2)}</span> 份`
-
-// ❌ 错误：数字用中文字体渲染
-`<div style="font-size:15px;font-weight:600">${value.toFixed(2)}%</div>`
+// 高估区权益偏低 → 异常（应降没降）
+peVal >= PE_HIGH_THRESHOLD && diff < -EQUITY_DEV_LIMIT
+// 低估区权益偏高 → 异常（应增没增）
+peVal < PE_HIGH_THRESHOLD  && diff > EQUITY_DEV_LIMIT
 ```
-
-**需要 `--f-num` 的场景**：金额（`fmtMoney()`）、百分比、份数、净值、点位、时间戳、基金代码、所有 `<input type="number/tel">`。
-
-**需要 `--f-zh` 的场景**：产品名称、标签文字、按钮文字、说明段落。
-
-### Outfit 字重
-
-| 文件                 | font-weight |
-| -------------------- | ----------- |
-| OutfitRegular.woff   | 400         |
-| OutfitMedium.woff    | 500         |
-| OutfitSemiBold.woff  | 600         |
-| OutfitExtraBold.woff | 700         |
 
 ---
 
-## 十、颜色系统
+## 八、样式约定
 
-**所有颜色必须通过 CSS 变量引用，禁止在 JS 或 CSS 规则中硬编码色值。**
+样式完整定义在 `style.css` 中。以下是 AI 在动态拼接 HTML 时最常犯的错误，作为强制禁止清单。
 
-### 基础令牌（`:root` 暗色默认）
+**字体**：`--f-num`（AlibabaSans）用于所有数字，`--f-zh` 用于所有中文。JS 动态拼接 HTML 时 CSS 继承不可靠，每个数字元素必须内联声明或加 `class="num"`，不得遗漏。
 
-| 变量              | 暗色值                   | 语义                           |
-| ----------------- | ------------------------ | ------------------------------ |
-| `--bg`            | `#0a0e14`                | 页面底层背景                   |
-| `--bg2`           | `#111720`                | 卡片/面板背景                  |
-| `--bg3`           | `#1a2130`                | 内嵌容器背景                   |
-| `--bg4`           | `#1f2a3d`                | 最深层嵌套背景                 |
-| `--bd`            | `rgba(255,255,255,0.07)` | 主分割线/边框                  |
-| `--bd2`           | `rgba(255,255,255,0.13)` | 次级边框（输入框、按钮）       |
-| `--t1`            | `#e8edf5`                | 主文字                         |
-| `--t2`            | `#9aaabb`                | 次级文字                       |
-| `--t3`            | `#6b7f96`                | 辅助文字/占位符                |
-| `--accent`        | `#3b82f6`                | 主品牌蓝（目标权益、确认按钮） |
-| `--flat`          | `#e8edf5`                | 持平状态文字色                 |
-| `--sat` / `--sab` | `env(safe-area-inset-*)` | iOS 安全区                     |
+**颜色**：所有颜色必须用 CSS 变量，JS 中动态颜色也必须赋值为变量字符串，禁止硬编码色值。唯一例外：遮罩层 `rgba(0,0,0,0.6)`。增权预研标题背景使用 `var(--accent)`，降权预案标题背景使用 `var(--sell)`，均通过 CSS 变量引用。
 
-### 涨跌语义色
+**动态 `<input>`**：不继承父级样式，必须同时声明字体、背景、边框、文字颜色，参照 `style.css` 中已有的 `input` 样式复用。
 
-| 变量       | 暗色值                 | 语义                       |
-| ---------- | ---------------------- | -------------------------- |
-| `--up`     | `#f04444`              | 上涨（A股红涨）            |
-| `--up-bg`  | `rgba(240,68,68,0.12)` | 上涨背景                   |
-| `--up-bd`  | `rgba(240,68,68,0.3)`  | 上涨描边                   |
-| `--up-dim` | `rgba(240,68,68,0.04)` | 极淡红背景（降权区块底色） |
-| `--dn`     | `#22c55e`              | 下跌（A股绿跌）            |
-| `--dn-bd`  | `rgba(34,197,94,0.3)`  | 下跌描边                   |
+---
 
-### 业务语义色
+## 九、开发铁律
 
-| 变量        | 暗色值                  | 语义           | 使用场景                               |
-| ----------- | ----------------------- | -------------- | -------------------------------------- |
-| `--buy`     | `#60a5fa`               | 增权蓝         | 增权预案标题、目标权益、分配金额       |
-| `--buy-bg`  | `rgba(59,130,246,0.08)` | 增权区块背景   | 增权容器 background                    |
-| `--buy-bd`  | `rgba(59,130,246,0.25)` | 增权区块描边   | 增权容器 border                        |
-| `--sell`    | `#f59e0b`               | 降权橙         | 降权预案标题、需减比例、优先按钮激活态 |
-| `--sell-bg` | `rgba(245,158,11,0.08)` | 降权区块背景   | 降权优先按钮激活背景                   |
-| `--sell-bd` | `rgba(245,158,11,0.25)` | 降权区块描边   | 降权优先按钮激活描边                   |
-| `--warn`    | `#f87171`               | 警告红（轻量） | 方向警告、触发后降权目标、总摩擦费     |
+### A. 输出格式要求（AI 必须遵守）
 
-### 浅色模式覆盖（`@media (prefers-color-scheme: light)`）
+**修改代码前，必须先精确说明每一处改动，格式如下：**
 
-| 变量        | 浅色值                 |
-| ----------- | ---------------------- |
-| `--buy`     | `#2563eb`              |
-| `--buy-bg`  | `rgba(37,99,235,0.08)` |
-| `--buy-bd`  | `rgba(37,99,235,0.25)` |
-| `--sell`    | `#d97706`              |
-| `--sell-bg` | `rgba(217,119,6,0.08)` |
-| `--sell-bd` | `rgba(217,119,6,0.25)` |
-| `--warn`    | `#ef4444`              |
-| `--up-dim`  | `rgba(220,38,38,0.04)` |
-
-### 禁止写法
-
-```css
-/* ❌ */ color: #60a5fa;
-/* ✅ */ color: var(--buy);
 ```
+修改文件：interact.js
+修改函数：openPlanDrawer
+第 3 行：将 `window._prioritySellCode` 替换为 `getPrioritySellCode()`
+第 5 行：将 `window._prioritySellCode = loadPrioritySell()` 替换为 `setPrioritySellCode(loadPrioritySell())`
+```
+
+要求：
+- **必须写出旧代码片段和新代码片段**，不允许只写「替换为 store 的函数」这类模糊描述
+- **必须标明行号**（相对于该函数内部的行，或文件绝对行号均可）
+- 说明完毕后，只输出该函数的**完整代码**，从 `function` 到最后一个 `}`，不允许截断或省略
+- 多个函数有改动时，逐个说明、逐个输出完整函数，不合并成一整块
+- **默认只输出改动的函数，不输出整个文件**，只有用户明确说「输出完整文件」才输出整个文件
+
+### B. 修改方式：改原处，不包裹
+
+**改代码必须找到问题根源直接修改，不允许在外部包裹新逻辑来绕开原有代码。**
 
 ```javascript
-// ❌ `style="color:#60a5fa"`
-// ✅ `style="color:var(--buy)"`
+// ❌ 错误：费率算错了，在外面套一个新函数来修正
+function calcBuyFixed(holdings) {
+  const r = calcBuyPlanDraft(holdings, ...);
+  r.buyAmt = r.buyAmt / (1 + SYS_CONFIG.FEE);
+  return r;
+}
+
+// ✅ 正确：直接进 engine.js 的 calcBuyPlanDraft，找到 buyAmt 的计算行，改那一行
+// 改前：const buyAmt = totalVal * (targetEq - currentEq) / 100;
+// 改后：const buyAmt = totalVal * (targetEq - currentEq) / 100 / (1 + SYS_CONFIG.FEE);
 ```
 
-唯一例外：遮罩层 `rgba(0,0,0,0.6)` 为通用黑色半透明，可直接写。
+### C. 代码优化：改后变少，不变多
+
+每次修改后代码量应减少或持平，不应该增加。
+
+- 发现重复逻辑 → 合并删除，不是再加新函数
+- 不再调用的函数、变量 → 直接删除
+- 中间变量只在复用 2 次以上时才引入
+- 注释只留「为什么」，不留修复历史、版本标注
+
+### D. 其他纪律
+
+1. **读再动**：先读懂现有代码，不靠猜测改代码
+2. **改一层只动一个文件**：穿透两层以上必须先说明原因
+3. **参数只在 config.js**：业务数字不允许散落在其他文件
+4. **funds 改动必须持久化**：修改 `funds` 后立即调用 `saveFunds()`
+5. **极端值防御**：引擎函数在持仓为零、PE 未定锚、超量分配等异常输入时返回 `null` 或 `{ error: true }`，不允许 `NaN` / `undefined` 流入渲染层
+6. **Sortable 生命周期**：每次 `refreshData()` 后先 `destroy()` 旧实例再重建
+7. **优先卖出持久化**：`_prioritySellCode` 是纯内存变量，`openHoldingDrawer` 必须在打开前调用 `setPrioritySellCode(loadPrioritySell())` 从 localStorage 同步，防止刷新后丢失
 
 ---
 
-## 十一、字号体系
+## 十、补充说明
 
-全局 `body` 基础字号 `14px`，不引入下表之外的字号：
-
-| 字号   | 使用场景                         |
-| ------ | -------------------------------- |
-| `26px` | 卡片展开态涨跌幅（`.dh-pct`）    |
-| `22px` | 表格涨跌幅（`.tbl-pct`）         |
-| `20px` | 顶部时钟、PE 数值                |
-| `16px` | 卡片名称、持仓输入框、汇总卡数值 |
-| `15px` | 预案抽屉数值                     |
-| `14px` | 基础正文、按钮、产品名称         |
-| `13px` | 次级按钮、净值数据               |
-| `12px` | 卡片 meta 信息、辅助说明         |
-| `11px` | 标签文字、badge、时间            |
-| `10px` | 最小辅助标注（单位、日期）       |
-| `9px`  | "已更新"角标                     |
+- `todayDateStr()` 例外地声明在 `store.js`，供所有层调用（纯工具函数，无副作用）
+- `UI_render*` 工厂函数只返回 HTML 字符串，不直接操作 DOM；DOM 写入由调用方（`interact.js`）负责
+- `UI_buildHoldingPlanHtml` 的 `eqData` 参数必须由 `interact.js` 的 `liveUpdateHoldingPlan` 计算后传入，ui 层禁止自行调用 `calcCurrentEquity`
+- `STORE_SELL_PLAN`（降权权重预案）由 `saveHoldings` 和 `liveUpdateHoldingPlan` 共同维护，保存在 localStorage，与持仓份额同生命周期
+- 沪深300实时价格通过 `getIndices()["000300"]?.f2` 获取，禁止直接读 `window._rt_csi300_price`（data.js 内部变量）
 
 ---
 
-## 十二、圆角体系
-
-| 值     | 使用场景                                     |
-| ------ | -------------------------------------------- |
-| `16px` | 抽屉顶角、弹窗容器                           |
-| `12px` | 基金卡片、表格容器                           |
-| `10px` | 抽屉内卡片、输入框容器                       |
-| `8px`  | 操作按钮（`.chb-btn`）、预案内小卡片         |
-| `6px`  | 小型按钮（`.del-btn`、`.tbl-del`、状态标签） |
-| `50%`  | 圆点（市场状态、PE追踪标记）                 |
-
----
-
-## 十三、层叠上下文（z-index）
-
-| 值     | 元素                                 |
-| ------ | ------------------------------------ |
-| `1~2`  | PE 追踪轨道内部元素                  |
-| `100`  | 卡片头部粘性栏（`.card-header-bar`） |
-| `150`  | 底部工具栏（移动端 fixed）           |
-| `200`  | 顶部 Header                          |
-| `500`  | 抽屉遮罩（`.drawer-mask`）           |
-| `501`  | 抽屉本体（`.drawer`）                |
-| `600`  | PE 定锚弹窗（`.pe-modal`）           |
-| `9999` | JS 动态创建的口令弹窗                |
-
-新增浮层必须在此序列中选择合适层级。
-
----
-
-## 十四、动效规范
-
-| 类型         | 参数                                       | 使用场景           |
-| ------------ | ------------------------------------------ | ------------------ |
-| 抽屉入场     | `transform 0.3s cubic-bezier(.32,0,.67,0)` | 抽屉从底部滑入     |
-| 遮罩渐显     | `opacity 0.25s`                            | 抽屉/弹窗背景遮罩  |
-| PE 标记位移  | `left 0.3s, background 0.3s`               | PE 追踪点横向移动  |
-| 按钮点击     | `opacity 0.15s`                            | 主操作按钮 `.tbtn` |
-| 数据闪烁     | `flashUp/flashDown 0.8s ease-out`          | 涨跌数据刷新       |
-| 市场开盘脉冲 | `pulse 2s infinite`                        | 市场状态绿点       |
-| PE 脉冲      | `peMarkerPulse 2s infinite`                | PE 追踪标记        |
-
----
-
-## 十五、响应式断点
-
-唯一断点：`768px`
-
-| 范围                | 布局                                         |
-| ------------------- | -------------------------------------------- |
-| `≤ 767px`（移动端） | 卡片视图，底部工具栏 fixed，抽屉全宽         |
-| `≥ 768px`（桌面端） | 表格视图，抽屉居中最大宽 480px，卡片视图隐藏 |
-
----
-
-## 十六、JS 动态拼接 HTML 规范
-
-抽屉内容由 `interact.js` 拼接 HTML 字符串写入 DOM，CSS 类无法通过继承覆盖，必须遵守：
-
-**字体**：输出数字的元素加 `font-family:var(--f-num)` 或 `class="num"`；中文标签默认继承 `--f-zh`，无需声明。
-
-**颜色**：只允许 `var(--)` 引用，动态颜色变量也必须赋值为变量字符串：
-
-```javascript
-// ✅ const diffCol = wrongDir ? 'var(--warn)' : (diff > 0 ? 'var(--sell)' : 'var(--buy)');
-// ❌ const diffCol = wrongDir ? '#f87171' : '#f59e0b';
-```
-
-**输入框**：所有动态创建的 `<input>` 必须同时声明 `font-family`、`background`、`border`、`color`：
-
-```javascript
-`<input style="font-family:var(--f-num);background:var(--bg);border:1px solid var(--bd2);color:var(--t1)">`
-```
-
-**增权/降权区块颜色配对**：
-
-| 区块 | background      | border          | 标题色        | 数值色                        |
-| ---- | --------------- | --------------- | ------------- | ----------------------------- |
-| 增权 | `var(--buy-bg)` | `var(--buy-bd)` | `var(--buy)`  | `var(--buy)`                  |
-| 降权 | `var(--up-dim)` | `var(--up-bg)`  | `var(--sell)` | `var(--sell)` / `var(--warn)` |
-
----
-
-## 十七、开发铁律
-
-1. **分层单向依赖**：下层绝对不能调用上层函数。
-2. **计算在 engine，渲染在 ui，控制在 interact**：计算公式不进 `interact.js`/`ui.js`，DOM 操作不进 `engine.js`/`data.js`。
-3. **改一个功能只动对应层文件**：穿透两层以上必须先说明原因。
-4. **不允许新建 JS 文件**：功能扩展只能在现有 7 个文件内就地实现。
-5. **参数改动只在 config.js**：不允许在其他文件硬编码业务数字。
-6. **计算逻辑改动后验证极端值**：持仓为零、PE 未定锚、超量分配时，引擎函数必须返回合理的 `null` 或 `{error: true}`，不允许 NaN/undefined 流入渲染层。
-7. **`funds` 修改必须立即持久化**：修改后必须跟 `saveFunds()`。
-
----
-
-## 十八、新功能开发检查清单
+## 十一、提交检查清单
 
 **架构**
-
-- [ ] 新增函数放在了正确的层级文件
-- [ ] 没有跨层调用（下层调上层）
-- [ ] 新增业务参数已加入 `config.js`，无硬编码
-- [ ] 新增 localStorage key 已在第五节登记
-- [ ] 新增跨文件共享函数/变量已在第四节登记
+- [ ] 输出前已用文字说明改哪个文件、哪个函数、改什么
+- [ ] 只输出了改动的函数，没有抛出整个文件（除非被要求）
+- [ ] 改的是问题根源，没有在外部包裹补丁
+- [ ] 修改后代码总量没有增加
+- [ ] 新增函数放在正确的层级，无跨层调用
+- [ ] 数据变更通过 store 广播驱动，没有手动调渲染函数
+- [ ] engine 函数的外部依赖通过参数传入
+- [ ] 业务参数已加入 `config.js`，无硬编码
 - [ ] 计算函数在极端输入下有防御处理
 - [ ] `funds` 修改后有 `saveFunds()` 调用
-- [ ] Sortable 实例在 refreshData 后有 destroy + 重建
 
 **样式**
-
-- [ ] 新增数字输出使用了 `--f-num` / `.num`
-- [ ] 新增颜色通过 CSS 变量引用，无裸色值
-- [ ] 动态拼接的 `<input>` 有完整的字体和颜色声明
-- [ ] 新增 z-index 在层叠上下文表中选择了合适层级
-- [ ] 新增圆角值在圆角体系内
-- [ ] 新增字号在字号体系内
-- [ ] 新增颜色变量在浅色模式下有覆盖值
+- [ ] 动态拼接的数字元素有 `--f-num` / `class="num"`
+- [ ] 颜色通过 CSS 变量引用，无裸色值、无硬编码 hex
+- [ ] 动态创建的 `<input>` 有完整字体和颜色声明
+- [ ] 权益染色遵循第七节染色体系，`--up/--dn` 不用于权益方向

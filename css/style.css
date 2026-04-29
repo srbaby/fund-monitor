@@ -243,6 +243,31 @@ body {
     position: sticky;
     top: calc(var(--sat) + 56px);
     z-index: 100;
+    overflow: visible;
+}
+.col-handle {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(-1px);
+    width: 28px;
+    height: 13px;
+    background: var(--bg2);
+    border: 1px solid var(--bd);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 10px;
+    color: var(--t3);
+    user-select: none;
+    line-height: 1;
+    transition: color 0.2s;
+}
+.col-handle:active {
+    color: var(--t1);
 }
 .chb-title {
     font-size: 11px;
