@@ -262,7 +262,6 @@ function toggleHoldingPriority(code) {
 function handleHoldingAction() {
   const configArea = document.getElementById("holdingConfigArea");
   const btn = document.getElementById("btnHoldingAction");
-
   if (!configArea || !btn) return;
 
   if (configArea.style.display === "none") {
@@ -274,13 +273,17 @@ function handleHoldingAction() {
     }, 50);
   } else {
     saveHoldings();
+    configArea.style.display = "none";
+    btn.textContent = "持仓配置";
+    btn.style.background = "var(--accent)";
   }
 }
 
 function saveHoldings() {
-  const shares = loadHoldings(),
-    equity = loadHoldingsEquity(),
-    shortNames = loadShortNames();
+  const raw = _loadRaw() || {};
+  const shares = { ...(raw.shares || {}) };
+  const equity = { ...(raw.equity || {}) };
+  const shortNames = { ...(raw.shortNames || {}) };
   const plan = {};
 
   getActiveProducts().forEach((p) => {
@@ -293,23 +296,12 @@ function saveHoldings() {
     equity[p.code] = Math.min(1, Math.max(0, ev));
     if (sn) shortNames[p.code] = sn;
     else delete shortNames[p.code];
-
     if (wt !== "") plan[p.code] = wt;
   });
 
   saveHoldingsData(shares, equity, shortNames);
   localStorage.setItem(STORE_SELL_PLAN, JSON.stringify(plan));
-
   alert("✅ 配置已保存");
-
-  // 保存后收起配置区，重置按钮状态
-  const configArea = document.getElementById("holdingConfigArea");
-  const btn = document.getElementById("btnHoldingAction");
-  if (configArea) configArea.style.display = "none";
-  if (btn) {
-    btn.textContent = "持仓配置";
-    btn.style.background = "var(--accent)";
-  }
 }
 
 // ---- 口令备份调度 ----
