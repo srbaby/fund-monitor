@@ -14,6 +14,13 @@ const miniLabels = ["估算", "官方", "全部"];
 const prevData = {},
   idxPrev = {};
 const _peDOM = {};
+let _peDOMReady = false;
+// 缓存高频访问的静态 DOM 节点
+const _el = {};
+function _getEl(id) {
+  if (!_el[id]) _el[id] = document.getElementById(id);
+  return _el[id];
+}
 
 // ---- 格式化工具 ----
 function fp(v) {
@@ -131,53 +138,31 @@ function UI_renderEmptyState() {
 function UI_buildSummaryHtml(
   currentPE,
   eqData,
-  targetEqStr,
   currentEqVal,
   eqCol,
   targetNeutralNum,
+  inDrawer = false,
 ) {
   const totalStr = eqData ? fmtMoney(eqData.total) : "--";
   const curEqStr = currentEqVal != null ? fmt(currentEqVal, 2) + "%" : "--";
 
-  let html = `<div class="dr-card dr-pad dr-sec dr-summary-box">
+  const targetStr = targetNeutralNum != null ? targetNeutralNum + "%" : "--";
+  const diff = eqData && targetNeutralNum != null ? eqData.equity - targetNeutralNum : null;
+  const wrongDir = isEquityWrongDir(currentPE?.value, diff);
+  const isNeutral = diff != null && Math.abs(diff) < 1 && !wrongDir;
+  const badgeCol = isNeutral ? "var(--t2)" : eqCol;
+  const badgeHtml = diff != null
+    ? `<span class="num" style="color:${badgeCol};font-size:11px;font-weight:500;">${diff > 0 ? "+" : ""}${fmt(diff, 2)}%</span>`
+    : "";
+
+  const boxClass = inDrawer
+    ? 'class="dr-card dr-pad dr-summary-box" style="position:relative; z-index:1; border-radius:0 12px 12px 12px; margin-bottom:0;"'
+    : 'class="dr-card dr-pad dr-sec dr-summary-box"';
+  return `<div ${boxClass}>
     <div class="dr-summary-item" style="flex:1;"><div class="dr-lbl">持仓总额</div><div class="dr-val" style="color:var(--accent); font-weight:600;">${totalStr}</div></div>
-    <div class="dr-summary-item" style="flex:1;border-left:1px solid var(--bd2); border-right:1px solid var(--bd2); padding:0 4px;"><div class="dr-lbl">当前权益</div><div style="display:flex;align-items:baseline;justify-content:center;gap:3px;"><span class="dr-val" style="color:${eqCol}; font-weight:600;">${curEqStr}</span>__BADGE__</div></div>
-    <div class="dr-summary-item" style="flex:1;">`;
-
-  if (targetEqStr != null && typeof targetEqStr === "string") {
-    html = html.replace("__BADGE__", "");
-    html += `<div class="dr-lbl">预案状态</div><div class="dr-val" style="font-weight:600;">${targetEqStr}</div></div></div>`;
-  } else {
-    const targetStr = targetNeutralNum != null ? targetNeutralNum + "%" : "--";
-    const diff =
-      eqData && targetNeutralNum != null
-        ? eqData.equity - targetNeutralNum
-        : null;
-    const wrongDir = isEquityWrongDir(currentPE?.value, diff);
-    const isNeutral = diff != null && Math.abs(diff) < 1 && !wrongDir;
-    const bBg = wrongDir
-      ? "var(--up-dim)"
-      : isNeutral
-        ? "transparent"
-        : diff > 0
-          ? "var(--sell-bg)"
-          : "var(--buy-bg)";
-    const bBd = wrongDir
-      ? "var(--up-bd)"
-      : isNeutral
-        ? "var(--bd2)"
-        : diff > 0
-          ? "var(--sell-bd)"
-          : "var(--buy-bd)";
-    const badgeCol = isNeutral ? "var(--t2)" : eqCol;
-    const badgeHtml = diff != null
-      ? `<span class="num" style="color:${badgeCol};font-size:11px;font-weight:500;">${diff > 0 ? "+" : ""}${fmt(diff, 2)}%</span>`
-      : "";
-
-    html = html.replace("__BADGE__", badgeHtml);
-    html += `<div class="dr-lbl">目标权益</div><div class="dr-val" style="font-weight:600;">${targetStr}</div></div></div>`;
-  }
-  return html;
+    <div class="dr-summary-item" style="flex:1;border-left:1px solid var(--bd2); border-right:1px solid var(--bd2); padding:0 4px;"><div class="dr-lbl">当前权益</div><div style="display:flex;align-items:baseline;justify-content:center;gap:3px;"><span class="dr-val" style="color:${eqCol}; font-weight:600;">${curEqStr}</span>${badgeHtml}</div></div>
+    <div class="dr-summary-item" style="flex:1;"><div class="dr-lbl">目标权益</div><div class="dr-val" style="font-weight:600;">${targetStr}</div></div>
+  </div>`;
 }
 
 function UI_renderHoldingDrawerBody(
@@ -218,21 +203,18 @@ function UI_renderHoldingDrawerBody(
     "display:inline-block; background:var(--bg3); border:1px solid var(--bd); border-bottom:none; color:var(--t1); font-size:13px; font-weight:600; padding:6px 14px; border-radius:8px 8px 0 0; font-family:var(--f-zh); margin-bottom:-1px; position:relative; z-index:2;";
 
   // ====== 1. 权益校对汇总 ======
-  let summaryHtml = UI_buildSummaryHtml(
+  const summaryHtml = UI_buildSummaryHtml(
     currentPE,
     eqData,
-    null,
     eqData?.equity,
     diffCol,
     targetEqNeutral,
-  ).replace(
-    'class="dr-card dr-pad dr-sec dr-summary-box"',
-    'class="dr-card dr-pad dr-summary-box" style="position:relative; z-index:1; border-radius:0 12px 12px 12px; margin-bottom:0;"',
+    true,
   );
 
   let html = `
   <div style="margin-bottom:10px;">
-    <div style="${tabStyle}">📊 权益校对汇总</div>
+    <div style="${tabStyle}">💰 资产权益</div>
     ${summaryHtml}
   </div>`;
 
@@ -244,7 +226,7 @@ function UI_renderHoldingDrawerBody(
   html += `
   <div style="margin-bottom:10px;">
     <div style="display:flex; justify-content:space-between; align-items:flex-end;">
-      <div style="${tabStyle}">📋 资产价值明细</div>
+      <div style="${tabStyle}">📑 资产明细</div>
       <div class="dr-lbl" style="font-family:var(--f-zh); margin-bottom:4px; margin-right:4px;">权益总额 <span class="num" style="color:var(--accent);font-size:13px;font-weight:600;">${eqAmtStr}</span></div>
     </div>
     <div class="dr-card" style="position:relative; z-index:1; border-radius:0 12px 12px 12px; padding:4px 0;">
@@ -307,7 +289,7 @@ function UI_renderHoldingDrawerBody(
   // ====== 4. 持仓配置 ======
   html += `<div id="holdingConfigArea" style="display:none; margin-top:10px;">`;
   html += `
-    <div style="${tabStyle}">⚙️ 持仓配置</div>
+    <div style="${tabStyle}">⚙ 持仓配置</div>
     <div class="dr-card" style="position:relative; z-index:1; border-radius:0 12px 12px 12px; padding:0;">
       <div style="${gridStyle} padding:6px 12px; border-bottom:1px solid var(--bd); background:var(--bg4); font-size:11px; color:var(--t3); font-family:var(--f-zh); font-weight:400;">
         <div>产品简称</div><div style="text-align:center;">优先级</div><div style="text-align:center;">权重</div><div style="text-align:center;">权益档</div><div style="text-align:right;">份额</div>
@@ -375,8 +357,8 @@ function UI_buildHoldingPlanHtml(
 
     html += `
     <div style="margin: 10px 0;">
-      <div style="display:inline-block; background:#3b82f6; color:#fff; font-size:13px; font-weight:600; padding:6px 14px; border-radius:8px 8px 0 0; font-family:var(--f-zh); letter-spacing:1px; margin-bottom:-1px; position:relative; z-index:2;">增权预研</div>
-      <div class="dr-card" style="position:relative; z-index:1; border-radius:0 12px 12px 12px; border:1px solid var(--buy-bd); background:var(--buy-bg); padding:12px;">
+      <div style="display:inline-block; background:var(--buy-bg); border:1px solid var(--buy-bd); border-bottom:none; color:var(--buy); font-size:13px; font-weight:600; padding:6px 14px; border-radius:8px 8px 0 0; font-family:var(--f-zh); margin-bottom:-1px; position:relative; z-index:2;">⬆ 增权预研</div>
+      <div class="dr-card" style="position:relative; z-index:1; border-radius:0 12px 12px 12px; border:1px solid var(--buy-bd); background:var(--bg3); padding:12px;">
         <div style="display:grid; grid-template-columns: repeat(3, 1fr); text-align:center; gap:8px; margin-bottom:10px;">
           <div class="dr-col" style="align-items:center;"><div class="dr-lbl" style="margin-bottom:2px;">当前权益</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600;">${fmt(eqData.equity, 2)}%</div></div>
           <div class="dr-col" style="align-items:center;"><div class="dr-lbl" style="margin-bottom:2px;">触发后目标</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600;">${buyDraft.targetEq}%</div></div>
@@ -401,8 +383,8 @@ function UI_buildHoldingPlanHtml(
 
     html += `
     <div style="margin: 10px 0;">
-      <div style="display:inline-block; background:#f59e0b; color:#fff; font-size:13px; font-weight:600; padding:6px 14px; border-radius:8px 8px 0 0; font-family:var(--f-zh); letter-spacing:1px; margin-bottom:-1px; position:relative; z-index:2;">降权预案</div>
-      <div class="dr-card" style="position:relative; z-index:1; border-radius:0 12px 12px 12px; border:1px solid var(--sell-bd); background:var(--sell-bg); padding:12px;">
+      <div style="display:inline-block; background:var(--sell-bg); border:1px solid var(--sell-bd); border-bottom:none; color:var(--sell); font-size:13px; font-weight:600; padding:6px 14px; border-radius:8px 8px 0 0; font-family:var(--f-zh); margin-bottom:-1px; position:relative; z-index:2;">⬇ 降权预案</div>
+      <div class="dr-card" style="position:relative; z-index:1; border-radius:0 12px 12px 12px; border:1px solid var(--sell-bd); background:var(--bg3); padding:12px;">
         <div style="display:grid; grid-template-columns: repeat(3, 1fr); text-align:center; gap:8px; margin-bottom:10px;">
           <div class="dr-col" style="align-items:center;"><div class="dr-lbl" style="margin-bottom:2px;">当前权益</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600;">${fmt(eqData.equity, 2)}%</div></div>
           <div class="dr-col" style="align-items:center;"><div class="dr-lbl" style="margin-bottom:2px;">触发后目标</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600;">${sellDraft.targetEq}%</div></div>
@@ -417,8 +399,8 @@ function UI_buildHoldingPlanHtml(
       if (res && res.amt > 0) {
         html += `
           <div style="background:var(--bg2); border:1px solid var(--bd); border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;">
-            <div style="font-family:var(--f-zh); color:var(--t1); font-weight:500; font-size:13px;">转出 ${p.name}</div>
-            <div class="num" style="color:var(--sell); font-size:15px; font-weight:600;">${fmt(res.shares, 2)} <span style="font-size:11px; color:var(--t2); margin-left:2px; font-weight:400;">份</span> <span style="color:var(--sell); font-size:12px; margin-left:8px; font-weight:500; background:var(--sell-dim); padding:3px 6px; border-radius:4px;">降权 ${fmt(res.eqDropPct, 2)}%</span></div>
+            <div style="font-family:var(--f-zh); color:var(--t1); font-size:13px;"><span style="font-weight:400;">转出</span> <span style="font-weight:600;">${p.name}</span></div>
+            <div style="display:flex; align-items:center;"><span class="num" style="color:var(--sell); font-size:15px; font-weight:600;">${fmt(res.shares, 2)}</span><span style="font-size:11px; color:var(--t2); font-weight:400; margin-left:3px;">份</span><span class="num" style="color:var(--sell); font-size:12px; font-weight:500; background:var(--sell-dim); padding:3px 6px; border-radius:4px; margin-left:14px;">降权 ${fmt(res.eqDropPct, 2)}%</span></div>
           </div>`;
       }
     });
@@ -521,13 +503,14 @@ function renderIndices(map) {
 }
 
 function updatePeBar() {
-  if (!_peDOM.display) {
+  if (!_peDOMReady) {
     _peDOM.display = document.getElementById("peDisplay");
     _peDOM.status = document.getElementById("peStatus");
     _peDOM.marker = document.getElementById("peTrackMarker");
     _peDOM.eqDiv = document.getElementById("peEquityInfo");
     _peDOM.loEl = document.getElementById("peTrackLo");
     _peDOM.hiEl = document.getElementById("peTrackHi");
+    _peDOMReady = true;
   }
 
   const peData = loadPe();
@@ -585,7 +568,7 @@ function updatePeBar() {
             ? "var(--sell)"
             : "var(--buy)";
       const diffCol = (Math.abs(diff) < 1 && !wrongDir) ? "var(--t2)" : col;
-      _peDOM.eqDiv.innerHTML = `权益<b class="num" style="color:${col};margin-left:2px;">${eqData.equity.toFixed(2)}%</b><span class="num" style="color:${diffCol};margin-left:2px;margin-right:4px;font-size:10px;vertical-align:baseline;">${diff > 0 ? "+" : ""}${diff.toFixed(2)}%</span><span style="display:inline-block;width:1px;height:10px;background:var(--bd2);vertical-align:middle;margin-right:4px;"></span>目标<b class="num" style="margin-left:2px;">${target}%</b>`;
+      _peDOM.eqDiv.innerHTML = `权益<b class="num" style="color:${col};margin-left:2px;">${eqData.equity.toFixed(2)}%</b><span class="num" style="color:${diffCol};margin-left:2px;font-size:10px;vertical-align:baseline;">${diff > 0 ? "+" : ""}${diff.toFixed(2)}%</span><span style="display:inline-block;width:1px;height:10px;background:var(--bd2);vertical-align:middle;margin:0 2px;"></span>目标<b class="num" style="margin-left:2px;">${target}%</b>`;
       _peDOM.eqDiv.style.display = "flex";
     } else _peDOM.eqDiv.style.display = "none";
   }
@@ -734,8 +717,8 @@ function renderTable(results, fl, today, tradingDay) {
 }
 
 function renderTodayProfit(results, mktState, todayStr) {
-  const profitElMobile = document.getElementById("todayProfit"),
-    profitElPc = document.getElementById("todayProfitPc");
+  const profitElMobile = _getEl("todayProfit"),
+    profitElPc = _getEl("todayProfitPc");
   if (!profitElMobile && !profitElPc) return;
 
   const {
@@ -815,18 +798,12 @@ function UI_updateFunds() {
   updatePeBar(); // 净值变动会导致权益市值改变
 
   const hasData = uiResults.length > 0;
-  if (document.getElementById("cardHeaderBar"))
-    document.getElementById("cardHeaderBar").style.display = hasData
-      ? "flex"
-      : "none";
-  if (document.getElementById("pcProfitArea"))
-    document.getElementById("pcProfitArea").style.visibility = hasData
-      ? "visible"
-      : "hidden";
-  if (document.getElementById("miniRefBtnPc"))
-    document.getElementById("miniRefBtnPc").style.visibility = hasData
-      ? "visible"
-      : "hidden";
+  const chb = _getEl("cardHeaderBar");
+  if (chb) chb.style.display = hasData ? "flex" : "none";
+  const ppa = _getEl("pcProfitArea");
+  if (ppa) ppa.style.visibility = hasData ? "visible" : "hidden";
+  const mrb = _getEl("miniRefBtnPc");
+  if (mrb) mrb.style.visibility = hasData ? "visible" : "hidden";
 }
 
 function toggleAllCollapse() {
