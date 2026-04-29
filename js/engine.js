@@ -25,9 +25,9 @@ function isEquityWrongDir(peVal, diff) {
   if (peVal == null || diff == null) return false;
   return (
     (peVal >= SYS_CONFIG.PE_HIGH_THRESHOLD &&
-      diff > SYS_CONFIG.EQUITY_DEV_LIMIT) ||
+      diff < -SYS_CONFIG.EQUITY_DEV_LIMIT) ||
     (peVal < SYS_CONFIG.PE_HIGH_THRESHOLD &&
-      diff < -SYS_CONFIG.EQUITY_DEV_LIMIT)
+      diff > SYS_CONFIG.EQUITY_DEV_LIMIT)
   );
 }
 
@@ -122,6 +122,17 @@ function calcBuyPlanDraft(holdings, activeProducts, getNavFn, targetEq) {
   const allocA500C = Math.min(buyAmt, a500cRoom);
   const allocZZ500C = buyAmt - allocA500C;
 
+  let totalFriction = 0;
+  const pXq = activeProducts.find((p) => p.code === SYS_CONFIG.CODE_XQ);
+  if (pXq && pXq.equity !== 0 && pXq.equity !== 1)
+    totalFriction += buyAmt * SYS_CONFIG.FEE;
+  const pA500 = activeProducts.find((p) => p.code === SYS_CONFIG.CODE_A500);
+  if (pA500 && pA500.equity !== 0 && pA500.equity !== 1)
+    totalFriction += allocA500C * SYS_CONFIG.FEE;
+  const pZZ = activeProducts.find((p) => p.code === SYS_CONFIG.CODE_ZZ500);
+  if (pZZ && pZZ.equity !== 0 && pZZ.equity !== 1)
+    totalFriction += allocZZ500C * SYS_CONFIG.FEE;
+
   return {
     totalVal,
     currentEq,
@@ -130,6 +141,7 @@ function calcBuyPlanDraft(holdings, activeProducts, getNavFn, targetEq) {
     sellXqShares: buyAmt / xqNav,
     allocA500C,
     allocZZ500C,
+    totalFriction,
   };
 }
 
@@ -193,7 +205,8 @@ function calcSellExecutionDraft(
     const res = results[p.code];
     if (!res || !res.amt) return;
     hasAnySell = true;
-    const feeAmt = res.amt * SYS_CONFIG.FEE;
+    const feeRate = p.equity === 0 || p.equity === 1 ? 0 : SYS_CONFIG.FEE;
+    const feeAmt = res.amt * feeRate;
     const eqDropVal = res.amt * p.equity;
 
     afterEqVal -= eqDropVal;

@@ -1,30 +1,29 @@
 // ============================================================
-// store.js - 存储层 (v3.1 架构师重构版 - 微任务防抖)
+// store.js - 存储层 (v3.0 响应式状态中心)
 // 职责：全局内存状态、localStorage、广播通知 (Observer)
-// 铁律：所有的外部数据修改必须通过此文件的封装方法进行
 // ============================================================
 
+// ---- 全局内存状态 ----
 let funds = [];
 let _lastResults = [];
 let _indicesMap = {};
+let _prioritySellCode = null;
 
-// ---- 广播电台 (频道化 Observer & 防抖) ----
+function getPrioritySellCode() {
+  return _prioritySellCode;
+}
+function setPrioritySellCode(code) {
+  _prioritySellCode = code;
+}
+
+// ---- 广播电台 (频道化 Observer) ----
 const _observers = {};
-const _pendingUpdates = new Set();
-
 function observeState(topic, fn) {
   if (!_observers[topic]) _observers[topic] = [];
   _observers[topic].push(fn);
 }
-
-// [架构师优化]：引入微任务防抖 (Microtask Debounce)，将同一事件循环内的多次同步触发合并为一次渲染，杜绝性能损耗
 function dispatchUpdate(topic) {
-  if (_pendingUpdates.has(topic)) return;
-  _pendingUpdates.add(topic);
-  Promise.resolve().then(() => {
-    _pendingUpdates.delete(topic);
-    if (_observers[topic]) _observers[topic].forEach((fn) => fn());
-  });
+  if (_observers[topic]) _observers[topic].forEach((fn) => fn());
 }
 
 // ---- 纯工具 ----
@@ -68,7 +67,7 @@ function getLastResults() {
 }
 function setLastResults(res) {
   _lastResults = res;
-  dispatchUpdate("FUNDS");
+  dispatchUpdate("FUNDS"); // 频道：基金
 }
 
 function getIndices() {
@@ -76,23 +75,17 @@ function getIndices() {
 }
 function setIndices(map) {
   _indicesMap = map;
-  dispatchUpdate("INDICES");
+  dispatchUpdate("INDICES"); // 频道：指数
 }
 
 function loadFunds() {
   const c = localStorage.getItem(STORE_CODES);
   funds = c ? safeParse(c, [...DEFAULT_CODES]) : [...DEFAULT_CODES];
 }
-
-// [架构师优化]：封装对 funds 数组的修改，防止外部直写污染
-function updateFundsList(newList) {
-  funds = newList;
-  saveFunds();
-}
-
-function saveFunds() {
+function saveFunds(newFunds) {
+  if (newFunds) funds = newFunds;
   localStorage.setItem(STORE_CODES, JSON.stringify(funds));
-  dispatchUpdate("FUNDS");
+  dispatchUpdate("FUNDS"); // 频道：基金
 }
 
 function loadPe() {
@@ -100,7 +93,7 @@ function loadPe() {
 }
 function savePe(dataObj) {
   localStorage.setItem(STORE_PE, JSON.stringify(dataObj));
-  dispatchUpdate("LOCAL_CONFIG");
+  dispatchUpdate("LOCAL_CONFIG"); // 频道：本地配置
 }
 
 let _holdingsCache = null;
@@ -130,7 +123,7 @@ function saveHoldingsData(shares, equity, shortNames) {
     STORE_HOLDINGS,
     JSON.stringify({ shares, equity, shortNames }),
   );
-  dispatchUpdate("LOCAL_CONFIG");
+  dispatchUpdate("LOCAL_CONFIG"); // 频道：本地配置
 }
 
 function loadPrioritySell() {
@@ -138,28 +131,19 @@ function loadPrioritySell() {
 }
 function savePrioritySell(code) {
   localStorage.setItem(STORE_PRIORITY_SELL, code);
-  dispatchUpdate("LOCAL_CONFIG");
+  dispatchUpdate("LOCAL_CONFIG"); // 频道：本地配置
 }
 function clearPrioritySell() {
   localStorage.removeItem(STORE_PRIORITY_SELL);
-  dispatchUpdate("LOCAL_CONFIG");
+  dispatchUpdate("LOCAL_CONFIG"); // 频道：本地配置
 }
 
-// [架构师优化]：封装预案读取与写入接口，堵死越权漏洞
-function loadSellPlanConfig() {
-  return safeParse(localStorage.getItem(STORE_SELL_PLAN), {});
-}
-function saveSellPlanConfig(planObj) {
-  localStorage.setItem(STORE_SELL_PLAN, JSON.stringify(planObj));
-}
-
-// ---- 快照备份 ----
 function exportSnapshot() {
   const data = {
     f: funds,
     h: safeParse(localStorage.getItem(STORE_HOLDINGS), {}),
     p: loadPe(),
-    s: loadSellPlanConfig(),
+    s: safeParse(localStorage.getItem(STORE_SELL_PLAN), {}),
     pr: loadPrioritySell() || null,
   };
   return btoa(encodeURIComponent(JSON.stringify(data)));
@@ -168,20 +152,17 @@ function exportSnapshot() {
 function importSnapshot(str) {
   try {
     const data = JSON.parse(decodeURIComponent(atob(str)));
-    // 防抖机制生效，以下代码不会引发连续多次的卡顿重绘
-    if (data.f && Array.isArray(data.f)) {
-      updateFundsList(data.f); 
-    }
+    if (data.f && Array.isArray(data.f)) saveFunds(data.f);
     if (data.h) {
-      _holdingsCache = null;
+      _holdingsCache = null; // 修复：清除缓存，防止读到旧数据
       localStorage.setItem(STORE_HOLDINGS, JSON.stringify(data.h));
-      dispatchUpdate("LOCAL_CONFIG");
     }
     if (data.p) savePe(data.p);
-    if (data.s) saveSellPlanConfig(data.s);
+    if (data.s) localStorage.setItem(STORE_SELL_PLAN, JSON.stringify(data.s));
     if (data.pr) savePrioritySell(data.pr);
     else clearPrioritySell();
-    
+    dispatchUpdate("FUNDS");
+    dispatchUpdate("LOCAL_CONFIG");
     return true;
   } catch (e) {
     return false;

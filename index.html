@@ -87,7 +87,7 @@
                         class="num"
                         style="
                             font-size: 18px;
-                            font-weight: 600;
+                            font-weight: 700;
                             display: flex;
                             align-items: center;
                         "
@@ -107,15 +107,8 @@
                 <button class="pe-input-btn" onclick="openPeModal()">
                     定锚
                 </button>
-                <button class="pe-input-btn" onclick="openHoldingDrawer()">
+                <button class="pe-input-btn" id="holdingBtn" onclick="openHoldingDrawer()">
                     持仓
-                </button>
-                <button
-                    class="pe-plan-btn neutral"
-                    id="planBtn"
-                    onclick="openPlanDrawer()"
-                >
-                    预案
                 </button>
             </div>
 
@@ -161,6 +154,7 @@
                         display: flex;
                         align-items: center;
                         min-width: 0;
+                        overflow: hidden;
                         padding-right: 12px;
                     "
                 >
@@ -174,7 +168,10 @@
                         class="num"
                         style="
                             font-size: 16px;
-                            font-weight: 600;
+                            font-weight: 700;
+                            white-space: nowrap;
+                            overflow: hidden;
+                            text-overflow: ellipsis;
                             display: flex;
                             align-items: center;
                         "
@@ -460,26 +457,10 @@
             onclick="closeAllDrawers()"
         ></div>
 
-        <div class="drawer" id="planDrawer">
-            <div class="drawer-handle"></div>
-            <div class="drawer-header">
-                <span class="drawer-title">待机预案</span>
-                <button class="drawer-close" onclick="closeAllDrawers()">
-                    ×
-                </button>
-            </div>
-            <div class="drawer-body" id="planDrawerBody"></div>
-            <div class="drawer-footer">
-                <button class="drawer-footer-btn" onclick="saveAndClosePlan()">
-                    保存预案
-                </button>
-            </div>
-        </div>
-
         <div class="drawer" id="holdingDrawer">
             <div class="drawer-handle"></div>
             <div class="drawer-header">
-                <span class="drawer-title">编辑持仓份额</span>
+                <span class="drawer-title">持仓总览</span>
                 <button class="drawer-close" onclick="closeAllDrawers()">
                     ×
                 </button>
@@ -493,10 +474,11 @@
                     取消
                 </button>
                 <button
+                    id="btnHoldingAction"
                     class="drawer-footer-btn drawer-footer-btn--primary"
-                    onclick="saveHoldings()"
+                    onclick="handleHoldingAction()"
                 >
-                    保存持仓
+                    持仓配置
                 </button>
             </div>
         </div>
