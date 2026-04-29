@@ -231,7 +231,7 @@ function UI_renderHoldingDrawerBody(
     </div>
     <div class="dr-card" style="position:relative; z-index:1; border-radius:0 12px 12px 12px; padding:4px 0;">
       <div style="${gridDet} padding:6px 12px; border-bottom:1px solid var(--bd2); font-size:11px; color:var(--t3); font-family:var(--f-zh); font-weight:400;">
-        <div>产品简称</div><div style="display:flex;justify-content:flex-end;">今日涨跌</div><div style="display:flex;justify-content:flex-end;">持仓占比</div><div style="display:flex;justify-content:flex-end;">持仓金额(¥)</div>
+        <div>产品简称</div><div style="display:flex;justify-content:flex-end;">今日涨跌(¥)</div><div style="display:flex;justify-content:flex-end;">持仓占比</div><div style="display:flex;justify-content:flex-end;">持仓金额(¥)</div>
       </div>`;
 
   activeProds.forEach((p, idx) => {
