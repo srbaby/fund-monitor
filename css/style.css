@@ -1,19 +1,19 @@
 /* ════════ 字体加载 ════════ */
 @font-face {
     font-family: "D-DIN";
-    src: url("../fonts/D-DIN.woff2") format("woff2");
+    src: url("../fonts/Manrope-Regular.woff2") format("woff2");
     font-weight: 400;
     font-display: swap;
 }
 @font-face {
     font-family: "D-DIN";
-    src: url("../fonts/D-DIN.woff2") format("woff2");
+    src: url("../fonts/Manrope-Medium.woff2") format("woff2");
     font-weight: 500;
     font-display: swap;
 }
 @font-face {
     font-family: "D-DIN";
-    src: url("../fonts/D-DIN-Bold.woff2") format("woff2");
+    src: url("../fonts/Manrope-Bold.woff2") format("woff2");
     font-weight: 600;
     font-display: swap;
 }
