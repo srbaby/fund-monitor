@@ -54,7 +54,7 @@
             </div>
             <div class="hd-right">
                 <div class="hd-time num" id="liveTime">--:--:--</div>
-                <div class="hd-date num" id="liveDate">----/--/--</div>
+                <div class="hd-date" id="liveDate">----/--/--</div>
             </div>
         </header>
 
@@ -107,7 +107,11 @@
                 <button class="pe-input-btn" onclick="openPeModal()">
                     定锚
                 </button>
-                <button class="pe-input-btn" id="holdingBtn" onclick="openHoldingDrawer()">
+                <button
+                    class="pe-input-btn"
+                    id="holdingBtn"
+                    onclick="openHoldingDrawer()"
+                >
                     持仓
                 </button>
             </div>
@@ -193,7 +197,13 @@
                         估算
                     </button>
                 </div>
-                <div id="colBtn" class="col-handle" onclick="toggleAllCollapse()">▾</div>
+                <div
+                    id="colBtn"
+                    class="col-handle"
+                    onclick="toggleAllCollapse()"
+                >
+                    ▾
+                </div>
             </div>
 
             <div class="card-view" id="cardView">

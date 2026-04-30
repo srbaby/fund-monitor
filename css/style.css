@@ -1,38 +1,38 @@
 /* ════════ 字体加载 ════════ */
 @font-face {
-    font-family: "AlibabaSans";
-    src: url("../fonts/AlibabaSans-Regular.woff2") format("woff2");
+    font-family: "D-DIN";
+    src: url("../fonts/D-DIN.woff2") format("woff2");
     font-weight: 400;
     font-display: swap;
 }
 @font-face {
-    font-family: "AlibabaSans";
-    src: url("../fonts/AlibabaSans-Medium.woff2") format("woff2");
+    font-family: "D-DIN";
+    src: url("../fonts/D-DIN.woff2") format("woff2");
     font-weight: 500;
     font-display: swap;
 }
 @font-face {
-    font-family: "AlibabaSans";
-    src: url("../fonts/AlibabaSans-Bold.woff2") format("woff2");
+    font-family: "D-DIN";
+    src: url("../fonts/D-DIN-Bold.woff2") format("woff2");
     font-weight: 600;
     font-display: swap;
 }
 
 /* ════════ CSS 设计令牌 ════════ */
 :root {
-    --bg: #121417;          /* 稍微偏暖、偏中性的极深灰，去掉了原本的冷蓝色调 */
-    --bg2: #181a1f;         /* 卡片底色同样去蓝光，更沉稳 */
-    --bg3: #202329;         /* 抽屉和次级面板底色 */
-    --bg4: #282c34;         /* 悬浮或强调底色 */
-    --bd: rgba(255, 255, 255, 0.05);  /* 进一步弱化边框线，减少割裂感 */
+    --bg: #121417; /* 稍微偏暖、偏中性的极深灰，去掉了原本的冷蓝色调 */
+    --bg2: #181a1f; /* 卡片底色同样去蓝光，更沉稳 */
+    --bg3: #202329; /* 抽屉和次级面板底色 */
+    --bg4: #282c34; /* 悬浮或强调底色 */
+    --bd: rgba(255, 255, 255, 0.05); /* 进一步弱化边框线，减少割裂感 */
     --bd2: rgba(255, 255, 255, 0.09); /* 弱化次级边框 */
-    
+
     /* 核心护眼修改：文字颜色 */
-    --t1: #c8d1db;          /* 主文字：从刺眼的亮白改为柔和的灰白（防眩光核心） */
-    --t2: #8b99a8;          /* 次要文字：随之压暗，保持层次 */
-    --t3: #617183;          /* 弱文字：稍微加深 */
-    
-    --accent: #3b82f6;      /* 保持主题蓝不变 */
+    --t1: #c8d1db; /* 主文字：从刺眼的亮白改为柔和的灰白（防眩光核心） */
+    --t2: #8b99a8; /* 次要文字：随之压暗，保持层次 */
+    --t3: #617183; /* 弱文字：稍微加深 */
+
+    --accent: #3b82f6; /* 保持主题蓝不变 */
     /* ... 后面颜色保留 ... */
     --up: #f04444;
     --up-bg: rgba(240, 68, 68, 0.12);
@@ -52,7 +52,7 @@
     --warn: #f87171;
     --sat: env(safe-area-inset-top, 0px);
     --sab: env(safe-area-inset-bottom, 0px);
-    --f-num: "AlibabaSans", "Helvetica Neue", Arial, sans-serif;
+    --f-num: "D-DIN", "Helvetica Neue", Arial, sans-serif;
     --f-zh:
         -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue",
         "Microsoft YaHei", sans-serif;
@@ -162,7 +162,6 @@ body {
     line-height: 1;
 }
 .hd-date {
-    font-family: var(--f-num);
     font-size: 10px;
     color: var(--t3);
     margin-top: 3px;
@@ -179,7 +178,6 @@ body {
 }
 .idx-cell {
     background: var(--bg2);
-    font-family: var(--f-num);
     padding: 10px 8px;
     overflow: hidden;
     position: relative;
@@ -220,11 +218,13 @@ body {
     gap: 6px;
 }
 .idx-chg {
+    font-family: var(--f-num); /* ✅ 新增：精准指定纯数字节点 */
     font-size: 16px;
     font-weight: 600;
     line-height: 1;
 }
 .idx-price {
+    font-family: var(--f-num); /* ✅ 新增：精准指定纯数字节点 */
     font-size: 11px;
     font-weight: 400;
     color: var(--t2);
@@ -508,7 +508,6 @@ main {
     text-align: center;
 }
 .dh-meta {
-    font-family: var(--f-num);
     font-size: 10px;
     color: var(--t3);
     white-space: nowrap;
@@ -517,6 +516,7 @@ main {
     opacity: 0.8;
 }
 .dh-meta b {
+    font-family: var(--f-num); /* ✅ 新增：仅给纯数字加 */
     color: var(--t2);
 }
 .inline-pct {
@@ -680,12 +680,12 @@ main {
     margin-left: -4px;
 }
 .tbl-nav {
-    font-family: var(--f-num);
     font-size: 13px;
     color: var(--t2);
     margin-top: 5px;
 }
 .tbl-nav .nv {
+    font-family: var(--f-num); /* ✅ 新增：仅给纯数字加 */
     color: var(--t1);
     font-weight: 500;
 }
@@ -743,7 +743,6 @@ main {
     white-space: nowrap;
 }
 .pe-value {
-    font-family: var(--f-num);
     font-size: 20px;
     font-weight: 600;
     line-height: 1;
@@ -1183,7 +1182,6 @@ main {
     color: var(--t1);
     padding: 0;
     transition: background 0.2s;
-    font-family: inherit; /* 强制继承父级指定的阿里字体 */
 }
 .dr-input-ghost:focus {
     background: var(--bg2);
