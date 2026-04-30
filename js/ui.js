@@ -147,13 +147,17 @@ function UI_buildSummaryHtml(
   const curEqStr = currentEqVal != null ? fmt(currentEqVal, 2) + "%" : "--";
 
   const targetStr = targetNeutralNum != null ? targetNeutralNum + "%" : "--";
-  const diff = eqData && targetNeutralNum != null ? eqData.equity - targetNeutralNum : null;
+  const diff =
+    eqData && targetNeutralNum != null
+      ? eqData.equity - targetNeutralNum
+      : null;
   const wrongDir = isEquityWrongDir(currentPE?.value, diff);
   const isNeutral = diff != null && Math.abs(diff) < 1 && !wrongDir;
   const badgeCol = isNeutral ? "var(--t2)" : eqCol;
-  const badgeHtml = diff != null
-    ? `<span class="num" style="color:${badgeCol};font-size:11px;font-weight:500;">${diff > 0 ? "+" : ""}${fmt(diff, 2)}%</span>`
-    : "";
+  const badgeHtml =
+    diff != null
+      ? `<span class="num" style="color:${badgeCol};font-size:11px;font-weight:500;">${diff > 0 ? "+" : ""}${fmt(diff, 2)}%</span>`
+      : "";
 
   const boxClass = inDrawer
     ? 'class="dr-card dr-pad dr-summary-box" style="position:relative; z-index:1; border-radius:0 12px 12px 12px; margin-bottom:0;"'
@@ -352,7 +356,7 @@ function UI_buildHoldingPlanHtml(
   if (diff < 0) {
     // 增权预研 - 使用 interact.js 传入的 buyDraft
     if (!buyDraft) return "";
-    const diffPct = Math.abs(diff);
+    const diffPct = buyDraft.targetEq - eqData.equity;
     const friction = buyDraft.totalFriction || 0;
 
     html += `
@@ -567,7 +571,7 @@ function updatePeBar() {
           : diff > 0
             ? "var(--sell)"
             : "var(--buy)";
-      const diffCol = (Math.abs(diff) < 1 && !wrongDir) ? "var(--t2)" : col;
+      const diffCol = Math.abs(diff) < 1 && !wrongDir ? "var(--t2)" : col;
       _peDOM.eqDiv.innerHTML = `权益<b class="num" style="color:${col};margin-left:2px;">${eqData.equity.toFixed(2)}%</b><span class="num" style="color:${diffCol};margin-left:2px;font-size:10px;vertical-align:baseline;">${diff > 0 ? "+" : ""}${diff.toFixed(2)}%</span><span style="display:inline-block;width:1px;height:10px;background:var(--bd2);vertical-align:middle;margin:0 2px;"></span>目标<b class="num" style="margin-left:2px;">${target}%</b>`;
       _peDOM.eqDiv.style.display = "flex";
     } else _peDOM.eqDiv.style.display = "none";
