@@ -149,7 +149,7 @@ function fetchIndices() {
   return new Promise((resolve) => {
     const cb = "_idx_" + Date.now() + "_" + _idxCounter++;
     const fin = injectScript(
-      `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f12,f14&secids=1.000300,1.000510,1.000905,2.H30269,1.000012,116.HSI,124.HSI,100.HSI&cb=${cb}&_=${Date.now()}`,
+      `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f12,f14&secids=1.000300,1.000510,1.000905,2.H30269,1.000832,116.HSI,124.HSI,100.HSI&cb=${cb}&_=${Date.now()}`,
       5000,
       () => {
         delete window[cb];
@@ -168,7 +168,6 @@ function fetchIndices() {
       if (map["000300"]?.f2)
         window._rt_csi300_price = parseFloat(map["000300"].f2);
 
-      // 核心修改：不再调用 ui.js，而是把数据交给 store，由 store 通知所有人
       setIndices(map);
     };
   });
