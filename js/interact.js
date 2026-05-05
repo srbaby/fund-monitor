@@ -164,30 +164,24 @@ function liveUpdateHoldingPlan() {
     return;
   }
 
-  const diff = eqData.equity - targetEqNeutral;
   const targetEqBuy = getDynamicTarget("buy", peData?.bucketStr);
   const targetEqSell = getDynamicTarget("sell", peData?.bucketStr);
 
-  const buyDraft =
-    diff < 0
-      ? calcBuyPlanDraft(
-          tempHoldings,
-          activeProds,
-          getNavByCode,
-          targetEqBuy,
-        )
-      : null;
-  const sellDraft =
-    diff > 0
-      ? calcSellExecutionDraft(
-          tempHoldings,
-          activeProds,
-          getNavByCode,
-          targetEqSell,
-          tempPlan,
-          priorityCode,
-        )
-      : null;
+  // 取消 diff 判断，同时计算两个方向的草案
+  const buyDraft = calcBuyPlanDraft(
+    tempHoldings,
+    activeProds,
+    getNavByCode,
+    targetEqBuy,
+  );
+  const sellDraft = calcSellExecutionDraft(
+    tempHoldings,
+    activeProds,
+    getNavByCode,
+    targetEqSell,
+    tempPlan,
+    priorityCode,
+  );
 
   planArea.innerHTML = UI_buildHoldingPlanHtml(
     activeProds,
