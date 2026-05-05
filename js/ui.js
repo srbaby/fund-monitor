@@ -349,12 +349,10 @@ function UI_buildHoldingPlanHtml(
 ) {
   if (!eqData || targetEqNeutral == null) return "";
 
-  const diff = eqData.equity - targetEqNeutral;
-  if (Math.abs(diff) < 0.01) return "";
-
   let html = "";
-  if (diff < 0) {
-    if (!buyDraft) return "";
+
+  // 1. 渲染增权预研 (只要 buyDraft 有效且存在买入金额)
+  if (buyDraft && buyDraft.buyAmt > 0) {
     const diffPct = buyDraft.targetEq - eqData.equity;
     const friction = buyDraft.totalFriction || 0;
 
@@ -364,35 +362,33 @@ function UI_buildHoldingPlanHtml(
       <div class="dr-card" style="position:relative; z-index:1; border-radius:0 12px 12px 12px; border:1px solid var(--buy-bd); background:var(--bg3); padding:12px;">
         <div class="dr-summary-box" style="margin-bottom:12px;">
           <div class="dr-summary-item" style="flex:1;"><div class="dr-lbl" style="margin-bottom:2px;">当前权益</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600; font-family:var(--f-num);">${fmt(eqData.equity, 2)}%</div></div>
-          <div class="dr-summary-item" style="flex:1; border-left:1px solid var(--bd2); border-right:1px solid var(--bd2); padding:0 4px;"><div class="dr-lbl" style="margin-bottom:2px;">触发后目标</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600; font-family:var(--f-num);">${buyDraft.targetEq}%</div></div>
-          <div class="dr-summary-item" style="flex:1;"><div class="dr-lbl" style="margin-bottom:2px;">需要增权</div><div class="num" style="color:var(--buy); font-size:16px; font-weight:600; font-family:var(--f-num);">${fmt(buyDraft.targetEq - eqData.equity, 2)}%</div></div>
+          <div class="dr-summary-item" style="flex:1; border-left:1px solid var(--bd2); border-right:1px solid var(--bd2); padding:0 4px;"><div class="dr-lbl" style="margin-bottom:2px;">测算目标</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600; font-family:var(--f-num);">${buyDraft.targetEq}%</div></div>
+          <div class="dr-summary-item" style="flex:1;"><div class="dr-lbl" style="margin-bottom:2px;">需要增权</div><div class="num" style="color:var(--buy); font-size:16px; font-weight:600; font-family:var(--f-num);">${fmt(diffPct, 2)}%</div></div>
         </div>
-
         <div class="dr-lbl" style="margin-bottom:6px; font-family:var(--f-zh);">资金调配 (固定转出)</div>
         <div style="background:var(--bg2); border:1px solid var(--bd); border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;">
           <div style="font-family:var(--f-zh); color:var(--t1); font-weight:500; font-size:13px;">转出 ${getProductName(SYS_CONFIG.CODE_XQ)}</div>
-          <div class="num" style="color:var(--buy); font-size:15px; font-weight:600; font-family:var(--f-num);">${fmt(buyDraft.sellXqShares, 2)} <span style="font-size:11px; color:var(--t2); margin-left:2px; font-weight:400; font-family:var(--f-zh);">份</span> <span style="color:var(--buy); font-size:12px; margin-left:8px; font-weight:500; background:var(--buy-dim); padding:3px 6px; border-radius:4px; font-family:var(--f-zh);">增权 <span class="num" style="font-family:var(--f-num);">${fmt(diffPct, 2)}%</span></span></div>
+          <div class="num" style="color:var(--buy); font-size:15px; font-weight:600; font-family:var(--f-num);">${fmt(buyDraft.sellXqShares, 2)} <span style="font-size:11px; color:var(--t2); margin-left:2px; font-weight:400; font-family:var(--f-zh);">份</span></div>
         </div>
-
         <div style="text-align:center; margin-top:10px; font-size:13px; font-family:var(--f-zh); color:var(--t2);">
-          调配总金额 <span class="num" style="font-weight:600; border-bottom:1px dashed var(--bd2); padding-bottom:2px; font-size:14px; color:var(--t1); margin-right:16px; font-family:var(--f-num);">${fmt(buyDraft.buyAmt, 2)}</span>
+          调配金额 <span class="num" style="font-weight:600; border-bottom:1px dashed var(--bd2); padding-bottom:2px; font-size:14px; color:var(--t1); margin-right:16px; font-family:var(--f-num);">${fmt(buyDraft.buyAmt, 2)}</span>
           交易磨损 <span class="num" style="font-weight:600; border-bottom:1px dashed var(--bd2); padding-bottom:2px; color:var(--warn); font-size:14px; font-family:var(--f-num);">${fmt(friction, 2)}</span>
         </div>
       </div>
     </div>`;
-  } else {
-    if (!sellDraft || sellDraft.error) return "";
+  }
 
+  // 2. 渲染降权预案 (只要 sellDraft 有效且存在动作)
+  if (sellDraft && !sellDraft.error && sellDraft.hasAnySell) {
     html += `
     <div style="margin: 10px 0;">
       <div style="display:inline-block; background:var(--sell-bg); border:1px solid var(--sell-bd); border-bottom:none; color:var(--sell); font-size:13px; font-weight:600; padding:6px 14px; border-radius:8px 8px 0 0; font-family:var(--f-zh); margin-bottom:-1px; position:relative; z-index:2;">⬇ 降权预案</div>
       <div class="dr-card" style="position:relative; z-index:1; border-radius:0 12px 12px 12px; border:1px solid var(--sell-bd); background:var(--bg3); padding:12px;">
         <div class="dr-summary-box" style="margin-bottom:12px;">
           <div class="dr-summary-item" style="flex:1;"><div class="dr-lbl" style="margin-bottom:2px;">当前权益</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600; font-family:var(--f-num);">${fmt(eqData.equity, 2)}%</div></div>
-          <div class="dr-summary-item" style="flex:1; border-left:1px solid var(--bd2); border-right:1px solid var(--bd2); padding:0 4px;"><div class="dr-lbl" style="margin-bottom:2px;">触发后目标</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600; font-family:var(--f-num);">${sellDraft.targetEq}%</div></div>
+          <div class="dr-summary-item" style="flex:1; border-left:1px solid var(--bd2); border-right:1px solid var(--bd2); padding:0 4px;"><div class="dr-lbl" style="margin-bottom:2px;">测算目标</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600; font-family:var(--f-num);">${sellDraft.targetEq}%</div></div>
           <div class="dr-summary-item" style="flex:1;"><div class="dr-lbl" style="margin-bottom:2px;">需要降权</div><div class="num" style="color:var(--sell); font-size:16px; font-weight:600; font-family:var(--f-num);">${fmt(eqData.equity - sellDraft.targetEq, 2)}%</div></div>
         </div>
-
         <div class="dr-lbl" style="margin-bottom:6px; font-family:var(--f-zh);">资金调配 (按权重转出)</div>
         <div style="display:flex; flex-direction:column; gap:6px;">`;
 
@@ -402,24 +398,21 @@ function UI_buildHoldingPlanHtml(
         html += `
           <div style="background:var(--bg2); border:1px solid var(--bd); border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;">
             <div style="font-family:var(--f-zh); color:var(--t1); font-size:13px;"><span style="font-weight:400;">转出</span> <span style="font-weight:600;">${p.name}</span></div>
-            <div style="display:flex; align-items:center;"><span class="num" style="color:var(--sell); font-size:15px; font-weight:600; font-family:var(--f-num);">${fmt(res.shares, 2)}</span><span style="font-size:11px; color:var(--t2); font-weight:400; margin-left:3px; font-family:var(--f-zh);">份</span><span style="color:var(--sell); font-size:12px; font-weight:500; background:var(--sell-dim); padding:3px 6px; border-radius:4px; margin-left:14px; font-family:var(--f-zh);">降权 <span class="num" style="font-family:var(--f-num);">${fmt(res.eqDropPct, 2)}%</span></span></div>
+            <div style="display:flex; align-items:center;"><span class="num" style="color:var(--sell); font-size:15px; font-weight:600; font-family:var(--f-num);">${fmt(res.shares, 2)}</span><span style="font-size:11px; color:var(--t2); font-weight:400; margin-left:3px; font-family:var(--f-zh);">份</span></div>
           </div>`;
       }
     });
 
-    if (!sellDraft.hasAnySell) {
-      html += `<div style="text-align:center; color:var(--t3); font-size:13px; padding:12px 0; background:var(--bg2); border-radius:8px; border:1px dashed var(--bd2);">请在下方配置中输入比例或设为优先卖出</div>`;
-    }
-
     html += `
         </div>
         <div style="text-align:center; margin-top:10px; font-size:13px; font-family:var(--f-zh); color:var(--t2);">
-          调配总金额 <span class="num" style="font-weight:600; border-bottom:1px dashed var(--bd2); padding-bottom:2px; font-size:14px; color:var(--t1); margin-right:16px; font-family:var(--f-num);">${fmt(sellDraft.totalCashOut + sellDraft.totalFriction, 2)}</span>
+          测算总金额 <span class="num" style="font-weight:600; border-bottom:1px dashed var(--bd2); padding-bottom:2px; font-size:14px; color:var(--t1); margin-right:16px; font-family:var(--f-num);">${fmt(sellDraft.totalCashOut + sellDraft.totalFriction, 2)}</span>
           交易磨损 <span class="num" style="font-weight:600; border-bottom:1px dashed var(--bd2); padding-bottom:2px; color:var(--warn); font-size:14px; font-family:var(--f-num);">${fmt(sellDraft.totalFriction, 2)}</span>
         </div>
       </div>
     </div>`;
   }
+
   return html;
 }
 
