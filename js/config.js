@@ -59,9 +59,8 @@ const NAMES = {
   110027: "易方达安心回报A",
   "011554": "海富通欣利混合A",
   "007466": "华泰柏瑞红利低波联接A",
-  "004496": "前海开源多元策略A",
-  [SYS_CONFIG.CODE_A500]: "华泰柏瑞A500联接C",
-  "007028": "易方达中证500联接A",
+  [SYS_CONFIG.CODE_A500]: "南方中证A500联接C",
+  "007029": "易方达中证500联接C",
 };
 
 const SHORT_NAMES = {
@@ -70,10 +69,9 @@ const SHORT_NAMES = {
   "007466": "华泰红利",
   "011554": "海富通欣利",
   110027: "易方达回报",
-  "004496": "前海多元",
-  [SYS_CONFIG.CODE_A500]: "A500C",
-  "007028": "易方达中证500联接",
-  [SYS_CONFIG.CODE_ZZ500]: "中证500C",
+  [SYS_CONFIG.CODE_A500]: "南方A500C",
+  "007029": "易方达500C",
+  [SYS_CONFIG.CODE_ZZ500]: "易方达500C",
 };
 
 // ---- 产品属性表（参与权益计算）----
@@ -83,8 +81,7 @@ const PRODUCTS = [
   { code: "007466", name: "华泰红利", equity: 0.55 },
   { code: "011554", name: "海富通欣利", equity: 0.4 },
   { code: "110027", name: "易方达回报", equity: 0.2 },
-  { code: "004496", name: "前海开源多元策略", equity: 0.75 },
-  { code: SYS_CONFIG.CODE_A500, name: "A500C", equity: 1.0 },
+  { code: SYS_CONFIG.CODE_A500, name: "中证A500C", equity: 1.0 },
   { code: SYS_CONFIG.CODE_ZZ500, name: "中证500C", equity: 1.0 },
 ];
 
