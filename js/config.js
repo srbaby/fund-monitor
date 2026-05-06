@@ -6,8 +6,8 @@
 // ---- 系统参数 ----
 const SYS_CONFIG = {
   FEE: 0.005, // 全局摩擦费率
-  BUFFER_ZONE: 2.0, // PE信号死区缓冲
-  EQUITY_DEV_LIMIT: 2.0, // 权益偏离警告阈值
+  BUFFER_ZONE: 1.8, // PE信号死区缓冲
+  EQUITY_DEV_LIMIT: 1.8, // 权益偏离警告阈值
   PE_HIGH_THRESHOLD: 65, // 权益方向判断分界线（高于此值为高估区）
   CODE_XQ: "003949", // 资金来源：兴全中长债
   CODE_A500: "022439", // 增权优先品种：A500C
