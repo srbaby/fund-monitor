@@ -351,14 +351,14 @@ function UI_buildHoldingPlanHtml(
 
   let html = "";
 
-  // 1. 渲染增权预研 (只要 buyDraft 有效且存在买入金额)
+  // 1. 渲染增权预案 (只要 buyDraft 有效且存在买入金额)
   if (buyDraft && buyDraft.buyAmt > 0) {
     const diffPct = buyDraft.targetEq - eqData.equity;
     const friction = buyDraft.totalFriction || 0;
 
     html += `
     <div style="margin: 10px 0;">
-      <div style="display:inline-block; background:var(--buy-bg); border:1px solid var(--buy-bd); border-bottom:none; color:var(--buy); font-size:13px; font-weight:600; padding:6px 14px; border-radius:8px 8px 0 0; font-family:var(--f-zh); margin-bottom:-1px; position:relative; z-index:2;">⬆ 增权预研</div>
+      <div style="display:inline-block; background:var(--buy-bg); border:1px solid var(--buy-bd); border-bottom:none; color:var(--buy); font-size:13px; font-weight:600; padding:6px 14px; border-radius:8px 8px 0 0; font-family:var(--f-zh); margin-bottom:-1px; position:relative; z-index:2;">⬆ 增权预案</div>
       <div class="dr-card" style="position:relative; z-index:1; border-radius:0 12px 12px 12px; border:1px solid var(--buy-bd); background:var(--bg3); padding:12px;">
         <div class="dr-summary-box" style="margin-bottom:12px;">
           <div class="dr-summary-item" style="flex:1;"><div class="dr-lbl" style="margin-bottom:2px;">当前权益</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600; font-family:var(--f-num);">${fmt(eqData.equity, 2)}%</div></div>
