@@ -625,6 +625,15 @@ function renderCards(results, fl, today, tradingDay) {
     collapsed = window.matchMedia("(max-width:767px)").matches
       ? !mobileExpanded
       : allCollapsed;
+
+  const getActivePct = (f) => {
+    if (f.error) return null;
+    const offD = f.offDate ? f.offDate.slice(0, 10) : "",
+          estD = f.estTime ? f.estTime.slice(0, 10) : "";
+    const isOff = offD === today || !tradingDay || (estD && offD && offD >= estD);
+    return isOff && f.offPct != null ? f.offPct : f.estPct;
+  };
+
   if (
     !isStructureUnchanged(
       "cardView",
@@ -633,14 +642,8 @@ function renderCards(results, fl, today, tradingDay) {
   ) {
     container.innerHTML = results
       .map((f) => {
-        const cc =
-          f.estPct != null && !f.error
-            ? f.estPct > 0
-              ? "up-card"
-              : f.estPct < 0
-                ? "down-card"
-                : ""
-            : "";
+        const pct = getActivePct(f);
+        const cc = pct != null ? (pct > 0 ? "up-card" : pct < 0 ? "down-card" : "") : "";
         return `<div class="fund-card ${cc}${collapsed ? " collapsed" : ""}" data-code="${f.code}">${buildCardInnerHtml(f, fl, today, tradingDay)}</div>`;
       })
       .join("");
@@ -649,7 +652,9 @@ function renderCards(results, fl, today, tradingDay) {
   results.forEach((f) => {
     const el = container.querySelector(`[data-code="${f.code}"]`);
     if (el) {
-      el.className = `fund-card ${f.estPct != null && !f.error ? (f.estPct > 0 ? "up-card" : f.estPct < 0 ? "down-card" : "") : ""}${collapsed ? " collapsed" : ""}`;
+      const pct = getActivePct(f);
+      const cc = pct != null ? (pct > 0 ? "up-card" : pct < 0 ? "down-card" : "") : "";
+      el.className = `fund-card ${cc}${collapsed ? " collapsed" : ""}`;
       el.innerHTML = buildCardInnerHtml(f, fl, today, tradingDay);
     }
   });
@@ -674,6 +679,15 @@ function buildTableInnerHtml(f, fl, today, tradingDay) {
 
 function renderTable(results, fl, today, tradingDay) {
   const container = document.getElementById("fundTbody");
+
+  const getActivePct = (f) => {
+    if (f.error) return null;
+    const offD = f.offDate ? f.offDate.slice(0, 10) : "",
+          estD = f.estTime ? f.estTime.slice(0, 10) : "";
+    const isOff = offD === today || !tradingDay || (estD && offD && offD >= estD);
+    return isOff && f.offPct != null ? f.offPct : f.estPct;
+  };
+
   if (
     !isStructureUnchanged(
       "fundTbody",
@@ -682,14 +696,8 @@ function renderTable(results, fl, today, tradingDay) {
   ) {
     container.innerHTML = results
       .map((f) => {
-        const cc =
-          f.estPct != null && !f.error
-            ? f.estPct > 0
-              ? "up-row"
-              : f.estPct < 0
-                ? "down-row"
-                : ""
-            : "";
+        const pct = getActivePct(f);
+        const cc = pct != null ? (pct > 0 ? "up-row" : pct < 0 ? "down-row" : "") : "";
         return `<tr class="${cc}" data-code="${f.code}">${buildTableInnerHtml(f, fl, today, tradingDay)}</tr>`;
       })
       .join("");
@@ -698,14 +706,8 @@ function renderTable(results, fl, today, tradingDay) {
   results.forEach((f) => {
     const el = container.querySelector(`[data-code="${f.code}"]`);
     if (el) {
-      el.className =
-        f.estPct != null && !f.error
-          ? f.estPct > 0
-            ? "up-row"
-            : f.estPct < 0
-              ? "down-row"
-              : ""
-          : "";
+      const pct = getActivePct(f);
+      el.className = pct != null ? (pct > 0 ? "up-row" : pct < 0 ? "down-row" : "") : "";
       el.innerHTML = buildTableInnerHtml(f, fl, today, tradingDay);
     }
   });
