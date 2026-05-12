@@ -88,16 +88,16 @@ const PRODUCTS = [
 // ---- PE 12档 S曲线映射表（v7.5方法论）----
 const PE_EQUITY_TABLE = [
   { lo: 80, hi: 999, target: 20 },
-  { lo: 75, hi: 80, target: 22 },
+  { lo: 75, hi: 80, target: 22.5 },
   { lo: 70, hi: 75, target: 25 },
-  { lo: 65, hi: 70, target: 29 },
-  { lo: 60, hi: 65, target: 34 },
-  { lo: 55, hi: 60, target: 40 },
-  { lo: 50, hi: 55, target: 46 },
-  { lo: 45, hi: 50, target: 52 },
-  { lo: 40, hi: 45, target: 57 },
-  { lo: 35, hi: 40, target: 61 },
-  { lo: 30, hi: 35, target: 70 },
+  { lo: 65, hi: 70, target: 27.5 },
+  { lo: 60, hi: 65, target: 32.5 },
+  { lo: 55, hi: 60, target: 42.5 },
+  { lo: 50, hi: 55, target: 50 },
+  { lo: 45, hi: 50, target: 57.5 },
+  { lo: 40, hi: 45, target: 62.5 },
+  { lo: 35, hi: 40, target: 70 },
+  { lo: 30, hi: 35, target: 75 },
   { lo: 0, hi: 30, target: 80 },
 ];
 
