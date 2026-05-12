@@ -803,7 +803,7 @@ main {
 }
 @keyframes peMarkerPulse {
     0% {
-        box-shadow: 0 0 0 0 color-mix(in srgb, var(--t1) 50%, transparent);
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--t1) 67%, transparent);
     }
     70% {
         box-shadow: 0 0 0 5px transparent;
