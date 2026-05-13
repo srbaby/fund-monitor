@@ -306,6 +306,16 @@ function saveHoldings() {
 let _syncTimer = null;
 let _isSyncingPull = false;
 
+async function manualPull() {
+  const ok = await syncCloud("pull");
+  if (ok) {
+    closeAllDrawers();
+    alert("✅ 云端数据已同步到本地");
+  } else {
+    alert("❌ 拉取失败，请检查网络或 Token 是否有效");
+  }
+}
+
 function openCloudConfig() {
   const gid = localStorage.getItem(STORE_GIST_ID) || "";
   const gtk = localStorage.getItem(STORE_GIST_TOKEN) || "";
