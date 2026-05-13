@@ -98,10 +98,10 @@ function openPeModal() {
   const peData = loadPe() || {};
   document.getElementById("peModalBucket").value = peData.bucketStr || "65,70";
   document.getElementById("peModalInputPct").value = peData.peYest || "";
-  document.getElementById("peModalPriceAnchor").value =
-    peData.priceAnchor || "";
-  document.getElementById("peModalBuyPrice").value = peData.priceBuy || "";
-  document.getElementById("peModalSellPrice").value = peData.priceSell || "";
+  document.getElementById("peModalPriceAnchor").value = peData.priceAnchor || "";
+  document.getElementById("peModalPeAnchor").value = peData.peAnchor || "";
+  document.getElementById("peModalBuyPe").value = peData.peBuy || "";
+  document.getElementById("peModalSellPe").value = peData.peSell || "";
   document.getElementById("peModal").style.display = "flex";
 }
 
@@ -112,23 +112,21 @@ function closePeModal() {
 function confirmPe() {
   const bucketStr = document.getElementById("peModalBucket").value;
   const peYest = parseFloat(document.getElementById("peModalInputPct").value);
-  const priceAnchor = parseFloat(
-    document.getElementById("peModalPriceAnchor").value,
-  );
-  const priceBuy = parseFloat(document.getElementById("peModalBuyPrice").value);
-  const priceSell = parseFloat(
-    document.getElementById("peModalSellPrice").value,
-  );
+  const priceAnchor = parseFloat(document.getElementById("peModalPriceAnchor").value);
+  const peAnchor = parseFloat(document.getElementById("peModalPeAnchor").value);
+  const peBuy = parseFloat(document.getElementById("peModalBuyPe").value);
+  const peSell = parseFloat(document.getElementById("peModalSellPe").value);
 
-  if (isNaN(peYest) || isNaN(priceAnchor))
-    return alert("请填写完整的【基准PE】与【基准点位】！");
+  if (isNaN(peYest) || isNaN(priceAnchor) || isNaN(peAnchor))
+    return alert("请填写完整的【基准PE】、【基准点位】与【今日PE绝对值】！");
 
   savePe({
     bucketStr,
     peYest,
     priceAnchor,
-    priceBuy: isNaN(priceBuy) ? null : priceBuy,
-    priceSell: isNaN(priceSell) ? null : priceSell,
+    peAnchor,
+    peBuy: isNaN(peBuy) ? null : peBuy,
+    peSell: isNaN(peSell) ? null : peSell,
   });
 
   syncCloud("push_now");

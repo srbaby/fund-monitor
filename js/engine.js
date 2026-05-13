@@ -31,7 +31,6 @@ function isEquityWrongDir(peVal, diff) {
   );
 }
 
-// [依赖注入]: 传入存储的 peData 和实时的 currentIdxPrice
 function getCurrentPE(peData, currentIdxPrice) {
   if (!peData || !peData.bucketStr) return null;
 
@@ -45,11 +44,13 @@ function getCurrentPE(peData, currentIdxPrice) {
   if (
     currentIdxPrice &&
     peData.priceAnchor &&
-    peData.priceBuy &&
-    peData.priceSell
+    peData.peAnchor &&
+    peData.peBuy &&
+    peData.peSell
   ) {
-    const x = currentIdxPrice;
-    const { priceBuy: x1, priceAnchor: x2, priceSell: x3 } = peData;
+    const eps = peData.priceAnchor / peData.peAnchor;
+    const x = currentIdxPrice / eps;
+    const { peBuy: x1, peAnchor: x2, peSell: x3 } = peData;
     const y1 = buyPct,
       y2 = peData.peYest,
       y3 = sellPct;

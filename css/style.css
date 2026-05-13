@@ -1044,6 +1044,7 @@ main {
     font-size: 14px;
     font-family: var(--f-zh);
     cursor: pointer;
+    outline: none;
 }
 .pe-modal-confirm {
     flex: 2;
@@ -1056,6 +1057,7 @@ main {
     font-weight: 600;
     font-family: var(--f-zh);
     cursor: pointer;
+    outline: none;
 }
 
 .stale-text {
