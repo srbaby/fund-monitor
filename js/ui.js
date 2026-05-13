@@ -329,9 +329,13 @@ function UI_renderHoldingDrawerBody(
         </div>
       </div>`;
   });
+  const _syncReady = !!(localStorage.getItem(STORE_GIST_ID) && localStorage.getItem(STORE_GIST_TOKEN));
+  const syncCol = _syncReady ? "var(--dn)" : "var(--t3)";
+  const syncBd = _syncReady ? "var(--dn-bd)" : "var(--bd2)";
+  const syncTxt = _syncReady ? "↑↓ 云端同步（已配置）" : "↑↓ 云端同步（未配置）";
   html += `</div></div></div>
   <div style="margin-top:12px">
-    <button onclick="openCloudConfig()" style="width:100%;padding:8px 12px;border-radius:10px;border:1px solid var(--buy-bd);background:var(--bg3);color:var(--buy);font-family:var(--f-zh);font-size:13px;font-weight:500;cursor:pointer;">↑↓ 云端同步配置</button>
+    <button onclick="openCloudConfig()" style="width:100%;padding:8px 12px;border-radius:10px;border:1px solid ${syncBd};background:var(--bg3);color:${syncCol};font-family:var(--f-zh);font-size:13px;font-weight:500;cursor:pointer;">${syncTxt}</button>
   </div>
   </div>`;
 
