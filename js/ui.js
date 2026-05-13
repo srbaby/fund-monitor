@@ -333,9 +333,13 @@ function UI_renderHoldingDrawerBody(
   const syncCol = _syncReady ? "var(--dn)" : "var(--t3)";
   const syncBd = _syncReady ? "var(--dn-bd)" : "var(--bd2)";
   const syncTxt = _syncReady ? "↑↓ 云端同步（已配置）" : "↑↓ 云端同步（未配置）";
+  const pullDisabled = _syncReady ? "" : "disabled";
+  const pullCol = _syncReady ? "var(--dn)" : "var(--t3)";
+  const pullBd = _syncReady ? "var(--dn-bd)" : "var(--bd2)";
   html += `</div></div></div>
-  <div style="margin-top:12px">
-    <button onclick="openCloudConfig()" style="width:100%;padding:8px 12px;border-radius:10px;border:1px solid ${syncBd};background:var(--bg3);color:${syncCol};font-family:var(--f-zh);font-size:13px;font-weight:500;cursor:pointer;">${syncTxt}</button>
+  <div style="display:flex;gap:8px;margin-top:12px">
+    <button onclick="manualPull()" ${pullDisabled} style="flex:2;padding:8px 12px;border-radius:10px;border:1px solid ${pullBd};background:var(--bg3);color:${pullCol};font-family:var(--f-zh);font-size:13px;font-weight:500;cursor:pointer;opacity:${_syncReady ? "1" : "0.45"};">↓ 拉取云端</button>
+    <button onclick="openCloudConfig()" style="flex:1;padding:8px 12px;border-radius:10px;border:1px solid var(--bd2);background:var(--bg3);color:var(--t2);font-family:var(--f-zh);font-size:13px;font-weight:500;cursor:pointer;">⚙ 配置</button>
   </div>
   </div>`;
 
