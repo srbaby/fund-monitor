@@ -7,15 +7,23 @@ document.getElementById("codeInput").addEventListener("keydown", (e) => {
   if (e.key === "Enter") addFund();
 });
 
-// 💥 见证极致性能：不同频道的数据变化，触发不同范围的 DOM 重绘
 observeState("INDICES", UI_updateIndices);
-observeState("FUNDS", UI_updateFunds);
-observeState("LOCAL_CONFIG", UI_updateLocalConfig);
+observeState("FUNDS", () => {
+  UI_updateFunds();
+  syncCloud("push");
+});
+observeState("LOCAL_CONFIG", () => {
+  UI_updateLocalConfig();
+  syncCloud("push");
+});
 
 updateClock();
 setInterval(updateClock, 1000);
 
-refreshData(); // 这一句执行完后，整个齿轮就开始自动化运转了
+syncCloud("pull").then((ok) => {
+  // pull 成功时 syncCloud 内部已调用 refreshData，无需重复
+  if (!ok) refreshData();
+});
 
 setInterval(() => {
   if (!document.hidden) fetchIndices();

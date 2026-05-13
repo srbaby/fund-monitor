@@ -330,9 +330,8 @@ function UI_renderHoldingDrawerBody(
       </div>`;
   });
   html += `</div></div></div>
-  <div style="display:flex;gap:10px;margin-top:12px">
-    <button onclick="exportToken()" style="flex:1;padding:8px 12px;border-radius:10px;border:1px solid var(--bd2);background:var(--bg3);color:var(--t2);font-family:var(--f-zh);font-size:13px;font-weight:500;cursor:pointer;">🔑 导出</button>
-    <button onclick="importToken()" style="flex:1;padding:8px 12px;border-radius:10px;border:1px solid var(--bd2);background:var(--bg3);color:var(--t2);font-family:var(--f-zh);font-size:13px;font-weight:500;cursor:pointer;">📥 恢复</button>
+  <div style="margin-top:12px">
+    <button onclick="openCloudConfig()" style="width:100%;padding:8px 12px;border-radius:10px;border:1px solid var(--buy-bd);background:var(--bg3);color:var(--buy);font-family:var(--f-zh);font-size:13px;font-weight:500;cursor:pointer;">↑↓ 云端同步配置</button>
   </div>
   </div>`;
 

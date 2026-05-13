@@ -182,3 +182,38 @@ function getNavByCode(code) {
   if (f.estVal) return parseFloat(f.estVal);
   return null;
 }
+
+// [新增函数]：从 Gist 拉取数据
+async function cloudFetch(gistId, token) {
+  try {
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      headers: { Authorization: `token ${token}` },
+    });
+    const data = await res.json();
+    const content = data.files["fm_config.json"].content;
+    return JSON.parse(content);
+  } catch (e) {
+    console.error("Cloud Pull Failed", e);
+    return null;
+  }
+}
+
+// [新增函数]：推送到 Gist
+async function cloudUpdate(gistId, token, payload) {
+  try {
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `token ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        files: { "fm_config.json": { content: JSON.stringify(payload) } },
+      }),
+    });
+    return res.ok;
+  } catch (e) {
+    console.error("Cloud Push Failed", e);
+    return false;
+  }
+}

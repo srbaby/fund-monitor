@@ -130,6 +130,9 @@ function confirmPe() {
     priceBuy: isNaN(priceBuy) ? null : priceBuy,
     priceSell: isNaN(priceSell) ? null : priceSell,
   });
+
+  syncCloud("push_now");
+  alert("✅ 定锚已更新，云端同步已在后台触发");
   closePeModal();
 }
 
@@ -167,7 +170,6 @@ function liveUpdateHoldingPlan() {
   const targetEqBuy = getDynamicTarget("buy", peData?.bucketStr);
   const targetEqSell = getDynamicTarget("sell", peData?.bucketStr);
 
-  // 取消 diff 判断，同时计算两个方向的草案
   const buyDraft = calcBuyPlanDraft(
     tempHoldings,
     activeProds,
@@ -295,51 +297,101 @@ function saveHoldings() {
 
   saveHoldingsData(shares, equity, shortNames);
   localStorage.setItem(STORE_SELL_PLAN, JSON.stringify(plan));
-  alert("✅ 配置已保存");
+
+  syncCloud("push_now");
+  alert("✅ 配置已保存，云端同步已在后台触发");
 }
 
-// ---- 口令备份调度 ----
-function exportToken() {
-  const token = exportSnapshot();
-  UI_showDialog({
-    title: "🔑 导出备份口令",
-    desc: "请查看并复制下方配置口令。",
-    value: token,
-    readOnly: true,
-    showCancel: false,
-    confirmText: "保存并确定",
-    onConfirm: (textarea, modal) => {
-      textarea.select();
-      textarea.setSelectionRange(0, 99999);
-      try {
-        navigator.clipboard?.writeText
-          ? navigator.clipboard
-              .writeText(token)
-              .then(() => alert("✅ 口令已复制！"))
-          : document.execCommand("copy");
-      } catch (e) {
-        alert("❌ 请手动长按复制！");
-      }
-      document.body.removeChild(modal);
-    },
-  });
-}
+// ---- 云端同步模块 ----
+let _syncTimer = null;
+let _isSyncingPull = false;
 
-function importToken() {
+function openCloudConfig() {
+  const gid = localStorage.getItem(STORE_GIST_ID) || "";
+  const gtk = localStorage.getItem(STORE_GIST_TOKEN) || "";
+
   UI_showDialog({
-    title: "📥 恢复资产配置",
-    placeholder: "请在此粘贴备份口令...",
+    title: "☁️ 云同步配置 (GitHub Gist)",
+    desc: "输入 Gist ID 和 Token。置空并保存可关闭同步。",
+    placeholder: "格式：GistID,Token",
+    value: gid && gtk ? `${gid},${gtk}` : "",
     showCancel: true,
-    confirmText: "恢复配置",
-    onConfirm: (textarea, modal) => {
-      const str = textarea.value.trim();
-      if (!str) return;
-      if (importSnapshot(str)) {
+    confirmText: "保存配置",
+    onConfirm: async (textarea, modal) => {
+      const val = textarea.value.trim();
+      if (!val) {
+        localStorage.removeItem(STORE_GIST_ID);
+        localStorage.removeItem(STORE_GIST_TOKEN);
         document.body.removeChild(modal);
-        closeAllDrawers();
-        refreshData();
-        alert("✅ 资产配置与首页列表全量恢复成功！");
-      } else alert("❌ 口令无效或已损坏，请检查粘贴是否完整！");
+        return alert("已关闭云同步");
+      }
+
+      const parts = val.split(",");
+      if (parts.length === 2) {
+        localStorage.setItem(STORE_GIST_ID, parts[0].trim());
+        localStorage.setItem(STORE_GIST_TOKEN, parts[1].trim());
+        document.body.removeChild(modal);
+        alert("✅ 配置已保存，正在拉取云端数据...");
+        const ok = await syncCloud("pull");
+        if (!ok) alert("⚠️ 云端拉取失败，请检查 Gist ID 和 Token 是否正确。");
+      } else {
+        alert("❌ 格式错误，请使用英文逗号分隔 ID 和 Token");
+      }
     },
   });
+}
+
+// 返回 true 表示 pull 成功，false 表示失败或跳过
+async function syncCloud(mode = "pull") {
+  const gid = localStorage.getItem(STORE_GIST_ID);
+  const gtk = localStorage.getItem(STORE_GIST_TOKEN);
+  if (!gid || !gtk) return false;
+
+  if (mode === "pull") {
+    console.log("☁️ 正在拉取云端数据...");
+    _isSyncingPull = true;
+    try {
+      const remoteData = await cloudFetch(gid, gtk);
+      if (remoteData && remoteData.f) {
+        const snapshot = btoa(encodeURIComponent(JSON.stringify(remoteData)));
+        if (importSnapshot(snapshot)) {
+          // await 确保 refreshData 完成后再释放锁，避免 FUNDS 广播在锁释放后触发推送
+          await refreshData();
+          console.log("✅ 云端数据已覆盖本地");
+          return true;
+        }
+      }
+      return false;
+    } finally {
+      // 无论成功失败都释放锁
+      _isSyncingPull = false;
+    }
+  } else if (mode === "push" || mode === "push_now") {
+    // 拉取期间拦截反向推送，防止把云端数据推回覆盖
+    if (_isSyncingPull) return false;
+
+    const doPush = async () => {
+      console.log("☁️ 正在推送到云端...");
+      const data = {
+        f: funds,
+        h: safeParse(localStorage.getItem(STORE_HOLDINGS), {}),
+        p: loadPe(),
+        s: safeParse(localStorage.getItem(STORE_SELL_PLAN), {}),
+        pr: loadPrioritySell() || null,
+      };
+      const ok = await cloudUpdate(gid, gtk, data);
+      if (ok) console.log("✅ 推送云端成功");
+      else console.error("❌ 推送云端失败");
+    };
+
+    clearTimeout(_syncTimer);
+    if (mode === "push_now") {
+      await doPush();
+    } else {
+      _syncTimer = setTimeout(doPush, 2000);
+    }
+    return true;
+  }
+
+  return false;
 }
