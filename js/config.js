@@ -10,8 +10,7 @@ const SYS_CONFIG = {
   EQUITY_DEV_LIMIT: 1.75, // 权益偏离警告阈值
   PE_HIGH_THRESHOLD: 65, // 权益方向判断分界线（高于此值为高估区）
   CODE_XQ: "003949", // 资金来源：兴全中长债
-  CODE_A500: "022439", // 增权优先品种：A500C
-  CODE_ZZ500: "000500", // 增权溢出品种：中证500C
+  CODE_A500: "022435", // 增权优先品种：南方中证A500ETF联接C
   LIMIT_A500C: 0.2, // A500C单品持仓上限（占总资产）
   REFRESH_IDX: 10000, // 指数刷新间隔（ms）
   REFRESH_API: 60000, // 基金数据刷新间隔（ms）
@@ -49,7 +48,7 @@ const DEFAULT_CODES = [
   "110027", // 易方达安心回报A
   "011554", // 海富通欣利混合A
   "007466", // 华泰柏瑞红利低波联接A
-  SYS_CONFIG.CODE_A500, // 022439 华泰柏瑞A500联接C
+  SYS_CONFIG.CODE_A500, // 022435 南方中证A500ETF联接C
 ];
 
 // ---- 基金名称表 ----
@@ -59,8 +58,7 @@ const NAMES = {
   110027: "易方达安心回报A",
   "011554": "海富通欣利混合A",
   "007466": "华泰柏瑞红利低波联接A",
-  [SYS_CONFIG.CODE_A500]: "南方中证A500联接C",
-  "007029": "易方达中证500联接C",
+  [SYS_CONFIG.CODE_A500]: "南方中证A500ETF联接C",
 };
 
 const SHORT_NAMES = {
@@ -70,8 +68,6 @@ const SHORT_NAMES = {
   "011554": "海富通欣利",
   110027: "易方达回报",
   [SYS_CONFIG.CODE_A500]: "南方A500C",
-  "007029": "易方达500C",
-  [SYS_CONFIG.CODE_ZZ500]: "易方达500C",
 };
 
 // ---- 产品属性表（参与权益计算）----
@@ -81,8 +77,7 @@ const PRODUCTS = [
   { code: "007466", name: "华泰红利", equity: 0.55 },
   { code: "011554", name: "海富通欣利", equity: 0.4 },
   { code: "110027", name: "易方达回报", equity: 0.2 },
-  { code: SYS_CONFIG.CODE_A500, name: "中证A500C", equity: 1.0 },
-  { code: SYS_CONFIG.CODE_ZZ500, name: "中证500C", equity: 1.0 },
+  { code: SYS_CONFIG.CODE_A500, name: "南方A500C", equity: 1.0 },
 ];
 
 // ---- PE 12档 S曲线映射表（v7.5方法论）----
@@ -109,3 +104,9 @@ const STORE_SELL_PLAN = "jy_sell_plan_v1";
 const STORE_PRIORITY_SELL = "jy_priority_sell_v1";
 const STORE_GIST_ID = "fm_gist_id";
 const STORE_GIST_TOKEN = "fm_gist_token";
+
+// ---- 纯工具函数（无副作用，供所有层调用）----
+// 中证500角色识别：名称含「中证500」即为增权溢出/降权最高优先品种
+function isZZ500Product(name) {
+  return !!(name && name.includes("中证500"));
+}

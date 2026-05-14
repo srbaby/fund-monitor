@@ -1,5 +1,5 @@
 // ============================================================
-// store.js - 存储层 (v3.0 响应式状态中心)
+// store.js - 存储层 (v3.1 响应式状态中心)
 // 职责：全局内存状态、localStorage、广播通知 (Observer)
 // ============================================================
 
@@ -67,7 +67,7 @@ function getLastResults() {
 }
 function setLastResults(res) {
   _lastResults = res;
-  dispatchUpdate("FUNDS"); // 频道：基金
+  dispatchUpdate("FUNDS");
 }
 
 function getIndices() {
@@ -75,7 +75,7 @@ function getIndices() {
 }
 function setIndices(map) {
   _indicesMap = map;
-  dispatchUpdate("INDICES"); // 频道：指数
+  dispatchUpdate("INDICES");
 }
 
 function loadFunds() {
@@ -85,7 +85,7 @@ function loadFunds() {
 function saveFunds(newFunds) {
   if (newFunds) funds = newFunds;
   localStorage.setItem(STORE_CODES, JSON.stringify(funds));
-  dispatchUpdate("FUNDS"); // 频道：基金
+  dispatchUpdate("FUNDS");
 }
 
 function loadPe() {
@@ -93,7 +93,7 @@ function loadPe() {
 }
 function savePe(dataObj) {
   localStorage.setItem(STORE_PE, JSON.stringify(dataObj));
-  dispatchUpdate("LOCAL_CONFIG"); // 频道：本地配置
+  dispatchUpdate("LOCAL_CONFIG");
 }
 
 let _holdingsCache = null;
@@ -123,7 +123,34 @@ function saveHoldingsData(shares, equity, shortNames) {
     STORE_HOLDINGS,
     JSON.stringify({ shares, equity, shortNames }),
   );
-  dispatchUpdate("LOCAL_CONFIG"); // 频道：本地配置
+  dispatchUpdate("LOCAL_CONFIG");
+}
+
+function loadSellPlan() {
+  return safeParse(localStorage.getItem(STORE_SELL_PLAN), {});
+}
+function saveSellPlan(plan) {
+  localStorage.setItem(STORE_SELL_PLAN, JSON.stringify(plan));
+}
+
+// ---- Gist 云同步配置 ----
+function loadGistConfig() {
+  return {
+    id: localStorage.getItem(STORE_GIST_ID) || "",
+    token: localStorage.getItem(STORE_GIST_TOKEN) || "",
+  };
+}
+function saveGistConfig(id, token) {
+  localStorage.setItem(STORE_GIST_ID, id);
+  localStorage.setItem(STORE_GIST_TOKEN, token);
+}
+function clearGistConfig() {
+  localStorage.removeItem(STORE_GIST_ID);
+  localStorage.removeItem(STORE_GIST_TOKEN);
+}
+function isCloudConfigured() {
+  const { id, token } = loadGistConfig();
+  return !!(id && token);
 }
 
 function loadPrioritySell() {
@@ -131,11 +158,11 @@ function loadPrioritySell() {
 }
 function savePrioritySell(code) {
   localStorage.setItem(STORE_PRIORITY_SELL, code);
-  dispatchUpdate("LOCAL_CONFIG"); // 频道：本地配置
+  dispatchUpdate("LOCAL_CONFIG");
 }
 function clearPrioritySell() {
   localStorage.removeItem(STORE_PRIORITY_SELL);
-  dispatchUpdate("LOCAL_CONFIG"); // 频道：本地配置
+  dispatchUpdate("LOCAL_CONFIG");
 }
 
 function exportSnapshot() {
@@ -143,7 +170,7 @@ function exportSnapshot() {
     f: funds,
     h: safeParse(localStorage.getItem(STORE_HOLDINGS), {}),
     p: loadPe(),
-    s: safeParse(localStorage.getItem(STORE_SELL_PLAN), {}),
+    s: loadSellPlan(),
     pr: loadPrioritySell() || null,
   };
   return btoa(encodeURIComponent(JSON.stringify(data)));
@@ -158,7 +185,7 @@ function importSnapshot(str) {
       localStorage.setItem(STORE_HOLDINGS, JSON.stringify(data.h));
     }
     if (data.p) savePe(data.p);
-    if (data.s) localStorage.setItem(STORE_SELL_PLAN, JSON.stringify(data.s));
+    if (data.s) saveSellPlan(data.s);
     if (data.pr) savePrioritySell(data.pr);
     else clearPrioritySell();
     dispatchUpdate("FUNDS");

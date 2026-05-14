@@ -44,36 +44,33 @@ function getCurrentPE(peData, currentIdxPrice) {
   if (
     currentIdxPrice &&
     peData.priceAnchor &&
-    peData.peAnchor &&
-    peData.peBuy &&
-    peData.peSell
+    peData.priceBuy &&
+    peData.priceSell
   ) {
-    const eps = peData.priceAnchor / peData.peAnchor;
-    const x = currentIdxPrice / eps;
-    const { peBuy: x1, peAnchor: x2, peSell: x3 } = peData;
-    const y1 = buyPct,
-      y2 = peData.peYest,
-      y3 = sellPct;
+    const x = currentIdxPrice;
+    const { priceBuy, priceAnchor, priceSell } = peData;
 
-    if (x === x2) {
-      v = y2;
-      isDynamic = true;
-    } else if (x1 !== x2 && x2 !== x3 && x1 !== x3) {
-      v =
-        (y1 * ((x - x2) * (x - x3))) / ((x1 - x2) * (x1 - x3)) +
-        (y2 * ((x - x1) * (x - x3))) / ((x2 - x1) * (x2 - x3)) +
-        (y3 * ((x - x1) * (x - x2))) / ((x3 - x1) * (x3 - x2));
-      isDynamic = true;
-    } else if (x3 !== x1) {
-      v = y1 + ((x - x1) / (x3 - x1)) * (y3 - y1);
-      isDynamic = true;
+    // 分段线性插值：[priceBuy→priceAnchor] 映射 [buyPct→peYest]，[priceAnchor→priceSell] 映射 [peYest→sellPct]
+    if (x <= priceBuy) {
+      v = buyPct;
+    } else if (x < priceAnchor && priceAnchor !== priceBuy) {
+      v = buyPct + ((x - priceBuy) / (priceAnchor - priceBuy)) * (peData.peYest - buyPct);
+    } else if (x === priceAnchor) {
+      v = peData.peYest;
+    } else if (x < priceSell && priceSell !== priceAnchor) {
+      v = peData.peYest + ((x - priceAnchor) / (priceSell - priceAnchor)) * (sellPct - peData.peYest);
+    } else {
+      v = sellPct;
     }
+    isDynamic = true;
   }
 
   return { value: v, isDynamic, rawData: peData, bounds: { buyPct, sellPct } };
 }
 
 // [依赖注入]: 传入档位字符串即可
+// 边界：最低档增权时 idx+1 超出数组，Math.min 兜底返回同档 target（已在最高权益，无需再增）
+// 边界：最高档降权时 idx-1 为 -1，Math.max 兜底返回同档 target（已在最低权益，无需再降）
 function getDynamicTarget(mode, peBucketStr) {
   if (!peBucketStr) return null;
   const lo = parseFloat(peBucketStr.split(",")[0]);
@@ -81,8 +78,7 @@ function getDynamicTarget(mode, peBucketStr) {
   if (idx === -1) return null;
 
   if (mode === "buy")
-    return PE_EQUITY_TABLE[Math.min(idx + 1, PE_EQUITY_TABLE.length - 1)]
-      .target;
+    return PE_EQUITY_TABLE[Math.min(idx + 1, PE_EQUITY_TABLE.length - 1)].target;
   if (mode === "sell") return PE_EQUITY_TABLE[Math.max(idx - 1, 0)].target;
   return PE_EQUITY_TABLE[idx].target;
 }
@@ -115,25 +111,13 @@ function calcBuyPlanDraft(holdings, activeProducts, getNavFn, targetEq) {
   const a500cNav = getNavFn(SYS_CONFIG.CODE_A500) || 1.0;
 
   const currA500CVal = (holdings[SYS_CONFIG.CODE_A500] || 0) * a500cNav;
-  const a500cRoom = Math.max(
-    0,
-    totalVal * SYS_CONFIG.LIMIT_A500C - currA500CVal,
-  );
+  const a500cRoom = Math.max(0, totalVal * SYS_CONFIG.LIMIT_A500C - currA500CVal);
 
   const allocA500C = Math.min(buyAmt, a500cRoom);
   const allocZZ500C = buyAmt - allocA500C;
 
-  const amtByCode = {
-    [SYS_CONFIG.CODE_XQ]: buyAmt,
-    [SYS_CONFIG.CODE_A500]: allocA500C,
-    [SYS_CONFIG.CODE_ZZ500]: allocZZ500C,
-  };
-  let totalFriction = 0;
-  activeProducts.forEach((p) => {
-    const amt = amtByCode[p.code];
-    if (amt && p.equity !== 0 && p.equity !== 1)
-      totalFriction += amt * SYS_CONFIG.FEE;
-  });
+  // 动态找出当前持仓中承担溢出角色的中证500品种
+  const zz500Prod = activeProducts.find((p) => isZZ500Product(p.name));
 
   return {
     totalVal,
@@ -143,7 +127,8 @@ function calcBuyPlanDraft(holdings, activeProducts, getNavFn, targetEq) {
     sellXqShares: buyAmt / xqNav,
     allocA500C,
     allocZZ500C,
-    totalFriction,
+    zz500Code: zz500Prod?.code || null,
+    totalFriction: 0,
   };
 }
 
@@ -162,17 +147,31 @@ function calcSellExecutionDraft(
   let sellNeededEq = Math.max(0, (totalVal * (currentEq - targetEq)) / 100);
 
   const sellProducts = activeProducts.filter((p) => p.equity > 0);
+  const zz500Code = sellProducts.find((p) => isZZ500Product(p.name))?.code || null;
+
   const totalRatio = sellProducts
-    .filter((p) => p.code !== priorityCode)
+    .filter((p) => p.code !== zz500Code && p.code !== priorityCode)
     .reduce((s, p) => s + (ratios[p.code] || 0), 0);
 
-  let afterEqVal = (totalVal * currentEq) / 100;
-  let totalCashOut = 0,
-    totalFriction = 0,
-    hasAnySell = false;
+  let totalCashOut = 0, totalFriction = 0, hasAnySell = false;
   const results = {};
 
-  if (priorityCode) {
+  // 第一优先：中证500（自动识别）
+  if (zz500Code) {
+    const pZ = sellProducts.find((p) => p.code === zz500Code);
+    if (pZ) {
+      const nav = getNavFn(pZ.code) || 1.0;
+      const actualEqToSell = Math.min(
+        sellNeededEq,
+        (holdings[pZ.code] || 0) * nav * pZ.equity,
+      );
+      results[pZ.code] = { amt: pZ.equity > 0 ? actualEqToSell / pZ.equity : 0, nav };
+      sellNeededEq -= actualEqToSell;
+    }
+  }
+
+  // 第二优先：用户手动标记的优先卖出品种
+  if (priorityCode && priorityCode !== zz500Code) {
     const pPri = sellProducts.find((p) => p.code === priorityCode);
     if (pPri) {
       const nav = getNavFn(pPri.code) || 1.0;
@@ -180,22 +179,19 @@ function calcSellExecutionDraft(
         sellNeededEq,
         (holdings[pPri.code] || 0) * nav * pPri.equity,
       );
-      results[pPri.code] = {
-        amt: pPri.equity > 0 ? actualEqToSell / pPri.equity : 0,
-        nav,
-      };
+      results[pPri.code] = { amt: pPri.equity > 0 ? actualEqToSell / pPri.equity : 0, nav };
       sellNeededEq -= actualEqToSell;
     }
   }
 
+  // 第三优先：按比例分配剩余
   sellProducts.forEach((p) => {
-    if (p.code === priorityCode) return;
+    if (p.code === zz500Code || p.code === priorityCode) return;
     const nav = getNavFn(p.code) || 1.0;
     if (totalRatio <= 0 || !ratios[p.code]) {
       results[p.code] = { amt: 0, nav };
       return;
     }
-
     const eqQuota = sellNeededEq * (ratios[p.code] / totalRatio);
     results[p.code] = {
       amt: Math.min(eqQuota / p.equity, (holdings[p.code] || 0) * nav),
@@ -211,7 +207,6 @@ function calcSellExecutionDraft(
     const feeAmt = res.amt * feeRate;
     const eqDropVal = res.amt * p.equity;
 
-    afterEqVal -= eqDropVal;
     totalCashOut += res.amt - feeAmt;
     totalFriction += feeAmt;
     res.shares = res.amt / res.nav;

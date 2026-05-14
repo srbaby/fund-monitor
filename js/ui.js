@@ -1,5 +1,5 @@
 // ============================================================
-// ui.js - 渲染层 (v3.1 响应式与微模板版)
+// ui.js - 渲染层 (v3.2 响应式与微模板版)
 // 职责：所有 DOM 更新，时钟、指数栏、PE 栏、卡片、表格、今日盈亏渲染、抽屉 HTML 生成
 // 铁律：不含业务计算，不含 localStorage 读写
 // ============================================================
@@ -41,13 +41,17 @@ function fmt(n, decimals = 0) {
 function fmtMoney(n) {
   return "¥" + fmt(n, 2);
 }
-function getProductName(code) {
-  return (
-    SHORT_NAMES[code] || PRODUCTS.find((p) => p.code === code)?.name || code
-  );
-}
 function getDisplayName(f) {
   return f.name || NAMES[f.code] || f.code;
+}
+
+// 判断某基金结果当前应使用官方净值还是估算净值
+function getActivePct(f, today, tradingDay) {
+  if (f.error) return null;
+  const offD = f.offDate ? f.offDate.slice(0, 10) : "",
+    estD = f.estTime ? f.estTime.slice(0, 10) : "";
+  const isOff = offD === today || !tradingDay || (estD && offD && offD >= estD);
+  return isOff && f.offPct != null ? f.offPct : f.estPct;
 }
 
 function isStructureUnchanged(containerId, targetCodes) {
@@ -169,6 +173,9 @@ function UI_buildSummaryHtml(
   </div>`;
 }
 
+// holdings 和 activeProds 由调用方从 store 读取后传入，ui 层不直接访问 localStorage
+
+// profitMap: { [code]: number | null } — 由 interact 层计算后传入
 function UI_renderHoldingDrawerBody(
   activeProds,
   holdings,
@@ -178,7 +185,7 @@ function UI_renderHoldingDrawerBody(
   eqData,
   currentPE,
   targetEqNeutral,
-  lastResults,
+  profitMap,
   savedPlan = {},
   priorityCode = null,
 ) {
@@ -247,30 +254,7 @@ function UI_renderHoldingDrawerBody(
         ? fmt((val / eqData.total) * 100, 1) + "%"
         : "--";
 
-    const fetchedResult = lastResults.find((r) => r.code === p.code);
-    let profitAmt = null;
-    if (fetchedResult && shares > 0 && nav > 0) {
-      const offD = fetchedResult.offDate
-        ? fetchedResult.offDate.slice(0, 10)
-        : "";
-      const estD = fetchedResult.estTime
-        ? fetchedResult.estTime.slice(0, 10)
-        : "";
-      const isOfficialUpdated = fetchedResult.offVal && (!estD || offD >= estD);
-      const activePct = isOfficialUpdated
-        ? fetchedResult.offPct
-        : fetchedResult.estPct;
-
-      let yestNav = null;
-      if (fetchedResult.baseNav && fetchedResult.baseDate) {
-        yestNav = fetchedResult.baseNav;
-      } else if (activePct != null && !isNaN(activePct)) {
-        yestNav = nav / (1 + activePct / 100);
-      }
-
-      if (yestNav) profitAmt = shares * (nav - yestNav);
-    }
-
+    const profitAmt = profitMap[p.code] ?? null;
     const pnlCls = profitAmt > 0 ? "up" : profitAmt < 0 ? "down" : "flat";
     const pnlTxt =
       profitAmt != null
@@ -306,11 +290,9 @@ function UI_renderHoldingDrawerBody(
     const priBg = isPri ? "var(--sell-bg)" : "transparent";
     const priTxt = isPri ? "优先" : "—";
 
-    const fetchedResult = lastResults.find((r) => r.code === p.code);
-
     html += `
       <div style="${gridStyle} align-items:center; padding:8px 12px; ${idx === activeProds.length - 1 ? "" : "border-bottom:1px dashed var(--bd2);"}">
-        <div style="min-width:0;"><input id="sn_${p.code}" type="text" class="dr-input-ghost" style="width:100%; font-family:var(--f-zh); font-size:13px; font-weight:600;" value="${shortNameMap[p.code] || ""}" placeholder="${fetchedResult?.name || NAMES[p.code] || p.code}"></div>
+        <div style="min-width:0;"><input id="sn_${p.code}" type="text" class="dr-input-ghost" style="width:100%; font-family:var(--f-zh); font-size:13px; font-weight:600;" value="${shortNameMap[p.code] || ""}" placeholder="${p.name}"></div>
 
         <div style="display:flex; justify-content:center;">
             <div id="pri_btn_${p.code}" onclick="toggleHoldingPriority('${p.code}')" style="width:34px; height:24px; line-height:22px; text-align:center; border:1px solid ${priBd}; border-radius:4px; background:${priBg}; color:${priColor}; font-family:var(--f-zh); font-size:11px; font-weight:600; cursor:pointer; user-select:none; transition:all 0.2s;">${priTxt}</div>
@@ -329,7 +311,7 @@ function UI_renderHoldingDrawerBody(
         </div>
       </div>`;
   });
-  const _syncReady = !!(localStorage.getItem(STORE_GIST_ID) && localStorage.getItem(STORE_GIST_TOKEN));
+  const _syncReady = isCloudConfigured();
   const syncCol = _syncReady ? "var(--dn)" : "var(--t3)";
   const syncBd = _syncReady ? "var(--dn-bd)" : "var(--bd2)";
   const syncTxt = _syncReady ? "↑↓ 云端同步（已配置）" : "↑↓ 云端同步（未配置）";
@@ -374,7 +356,7 @@ function UI_buildHoldingPlanHtml(
         </div>
         <div class="dr-lbl" style="margin-bottom:6px; font-family:var(--f-zh);">资金调配 (固定转出)</div>
         <div style="background:var(--bg2); border:1px solid var(--bd); border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;">
-          <div style="font-family:var(--f-zh); color:var(--t1); font-weight:500; font-size:13px;">转出 ${getProductName(SYS_CONFIG.CODE_XQ)}</div>
+          <div style="font-family:var(--f-zh); color:var(--t1); font-weight:500; font-size:13px;">转出 ${SHORT_NAMES[SYS_CONFIG.CODE_XQ]}</div>
           <div class="num" style="color:var(--buy); font-size:15px; font-weight:600; font-family:var(--f-num);">${fmt(buyDraft.sellXqShares, 2)} <span style="font-size:11px; color:var(--t2); margin-left:2px; font-weight:400; font-family:var(--f-zh);">份</span></div>
         </div>
         <div style="text-align:center; margin-top:10px; font-size:13px; font-family:var(--f-zh); color:var(--t2);">
@@ -516,7 +498,6 @@ function updatePeBar() {
   }
 
   const peData = loadPe();
-  // 修复问题2：通过 getIndices() 获取沪深300实时价格，不直接读 data.js 的全局变量
   const rt300Price = getIndices()["000300"]?.f2 ?? null;
   const currentPE = getCurrentPE(peData, rt300Price);
 
@@ -553,6 +534,8 @@ function updatePeBar() {
   }
 
   if (_peDOM.eqDiv) {
+    // 权益计算由 interact 层在打开抽屉时执行；PE 栏展示使用轻量实时计算
+    // 此处是 PE 栏专属的只读展示，依赖注入给 engine 纯函数，不写 store 不改 DOM 之外的任何状态
     const eqData = calcCurrentEquity(
       loadHoldings(),
       getActiveProducts(),
@@ -633,14 +616,6 @@ function renderCards(results, fl, today, tradingDay) {
       ? !mobileExpanded
       : allCollapsed;
 
-  const getActivePct = (f) => {
-    if (f.error) return null;
-    const offD = f.offDate ? f.offDate.slice(0, 10) : "",
-          estD = f.estTime ? f.estTime.slice(0, 10) : "";
-    const isOff = offD === today || !tradingDay || (estD && offD && offD >= estD);
-    return isOff && f.offPct != null ? f.offPct : f.estPct;
-  };
-
   if (
     !isStructureUnchanged(
       "cardView",
@@ -649,7 +624,7 @@ function renderCards(results, fl, today, tradingDay) {
   ) {
     container.innerHTML = results
       .map((f) => {
-        const pct = getActivePct(f);
+        const pct = getActivePct(f, today, tradingDay);
         const cc = pct != null ? (pct > 0 ? "up-card" : pct < 0 ? "down-card" : "") : "";
         return `<div class="fund-card ${cc}${collapsed ? " collapsed" : ""}" data-code="${f.code}">${buildCardInnerHtml(f, fl, today, tradingDay)}</div>`;
       })
@@ -659,7 +634,7 @@ function renderCards(results, fl, today, tradingDay) {
   results.forEach((f) => {
     const el = container.querySelector(`[data-code="${f.code}"]`);
     if (el) {
-      const pct = getActivePct(f);
+      const pct = getActivePct(f, today, tradingDay);
       const cc = pct != null ? (pct > 0 ? "up-card" : pct < 0 ? "down-card" : "") : "";
       el.className = `fund-card ${cc}${collapsed ? " collapsed" : ""}`;
       el.innerHTML = buildCardInnerHtml(f, fl, today, tradingDay);
@@ -687,14 +662,6 @@ function buildTableInnerHtml(f, fl, today, tradingDay) {
 function renderTable(results, fl, today, tradingDay) {
   const container = document.getElementById("fundTbody");
 
-  const getActivePct = (f) => {
-    if (f.error) return null;
-    const offD = f.offDate ? f.offDate.slice(0, 10) : "",
-          estD = f.estTime ? f.estTime.slice(0, 10) : "";
-    const isOff = offD === today || !tradingDay || (estD && offD && offD >= estD);
-    return isOff && f.offPct != null ? f.offPct : f.estPct;
-  };
-
   if (
     !isStructureUnchanged(
       "fundTbody",
@@ -703,7 +670,7 @@ function renderTable(results, fl, today, tradingDay) {
   ) {
     container.innerHTML = results
       .map((f) => {
-        const pct = getActivePct(f);
+        const pct = getActivePct(f, today, tradingDay);
         const cc = pct != null ? (pct > 0 ? "up-row" : pct < 0 ? "down-row" : "") : "";
         return `<tr class="${cc}" data-code="${f.code}">${buildTableInnerHtml(f, fl, today, tradingDay)}</tr>`;
       })
@@ -713,14 +680,14 @@ function renderTable(results, fl, today, tradingDay) {
   results.forEach((f) => {
     const el = container.querySelector(`[data-code="${f.code}"]`);
     if (el) {
-      const pct = getActivePct(f);
+      const pct = getActivePct(f, today, tradingDay);
       el.className = pct != null ? (pct > 0 ? "up-row" : pct < 0 ? "down-row" : "") : "";
       el.innerHTML = buildTableInnerHtml(f, fl, today, tradingDay);
     }
   });
 }
 
-function renderTodayProfit(results, mktState, todayStr) {
+function renderTodayProfit(results, holdings, activeProds, mktState, todayStr) {
   const profitElMobile = _getEl("todayProfit"),
     profitElPc = _getEl("todayProfitPc");
   if (!profitElMobile && !profitElPc) return;
@@ -731,13 +698,7 @@ function renderTodayProfit(results, mktState, todayStr) {
     allUpdated,
     hasHoldings,
     isWaitingForOpen,
-  } = calcTodayProfit(
-    results,
-    loadHoldings(),
-    getActiveProducts(),
-    mktState,
-    todayStr,
-  );
+  } = calcTodayProfit(results, holdings, activeProds, mktState, todayStr);
   let html = isWaitingForOpen ? `<span style="color:var(--t3)">-</span>` : "";
 
   if (!isWaitingForOpen && hasHoldings) {
@@ -764,7 +725,7 @@ function renderTodayProfit(results, mktState, todayStr) {
 // 1. 仅指数更新时触发 (每10秒)
 function UI_updateIndices() {
   renderIndices(getIndices());
-  updatePeBar(); // 沪深300变动会影响 PE 追踪点的位置
+  updatePeBar();
 }
 
 // 2. 本地配置(定锚/持仓)更新时触发 (手动触发)
@@ -775,8 +736,8 @@ function UI_updateLocalConfig() {
   const resultMap = new Map(results.map((r) => [r.code, r]));
   const uiResults = funds.map((c) => resultMap.get(c)).filter(Boolean);
 
-  updatePeBar(); // 重新计算实际权益偏差
-  renderTodayProfit(uiResults, mktState, today); // 持仓变了，盈亏也会变
+  updatePeBar();
+  renderTodayProfit(uiResults, loadHoldings(), getActiveProducts(), mktState, today);
 }
 
 // 3. 基金净值更新、或列表增删时触发 (每60秒 / 手动增删)
@@ -798,8 +759,8 @@ function UI_updateFunds() {
     renderTable(uiResults, fl, today, tradingDay);
   }
 
-  renderTodayProfit(uiResults, mktState, today);
-  updatePeBar(); // 净值变动会导致权益市值改变
+  renderTodayProfit(uiResults, loadHoldings(), getActiveProducts(), mktState, today);
+  updatePeBar();
 
   const hasData = uiResults.length > 0;
   const chb = _getEl("cardHeaderBar");

@@ -8,10 +8,9 @@ document.getElementById("codeInput").addEventListener("keydown", (e) => {
 });
 
 observeState("INDICES", UI_updateIndices);
-observeState("FUNDS", () => {
-  UI_updateFunds();
-  syncCloud("push");
-});
+// FUNDS 广播由净值刷新和列表增删共同触发，云推送只在配置变更时需要，
+// 由 addFund / delFund / saveHoldings / confirmPe 各自显式调用 syncCloud
+observeState("FUNDS", UI_updateFunds);
 observeState("LOCAL_CONFIG", () => {
   UI_updateLocalConfig();
   syncCloud("push");

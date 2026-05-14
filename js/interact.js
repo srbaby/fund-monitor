@@ -1,5 +1,5 @@
 // ============================================================
-// interact.js - 控制器层 (v3.1 纯净调度版)
+// interact.js - 控制器层 (v3.2 纯净调度版)
 // 职责：接收用户事件，调 Engine 计算，向 Store 写数据，或触发 UI 工厂生成抽屉
 // 铁律：不再包含任何 HTML 拼接，不含手动 renderAll，全靠 store 通知
 // ============================================================
@@ -78,6 +78,7 @@ function addFund() {
   if (/^\d{6}$/.test(code) && !funds.includes(code)) {
     saveFunds([...funds, code]);
     input.value = "";
+    syncCloud("push");
     refreshData();
   } else input.value = "";
 }
@@ -90,6 +91,7 @@ function delFund(code) {
       : NAMES[code] || code;
   if (!confirm(`确认删除「${name}」？`)) return;
   saveFunds(funds.filter((c) => c !== code));
+  syncCloud("push");
   refreshData();
 }
 
@@ -99,9 +101,8 @@ function openPeModal() {
   document.getElementById("peModalBucket").value = peData.bucketStr || "65,70";
   document.getElementById("peModalInputPct").value = peData.peYest || "";
   document.getElementById("peModalPriceAnchor").value = peData.priceAnchor || "";
-  document.getElementById("peModalPeAnchor").value = peData.peAnchor || "";
-  document.getElementById("peModalBuyPe").value = peData.peBuy || "";
-  document.getElementById("peModalSellPe").value = peData.peSell || "";
+  document.getElementById("peModalPriceBuy").value = peData.priceBuy || "";
+  document.getElementById("peModalPriceSell").value = peData.priceSell || "";
   document.getElementById("peModal").style.display = "flex";
 }
 
@@ -113,21 +114,13 @@ function confirmPe() {
   const bucketStr = document.getElementById("peModalBucket").value;
   const peYest = parseFloat(document.getElementById("peModalInputPct").value);
   const priceAnchor = parseFloat(document.getElementById("peModalPriceAnchor").value);
-  const peAnchor = parseFloat(document.getElementById("peModalPeAnchor").value);
-  const peBuy = parseFloat(document.getElementById("peModalBuyPe").value);
-  const peSell = parseFloat(document.getElementById("peModalSellPe").value);
+  const priceBuy = parseFloat(document.getElementById("peModalPriceBuy").value);
+  const priceSell = parseFloat(document.getElementById("peModalPriceSell").value);
 
-  if (isNaN(peYest) || isNaN(priceAnchor) || isNaN(peAnchor))
-    return alert("请填写完整的【基准PE】、【基准点位】与【今日PE绝对值】！");
+  if (isNaN(peYest) || isNaN(priceAnchor) || isNaN(priceBuy) || isNaN(priceSell))
+    return alert("请填写完整的【PE百分位】、【收盘点位】、【增权指数】与【降权指数】！");
 
-  savePe({
-    bucketStr,
-    peYest,
-    priceAnchor,
-    peAnchor,
-    peBuy: isNaN(peBuy) ? null : peBuy,
-    peSell: isNaN(peSell) ? null : peSell,
-  });
+  savePe({ bucketStr, peYest, priceAnchor, priceBuy, priceSell });
 
   syncCloud("push_now");
   alert("✅ 定锚已更新，云端同步已在后台触发");
@@ -201,10 +194,32 @@ function openHoldingDrawer() {
   const peData = loadPe();
   const rt300Price = getIndices()["000300"]?.f2 ?? null;
   const currentPE = getCurrentPE(peData, rt300Price);
-  const eqData = calcCurrentEquity(holdings, activeProds, getNavByCode);
   const targetEqNeutral = getDynamicTarget("neutral", peData?.bucketStr);
 
-  const savedPlan = safeParse(localStorage.getItem(STORE_SELL_PLAN), {});
+  // 在 interact 层完成权益计算，传给 UI 工厂
+  const eqData = calcCurrentEquity(holdings, activeProds, getNavByCode);
+
+  // 在 interact 层计算各产品今日盈亏，传给 UI 工厂（避免 ui 层自行做计算）
+  const lastResults = getLastResults();
+  const today = todayDateStr();
+  const profitMap = {};
+  activeProds.forEach((p) => {
+    const shares = holdings[p.code] || 0;
+    const f = lastResults.find((r) => r.code === p.code);
+    if (!f || f.error || shares <= 0) { profitMap[p.code] = null; return; }
+    const offD = f.offDate ? f.offDate.slice(0, 10) : "";
+    const estD = f.estTime ? f.estTime.slice(0, 10) : "";
+    const isOfficialUpdated = f.offVal && (!estD || offD >= estD);
+    const nav = parseFloat(isOfficialUpdated ? f.offVal : f.estVal);
+    if (isNaN(nav)) { profitMap[p.code] = null; return; }
+    const activePct = isOfficialUpdated ? f.offPct : f.estPct;
+    let yestNav = null;
+    if (f.baseNav && f.baseDate) yestNav = f.baseNav;
+    else if (activePct != null && !isNaN(activePct)) yestNav = nav / (1 + activePct / 100);
+    profitMap[p.code] = yestNav != null ? shares * (nav - yestNav) : null;
+  });
+
+  const savedPlan = loadSellPlan();
   const priorityCode = loadPrioritySell();
   setPrioritySellCode(priorityCode);
 
@@ -218,7 +233,7 @@ function openHoldingDrawer() {
       eqData,
       currentPE,
       targetEqNeutral,
-      getLastResults(),
+      profitMap,
       savedPlan,
       priorityCode,
     );
@@ -290,11 +305,11 @@ function saveHoldings() {
     equity[p.code] = Math.min(1, Math.max(0, ev));
     if (sn) shortNames[p.code] = sn;
     else delete shortNames[p.code];
-    if (wt !== "") plan[p.code] = wt;
+    if (wt !== "") plan[p.code] = parseFloat(wt);
   });
 
   saveHoldingsData(shares, equity, shortNames);
-  localStorage.setItem(STORE_SELL_PLAN, JSON.stringify(plan));
+  saveSellPlan(plan);
 
   syncCloud("push_now");
   alert("✅ 配置已保存，云端同步已在后台触发");
@@ -315,8 +330,7 @@ async function manualPull() {
 }
 
 function openCloudConfig() {
-  const gid = localStorage.getItem(STORE_GIST_ID) || "";
-  const gtk = localStorage.getItem(STORE_GIST_TOKEN) || "";
+  const { id: gid, token: gtk } = loadGistConfig();
 
   UI_showDialog({
     title: "☁️ 云同步配置 (GitHub Gist)",
@@ -328,16 +342,14 @@ function openCloudConfig() {
     onConfirm: async (textarea, modal) => {
       const val = textarea.value.trim();
       if (!val) {
-        localStorage.removeItem(STORE_GIST_ID);
-        localStorage.removeItem(STORE_GIST_TOKEN);
+        clearGistConfig();
         document.body.removeChild(modal);
         return alert("已关闭云同步");
       }
 
       const parts = val.split(",");
       if (parts.length === 2) {
-        localStorage.setItem(STORE_GIST_ID, parts[0].trim());
-        localStorage.setItem(STORE_GIST_TOKEN, parts[1].trim());
+        saveGistConfig(parts[0].trim(), parts[1].trim());
         document.body.removeChild(modal);
         alert("✅ 配置已保存，正在拉取云端数据...");
         const ok = await syncCloud("pull");
@@ -351,8 +363,7 @@ function openCloudConfig() {
 
 // 返回 true 表示 pull 成功，false 表示失败或跳过
 async function syncCloud(mode = "pull") {
-  const gid = localStorage.getItem(STORE_GIST_ID);
-  const gtk = localStorage.getItem(STORE_GIST_TOKEN);
+  const { id: gid, token: gtk } = loadGistConfig();
   if (!gid || !gtk) return false;
 
   if (mode === "pull") {
@@ -363,7 +374,6 @@ async function syncCloud(mode = "pull") {
       if (remoteData && remoteData.f) {
         const snapshot = btoa(encodeURIComponent(JSON.stringify(remoteData)));
         if (importSnapshot(snapshot)) {
-          // await 确保 refreshData 完成后再释放锁，避免 FUNDS 广播在锁释放后触发推送
           await refreshData();
           console.log("✅ 云端数据已覆盖本地");
           return true;
@@ -371,23 +381,21 @@ async function syncCloud(mode = "pull") {
       }
       return false;
     } finally {
-      // 无论成功失败都释放锁
       _isSyncingPull = false;
     }
   } else if (mode === "push" || mode === "push_now") {
-    // 拉取期间拦截反向推送，防止把云端数据推回覆盖
     if (_isSyncingPull) return false;
 
     const doPush = async () => {
       console.log("☁️ 正在推送到云端...");
-      const data = {
+      const payload = {
         f: funds,
         h: safeParse(localStorage.getItem(STORE_HOLDINGS), {}),
         p: loadPe(),
-        s: safeParse(localStorage.getItem(STORE_SELL_PLAN), {}),
+        s: loadSellPlan(),
         pr: loadPrioritySell() || null,
       };
-      const ok = await cloudUpdate(gid, gtk, data);
+      const ok = await cloudUpdate(gid, gtk, payload);
       if (ok) console.log("✅ 推送云端成功");
       else console.error("❌ 推送云端失败");
     };

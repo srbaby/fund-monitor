@@ -24,7 +24,6 @@ function injectScript(url, timeoutMs, onResolve) {
     }
   };
   s.src = url;
-  s.onload = () => {};
   s.onerror = () => fin(null);
   setTimeout(() => fin(null), timeoutMs);
   document.head.appendChild(s);
@@ -81,47 +80,51 @@ function drainOff() {
   offBusy = true;
   const { code, resolve } = offQ.shift();
 
-  const fin = injectScript(
-    `https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz&code=${code}&page=1&per=1&v=${Date.now()}`,
-    3000,
-    (v) => {
+  // 先创建 script 节点并绑定 onload，再交给 injectScript 的超时/onerror 兜底
+  const s = document.createElement("script");
+  let done = false;
+  const fin = (val) => {
+    if (!done) {
+      done = true;
+      s.remove();
       window.apidata = undefined;
       offBusy = false;
-      resolve(v);
+      resolve(val);
       setTimeout(drainOff, 30);
-    },
-  );
+    }
+  };
 
-  const s = document.head.lastElementChild;
-  if (s && s.tagName === "SCRIPT") {
-    s.onload = () => {
-      try {
-        const html = window.apidata?.content;
-        if (html) {
-          const tr = html.match(/<tbody>\s*<tr>(.*?)<\/tr>/i);
-          if (tr) {
-            const tds = tr[1]
-              .match(/<td[^>]*>(.*?)<\/td>/g)
-              .map((td) => td.replace(/<[^>]+>/g, "").trim());
-            if (tds.length >= 4) {
-              const pct =
-                tds[3] && tds[3] !== "---"
-                  ? parseFloat(tds[3].replace("%", ""))
-                  : null;
-              return fin({
-                nav: Number(tds[1]).toFixed(4),
-                pct: pct != null ? pct.toFixed(2) : null,
-                date: tds[0],
-              });
-            }
+  s.onload = () => {
+    try {
+      const html = window.apidata?.content;
+      if (html) {
+        const tr = html.match(/<tbody>\s*<tr>(.*?)<\/tr>/i);
+        if (tr) {
+          const tds = tr[1]
+            .match(/<td[^>]*>(.*?)<\/td>/g)
+            .map((td) => td.replace(/<[^>]+>/g, "").trim());
+          if (tds.length >= 4) {
+            const pct =
+              tds[3] && tds[3] !== "---"
+                ? parseFloat(tds[3].replace("%", ""))
+                : null;
+            return fin({
+              nav: Number(tds[1]).toFixed(4),
+              pct: pct != null ? pct.toFixed(2) : null,
+              date: tds[0],
+            });
           }
         }
-        fin(null);
-      } catch (e) {
-        fin(null);
       }
-    };
-  }
+      fin(null);
+    } catch (e) {
+      fin(null);
+    }
+  };
+  s.onerror = () => fin(null);
+  setTimeout(() => fin(null), 3000);
+  s.src = `https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz&code=${code}&page=1&per=1&v=${Date.now()}`;
+  document.head.appendChild(s);
 }
 
 async function fetchSingleFund(code) {
@@ -183,7 +186,7 @@ function getNavByCode(code) {
   return null;
 }
 
-// [新增函数]：从 Gist 拉取数据
+// 从 Gist 拉取云端数据
 async function cloudFetch(gistId, token) {
   try {
     const res = await fetch(`https://api.github.com/gists/${gistId}`, {
@@ -198,7 +201,7 @@ async function cloudFetch(gistId, token) {
   }
 }
 
-// [新增函数]：推送到 Gist
+// 推送数据到 Gist
 async function cloudUpdate(gistId, token, payload) {
   try {
     const res = await fetch(`https://api.github.com/gists/${gistId}`, {
