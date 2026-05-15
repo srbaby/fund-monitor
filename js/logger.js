@@ -1,26 +1,44 @@
 // ============================================================
-// logger.js - 临时云端日志模块
+// logger.js - 云端日志模块
 //
-// 用途：记录所有本地写入和云端推送操作，供排查数据丢失问题。
+// 用途：记录所有本地写入和云端推送操作，供多端数据核查与问题排查。
 //
-// 接入方式：
-//   1. index.html 在 config.js 之后、store.js 之前加载本文件
-//   2. store.js 每个 save*/clear* 函数末尾调用 fmLog(fn, data)
-//   3. interact.js doPush 里调用 fmLog("syncCloud_push", payload)
-//   4. interact.js openCloudConfig 支持第三段 LogGistID
+// 配置：云同步格式第三段填入 LogGistID，与主 Gist 共用 Token。
+//   格式：GistID,Token,LogGistID
+//   Log Gist 初始内容须为 []（空数组）。
 //
-// 日志格式（fm_log.json 内容为数组，最多100条）：
+// 加载顺序：index.html 中 config.js 之后、store.js 之前。
+//
+// 当前接入点（8处）：
+//   store.js
+//     - saveFunds          基金列表变更（含拖拽排序）
+//     - savePe             PE 定锚更新
+//     - saveHoldingsData   持仓份额 / 权益 / 短名称保存
+//     - saveSellPlan       降权预案保存
+//     - savePrioritySell   设置优先卖出品种
+//     - clearPrioritySell  清除优先卖出品种
+//     - importSnapshot     云端拉取覆盖本地（记录 f/p/h/s/pr 完整字段）
+//   interact.js
+//     - syncCloud_push     云端推送完整 payload
+//
+// 日志格式（fm_log.json，最多1000条滚动覆盖）：
 //   { t: ISO时间戳, fn: 触发函数名, data: 写入内容快照 }
 //
-// 排查完成后的处理：
-//   - 删除 logger.js 文件
-//   - 删除 index.html 中本文件的 <script> 标签
+// 性能说明：
+//   每次写日志 = 1次 GET + 1次 PATCH，单次约 1–4 秒，纯异步不阻塞 UI。
+//   单条体积约 200–600 字节，1000条约 200KB–600KB。
+//   importSnapshot 含完整持仓 h 字段，单条体积偏大；
+//   如体积成为问题，可将 importSnapshot 的 h 字段从日志中裁掉，
+//   因持仓已由 saveHoldingsData 单独记录。
+//   GitHub API rate limit：认证用户 5000次/小时，当前使用频率无压力。
+//
+// 停用方式：
+//   - 删除 logger.js 文件及 index.html 中对应的 <script> 标签
 //   - 删除 store.js 中所有 fmLog(...) 调用行
 //   - 删除 interact.js 中 fmLog(...) 调用行
-//   - interact.js openCloudConfig 格式说明和 saveLogGistId 调用可保留（无副作用）
-//   - config.js STORE_LOG_GIST_ID 常量可保留（无副作用）
+//   - interact.js openCloudConfig 的 saveLogGistId 调用可保留（无副作用）
 //
-// 再次启用：重新加入 logger.js 并在各调用点加回 fmLog(...) 即可
+// 再次启用：重新加入 logger.js 并在各调用点加回 fmLog(...) 即可。
 // ============================================================
 
 const STORE_LOG_GIST_ID = "fm_log_gist_id";
