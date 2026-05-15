@@ -311,17 +311,21 @@ function UI_renderHoldingDrawerBody(
         </div>
       </div>`;
   });
-  const _syncReady = isCloudConfigured();
-  const syncCol = _syncReady ? "var(--dn)" : "var(--t3)";
-  const syncBd = _syncReady ? "var(--dn-bd)" : "var(--bd2)";
-  const syncTxt = _syncReady ? "↑↓ 云端同步（已配置）" : "↑↓ 云端同步（未配置）";
-  const pullDisabled = _syncReady ? "" : "disabled";
-  const pullCol = _syncReady ? "var(--dn)" : "var(--t3)";
-  const pullBd = _syncReady ? "var(--dn-bd)" : "var(--bd2)";
+  const _cs = getCloudStatus();
+  const _count = _cs.count;
+  const _canPull = isCloudConfigured();
+  // 配置按钮：有填写的全部验证通过→绿，有填写但验证失败→红，0个→灰
+  const cfgCol = _count === 0 ? "var(--t3)" : _cs.ok ? "var(--dn)" : "var(--sell)";
+  const cfgBd = _count === 0 ? "var(--bd2)" : _cs.ok ? "var(--dn-bd)" : "var(--sell-bd)";
+  const cfgLabel = `⚙ 配置 (${_count}/3)`;
+  // 拉取按钮：未配置禁用+灰，已配置中性色（不用绿）
+  const pullDisabled = _canPull ? "" : "disabled";
+  const pullCol = _canPull ? "var(--t2)" : "var(--t3)";
+  const pullBd = _canPull ? "var(--bd2)" : "var(--bd2)";
   html += `</div></div></div>
   <div style="display:flex;gap:8px;margin-top:12px">
-    <button onclick="manualPull()" ${pullDisabled} style="flex:2;padding:8px 12px;border-radius:10px;border:1px solid ${pullBd};background:var(--bg3);color:${pullCol};font-family:var(--f-zh);font-size:13px;font-weight:500;cursor:pointer;opacity:${_syncReady ? "1" : "0.45"};">↓ 拉取云端</button>
-    <button onclick="openCloudConfig()" style="flex:1;padding:8px 12px;border-radius:10px;border:1px solid var(--bd2);background:var(--bg3);color:var(--t2);font-family:var(--f-zh);font-size:13px;font-weight:500;cursor:pointer;">⚙ 配置</button>
+    <button onclick="manualPull()" ${pullDisabled} style="flex:2;padding:8px 12px;border-radius:10px;border:1px solid ${pullBd};background:var(--bg3);color:${pullCol};font-family:var(--f-zh);font-size:13px;font-weight:500;cursor:pointer;opacity:${_canPull ? "1" : "0.45"};">↓ 拉取云端</button>
+    <button onclick="openCloudConfig()" style="flex:1;padding:8px 12px;border-radius:10px;border:1px solid ${cfgBd};background:var(--bg3);color:${cfgCol};font-family:var(--f-zh);font-size:13px;font-weight:500;cursor:pointer;">${cfgLabel}</button>
   </div>
   </div>`;
 
