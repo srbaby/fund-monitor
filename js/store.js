@@ -204,7 +204,7 @@ function importSnapshot(str) {
     if (data.s) saveSellPlan(data.s);
     if (data.pr) localStorage.setItem(STORE_PRIORITY_SELL, data.pr);
     else localStorage.removeItem(STORE_PRIORITY_SELL);
-    fmLog("importSnapshot", { f: data.f, p: data.p });
+    fmLog("importSnapshot", { f: data.f, p: data.p, h: data.h, s: data.s, pr: data.pr });
     dispatchUpdate("FUNDS");
     dispatchUpdate("LOCAL_CONFIG");
     return true;
