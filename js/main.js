@@ -22,6 +22,8 @@ setInterval(updateClock, 1000);
 syncCloud("pull").then((ok) => {
   // pull 成功时 syncCloud 内部已调用 refreshData，无需重复
   if (!ok) refreshData();
+  const { id, token } = loadGistConfig();
+  if (id && token) _verifyCloudConfig(id, token, loadLogGistId());
 });
 
 setInterval(() => {
@@ -35,5 +37,7 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
     fetchIndices();
     refreshData();
+    const { id, token } = loadGistConfig();
+    if (id && token) _verifyCloudConfig(id, token, loadLogGistId());
   }
 });
