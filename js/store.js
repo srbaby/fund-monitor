@@ -8,12 +8,19 @@ let funds = [];
 let _lastResults = [];
 let _indicesMap = {};
 let _prioritySellCode = null;
+let _cloudStatus = { count: 0, ok: false }; // 已填字段数 / 填了的是否全部验证通过
 
 function getPrioritySellCode() {
   return _prioritySellCode;
 }
 function setPrioritySellCode(code) {
   _prioritySellCode = code;
+}
+function getCloudStatus() {
+  return _cloudStatus;
+}
+function setCloudStatus(s) {
+  _cloudStatus = s;
 }
 
 // ---- 广播电台 (频道化 Observer) ----
