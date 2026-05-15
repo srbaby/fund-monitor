@@ -324,8 +324,8 @@ function UI_renderHoldingDrawerBody(
   const pullBd = _canPull ? "var(--bd2)" : "var(--bd2)";
   html += `</div></div></div>
   <div style="display:flex;gap:8px;margin-top:12px">
-    <button onclick="manualPull()" ${pullDisabled} style="flex:2;padding:8px 12px;border-radius:10px;border:1px solid ${pullBd};background:var(--bg3);color:${pullCol};font-family:var(--f-zh);font-size:13px;font-weight:500;cursor:pointer;opacity:${_canPull ? "1" : "0.45"};">↓ 拉取云端</button>
-    <button onclick="openCloudConfig()" style="flex:1;padding:8px 12px;border-radius:10px;border:1px solid ${cfgBd};background:var(--bg3);color:${cfgCol};font-family:var(--f-zh);font-size:13px;font-weight:500;cursor:pointer;">${cfgLabel}</button>
+    <button onclick="manualPull()" ${pullDisabled} style="flex:1;padding:8px 12px;border-radius:10px;border:1px solid ${pullBd};background:var(--bg3);color:${pullCol};font-family:var(--f-zh);font-size:13px;font-weight:500;cursor:pointer;opacity:${_canPull ? "1" : "0.45"};">↓ 拉取云端</button>
+    <button id="cloudCfgBtn" onclick="openCloudConfig()" style="flex:1;padding:8px 12px;border-radius:10px;border:1px solid ${cfgBd};background:var(--bg3);color:${cfgCol};font-family:var(--f-zh);font-size:13px;font-weight:500;cursor:pointer;">${cfgLabel}</button>
   </div>
   </div>`;
 
