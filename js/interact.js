@@ -265,6 +265,7 @@ function openHoldingDrawer() {
 
   liveUpdateHoldingPlan();
   openDrawer("holdingDrawer");
+  _refreshCloudBtn();
 }
 
 function toggleHoldingPriority(code) {
@@ -348,14 +349,26 @@ async function manualPull() {
   }
 }
 
+// 验证完成后直接刷新抽屉内云配置按钮，不重渲染整个抽屉
+async function _refreshCloudBtn() {
+  const { id, token } = loadGistConfig();
+  if (!id || !token) return;
+  await _verifyCloudConfig(id, token, loadLogGistId());
+  const cs = getCloudStatus();
+  const cfgBtn = document.getElementById("cloudCfgBtn");
+  if (!cfgBtn) return;
+  const col = cs.ok ? "var(--dn)" : "var(--sell)";
+  const bd = cs.ok ? "var(--dn-bd)" : "var(--sell-bd)";
+  cfgBtn.style.color = col;
+  cfgBtn.style.borderColor = bd;
+  cfgBtn.textContent = `⚙ 配置 (${cs.count}/3)`;
+}
+
 // 验证已填字段的连通性，结果写入 store（后台静默执行，不阻塞 UI）
 async function _verifyCloudConfig(gid, token, logId) {
   const count = [gid, token, logId].filter(Boolean).length;
-  // 不足2个无法验证，直接标记失败
-  if (count < 2) {
-    setCloudStatus({ count, ok: false });
-    return;
-  }
+  setCloudStatus({ count, ok: false }); // 先写 count，ok 等验证结果
+  if (count < 2) return;
   try {
     const res = await fetch(`https://api.github.com/gists/${gid}`, {
       headers: { Authorization: `token ${token}` },
