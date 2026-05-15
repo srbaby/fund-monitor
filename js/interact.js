@@ -348,6 +348,32 @@ async function manualPull() {
   }
 }
 
+// 验证已填字段的连通性，结果写入 store（后台静默执行，不阻塞 UI）
+async function _verifyCloudConfig(gid, token, logId) {
+  const count = [gid, token, logId].filter(Boolean).length;
+  // 不足2个无法验证，直接标记失败
+  if (count < 2) {
+    setCloudStatus({ count, ok: false });
+    return;
+  }
+  try {
+    const res = await fetch(`https://api.github.com/gists/${gid}`, {
+      headers: { Authorization: `token ${token}` },
+    });
+    const gistOk = res.ok;
+    let logOk = true;
+    if (logId) {
+      const logRes = await fetch(`https://api.github.com/gists/${logId}`, {
+        headers: { Authorization: `token ${token}` },
+      });
+      logOk = logRes.ok;
+    }
+    setCloudStatus({ count, ok: gistOk && logOk });
+  } catch {
+    setCloudStatus({ count, ok: false });
+  }
+}
+
 function openCloudConfig() {
   const { id: gid, token: gtk } = loadGistConfig();
 
@@ -366,18 +392,23 @@ function openCloudConfig() {
       if (!val) {
         clearGistConfig();
         saveLogGistId("");
+        setCloudStatus({ count: 0, ok: false });
         document.body.removeChild(modal);
         return alert("已关闭云同步");
       }
 
       const parts = val.split(",");
       if (parts.length >= 2) {
-        saveGistConfig(parts[0].trim(), parts[1].trim());
-        saveLogGistId(parts[2]?.trim() || "");
+        const newGid = parts[0].trim();
+        const newToken = parts[1].trim();
+        const newLogId = parts[2]?.trim() || "";
+        saveGistConfig(newGid, newToken);
+        saveLogGistId(newLogId);
         document.body.removeChild(modal);
         alert("✅ 配置已保存，正在拉取云端数据...");
         const ok = await syncCloud("pull");
         if (!ok) alert("⚠️ 云端拉取失败，请检查 Gist ID 和 Token 是否正确。");
+        _verifyCloudConfig(newGid, newToken, newLogId);
       } else {
         alert("❌ 格式错误，请使用英文逗号分隔");
       }
