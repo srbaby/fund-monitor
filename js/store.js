@@ -185,15 +185,18 @@ function exportSnapshot() {
 function importSnapshot(str) {
   try {
     const data = JSON.parse(decodeURIComponent(atob(str)));
-    if (data.f && Array.isArray(data.f)) saveFunds(data.f);
+    if (data.f && Array.isArray(data.f)) {
+      funds = data.f;
+      localStorage.setItem(STORE_CODES, JSON.stringify(funds));
+    }
     if (data.h) {
       _holdingsCache = null;
       localStorage.setItem(STORE_HOLDINGS, JSON.stringify(data.h));
     }
-    if (data.p) savePe(data.p);
+    if (data.p) localStorage.setItem(STORE_PE, JSON.stringify(data.p));
     if (data.s) saveSellPlan(data.s);
-    if (data.pr) savePrioritySell(data.pr);
-    else clearPrioritySell();
+    if (data.pr) localStorage.setItem(STORE_PRIORITY_SELL, data.pr);
+    else localStorage.removeItem(STORE_PRIORITY_SELL);
     fmLog("importSnapshot", { f: data.f, p: data.p });
     dispatchUpdate("FUNDS");
     dispatchUpdate("LOCAL_CONFIG");

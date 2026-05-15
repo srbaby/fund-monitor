@@ -1,5 +1,5 @@
 // ============================================================
-// engine.js - 计算引擎层 (v2.0 纯净版)
+// engine.js - 计算引擎层
 // 职责：纯粹的数学推演与业务计算。
 // 铁律：不含任何 DOM 操作，不含 localStorage 读写，不调用 store/data 的函数。
 // 所有依赖必须通过参数传入 (Dependency Injection)。
@@ -12,7 +12,7 @@ function getMarketState(now = new Date()) {
   if (t < SYS_CONFIG.T_PRE_MARKET) return "BEFORE_PRE";
   if (t < SYS_CONFIG.T_OPEN) return "PRE_MARKET";
   if (
-    (t >= SYS_CONFIG.T_OPEN && t < SYS_CONFIG.T_MID_BREAK) ||
+    t < SYS_CONFIG.T_MID_BREAK ||
     (t >= SYS_CONFIG.T_AFTERNOON && t < SYS_CONFIG.T_CLOSE)
   )
     return "TRADING";
@@ -26,8 +26,7 @@ function isEquityWrongDir(peVal, diff) {
   return (
     (peVal >= SYS_CONFIG.PE_HIGH_THRESHOLD &&
       diff < -SYS_CONFIG.EQUITY_DEV_LIMIT) ||
-    (peVal < SYS_CONFIG.PE_HIGH_THRESHOLD &&
-      diff > SYS_CONFIG.EQUITY_DEV_LIMIT)
+    (peVal < SYS_CONFIG.PE_HIGH_THRESHOLD && diff > SYS_CONFIG.EQUITY_DEV_LIMIT)
   );
 }
 
@@ -50,15 +49,19 @@ function getCurrentPE(peData, currentIdxPrice) {
     const x = currentIdxPrice;
     const { priceBuy, priceAnchor, priceSell } = peData;
 
-    // 分段线性插值：[priceBuy→priceAnchor] 映射 [buyPct→peYest]，[priceAnchor→priceSell] 映射 [peYest→sellPct]
     if (x <= priceBuy) {
       v = buyPct;
     } else if (x < priceAnchor && priceAnchor !== priceBuy) {
-      v = buyPct + ((x - priceBuy) / (priceAnchor - priceBuy)) * (peData.peYest - buyPct);
+      v =
+        buyPct +
+        ((x - priceBuy) / (priceAnchor - priceBuy)) * (peData.peYest - buyPct);
     } else if (x === priceAnchor) {
       v = peData.peYest;
     } else if (x < priceSell && priceSell !== priceAnchor) {
-      v = peData.peYest + ((x - priceAnchor) / (priceSell - priceAnchor)) * (sellPct - peData.peYest);
+      v =
+        peData.peYest +
+        ((x - priceAnchor) / (priceSell - priceAnchor)) *
+          (sellPct - peData.peYest);
     } else {
       v = sellPct;
     }
@@ -68,9 +71,8 @@ function getCurrentPE(peData, currentIdxPrice) {
   return { value: v, isDynamic, rawData: peData, bounds: { buyPct, sellPct } };
 }
 
-// [依赖注入]: 传入档位字符串即可
-// 边界：最低档增权时 idx+1 超出数组，Math.min 兜底返回同档 target（已在最高权益，无需再增）
-// 边界：最高档降权时 idx-1 为 -1，Math.max 兜底返回同档 target（已在最低权益，无需再降）
+// 边界：最低档增权时 idx+1 超出数组，Math.min 兜底返回同档 target
+// 边界：最高档降权时 idx-1 为 -1，Math.max 兜底返回同档 target
 function getDynamicTarget(mode, peBucketStr) {
   if (!peBucketStr) return null;
   const lo = parseFloat(peBucketStr.split(",")[0]);
@@ -78,12 +80,12 @@ function getDynamicTarget(mode, peBucketStr) {
   if (idx === -1) return null;
 
   if (mode === "buy")
-    return PE_EQUITY_TABLE[Math.min(idx + 1, PE_EQUITY_TABLE.length - 1)].target;
+    return PE_EQUITY_TABLE[Math.min(idx + 1, PE_EQUITY_TABLE.length - 1)]
+      .target;
   if (mode === "sell") return PE_EQUITY_TABLE[Math.max(idx - 1, 0)].target;
   return PE_EQUITY_TABLE[idx].target;
 }
 
-// [依赖注入]: 传入持仓、活跃产品列表、以及一个获取净值的回调函数 getNavFn
 function calcCurrentEquity(holdings, activeProducts, getNavFn) {
   let total = 0,
     eq = 0;
@@ -99,7 +101,6 @@ function calcCurrentEquity(holdings, activeProducts, getNavFn) {
   return total > 0 ? { equity: (eq / total) * 100, total } : null;
 }
 
-// [依赖注入]: 组装推演参数
 function calcBuyPlanDraft(holdings, activeProducts, getNavFn, targetEq) {
   const eqResult = calcCurrentEquity(holdings, activeProducts, getNavFn);
   if (!eqResult || targetEq == null) return null;
@@ -111,12 +112,14 @@ function calcBuyPlanDraft(holdings, activeProducts, getNavFn, targetEq) {
   const a500cNav = getNavFn(SYS_CONFIG.CODE_A500) || 1.0;
 
   const currA500CVal = (holdings[SYS_CONFIG.CODE_A500] || 0) * a500cNav;
-  const a500cRoom = Math.max(0, totalVal * SYS_CONFIG.LIMIT_A500C - currA500CVal);
+  const a500cRoom = Math.max(
+    0,
+    totalVal * SYS_CONFIG.LIMIT_A500C - currA500CVal,
+  );
 
   const allocA500C = Math.min(buyAmt, a500cRoom);
   const allocZZ500C = buyAmt - allocA500C;
 
-  // 动态找出当前持仓中承担溢出角色的中证500品种
   const zz500Prod = activeProducts.find((p) => isZZ500Product(p.name));
 
   return {
@@ -147,13 +150,16 @@ function calcSellExecutionDraft(
   let sellNeededEq = Math.max(0, (totalVal * (currentEq - targetEq)) / 100);
 
   const sellProducts = activeProducts.filter((p) => p.equity > 0);
-  const zz500Code = sellProducts.find((p) => isZZ500Product(p.name))?.code || null;
+  const zz500Code =
+    sellProducts.find((p) => isZZ500Product(p.name))?.code || null;
 
   const totalRatio = sellProducts
     .filter((p) => p.code !== zz500Code && p.code !== priorityCode)
     .reduce((s, p) => s + (ratios[p.code] || 0), 0);
 
-  let totalCashOut = 0, totalFriction = 0, hasAnySell = false;
+  let totalCashOut = 0,
+    totalFriction = 0,
+    hasAnySell = false;
   const results = {};
 
   // 第一优先：中证500（自动识别）
@@ -165,7 +171,10 @@ function calcSellExecutionDraft(
         sellNeededEq,
         (holdings[pZ.code] || 0) * nav * pZ.equity,
       );
-      results[pZ.code] = { amt: pZ.equity > 0 ? actualEqToSell / pZ.equity : 0, nav };
+      results[pZ.code] = {
+        amt: pZ.equity > 0 ? actualEqToSell / pZ.equity : 0,
+        nav,
+      };
       sellNeededEq -= actualEqToSell;
     }
   }
@@ -179,7 +188,10 @@ function calcSellExecutionDraft(
         sellNeededEq,
         (holdings[pPri.code] || 0) * nav * pPri.equity,
       );
-      results[pPri.code] = { amt: pPri.equity > 0 ? actualEqToSell / pPri.equity : 0, nav };
+      results[pPri.code] = {
+        amt: pPri.equity > 0 ? actualEqToSell / pPri.equity : 0,
+        nav,
+      };
       sellNeededEq -= actualEqToSell;
     }
   }

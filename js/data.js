@@ -3,7 +3,6 @@
 // 职责：网络请求、数据标准化输出、更新 store 状态
 // ============================================================
 
-window._rt_csi300_price = null;
 window.jsonpResolvers = {};
 
 window.jsonpgz = function (data) {
@@ -80,7 +79,6 @@ function drainOff() {
   offBusy = true;
   const { code, resolve } = offQ.shift();
 
-  // 先创建 script 节点并绑定 onload，再交给 injectScript 的超时/onerror 兜底
   const s = document.createElement("script");
   let done = false;
   const fin = (val) => {
@@ -168,9 +166,6 @@ function fetchIndices() {
       diff.forEach((d) => {
         map[d.f12] = d;
       });
-      if (map["000300"]?.f2)
-        window._rt_csi300_price = parseFloat(map["000300"].f2);
-
       setIndices(map);
     };
   });
@@ -186,7 +181,6 @@ function getNavByCode(code) {
   return null;
 }
 
-// 从 Gist 拉取云端数据
 async function cloudFetch(gistId, token) {
   try {
     const res = await fetch(`https://api.github.com/gists/${gistId}`, {
@@ -201,7 +195,6 @@ async function cloudFetch(gistId, token) {
   }
 }
 
-// 推送数据到 Gist
 async function cloudUpdate(gistId, token, payload) {
   try {
     const res = await fetch(`https://api.github.com/gists/${gistId}`, {
