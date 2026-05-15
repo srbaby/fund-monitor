@@ -100,7 +100,8 @@ function openPeModal() {
   const peData = loadPe() || {};
   document.getElementById("peModalBucket").value = peData.bucketStr || "65,70";
   document.getElementById("peModalInputPct").value = peData.peYest || "";
-  document.getElementById("peModalPriceAnchor").value = peData.priceAnchor || "";
+  document.getElementById("peModalPriceAnchor").value =
+    peData.priceAnchor || "";
   document.getElementById("peModalPriceBuy").value = peData.priceBuy || "";
   document.getElementById("peModalPriceSell").value = peData.priceSell || "";
   document.getElementById("peModal").style.display = "flex";
@@ -113,12 +114,23 @@ function closePeModal() {
 function confirmPe() {
   const bucketStr = document.getElementById("peModalBucket").value;
   const peYest = parseFloat(document.getElementById("peModalInputPct").value);
-  const priceAnchor = parseFloat(document.getElementById("peModalPriceAnchor").value);
+  const priceAnchor = parseFloat(
+    document.getElementById("peModalPriceAnchor").value,
+  );
   const priceBuy = parseFloat(document.getElementById("peModalPriceBuy").value);
-  const priceSell = parseFloat(document.getElementById("peModalPriceSell").value);
+  const priceSell = parseFloat(
+    document.getElementById("peModalPriceSell").value,
+  );
 
-  if (isNaN(peYest) || isNaN(priceAnchor) || isNaN(priceBuy) || isNaN(priceSell))
-    return alert("请填写完整的【PE百分位】、【收盘点位】、【增权指数】与【降权指数】！");
+  if (
+    isNaN(peYest) ||
+    isNaN(priceAnchor) ||
+    isNaN(priceBuy) ||
+    isNaN(priceSell)
+  )
+    return alert(
+      "请填写完整的【PE百分位】、【收盘点位】、【增权指数】与【降权指数】！",
+    );
 
   savePe({ bucketStr, peYest, priceAnchor, priceBuy, priceSell });
 
@@ -206,16 +218,23 @@ function openHoldingDrawer() {
   activeProds.forEach((p) => {
     const shares = holdings[p.code] || 0;
     const f = lastResults.find((r) => r.code === p.code);
-    if (!f || f.error || shares <= 0) { profitMap[p.code] = null; return; }
+    if (!f || f.error || shares <= 0) {
+      profitMap[p.code] = null;
+      return;
+    }
     const offD = f.offDate ? f.offDate.slice(0, 10) : "";
     const estD = f.estTime ? f.estTime.slice(0, 10) : "";
     const isOfficialUpdated = f.offVal && (!estD || offD >= estD);
     const nav = parseFloat(isOfficialUpdated ? f.offVal : f.estVal);
-    if (isNaN(nav)) { profitMap[p.code] = null; return; }
+    if (isNaN(nav)) {
+      profitMap[p.code] = null;
+      return;
+    }
     const activePct = isOfficialUpdated ? f.offPct : f.estPct;
     let yestNav = null;
     if (f.baseNav && f.baseDate) yestNav = f.baseNav;
-    else if (activePct != null && !isNaN(activePct)) yestNav = nav / (1 + activePct / 100);
+    else if (activePct != null && !isNaN(activePct))
+      yestNav = nav / (1 + activePct / 100);
     profitMap[p.code] = yestNav != null ? shares * (nav - yestNav) : null;
   });
 
@@ -334,28 +353,33 @@ function openCloudConfig() {
 
   UI_showDialog({
     title: "☁️ 云同步配置 (GitHub Gist)",
-    desc: "输入 Gist ID 和 Token。置空并保存可关闭同步。",
-    placeholder: "格式：GistID,Token",
-    value: gid && gtk ? `${gid},${gtk}` : "",
+    desc: "输入 Gist ID、Token 和日志 Gist ID。置空并保存可关闭同步。",
+    placeholder: "格式：GistID,Token,LogGistID",
+    value:
+      gid && gtk
+        ? `${gid},${gtk}${loadLogGistId() ? "," + loadLogGistId() : ""}`
+        : "",
     showCancel: true,
     confirmText: "保存配置",
     onConfirm: async (textarea, modal) => {
       const val = textarea.value.trim();
       if (!val) {
         clearGistConfig();
+        saveLogGistId("");
         document.body.removeChild(modal);
         return alert("已关闭云同步");
       }
 
       const parts = val.split(",");
-      if (parts.length === 2) {
+      if (parts.length >= 2) {
         saveGistConfig(parts[0].trim(), parts[1].trim());
+        saveLogGistId(parts[2]?.trim() || "");
         document.body.removeChild(modal);
         alert("✅ 配置已保存，正在拉取云端数据...");
         const ok = await syncCloud("pull");
         if (!ok) alert("⚠️ 云端拉取失败，请检查 Gist ID 和 Token 是否正确。");
       } else {
-        alert("❌ 格式错误，请使用英文逗号分隔 ID 和 Token");
+        alert("❌ 格式错误，请使用英文逗号分隔");
       }
     },
   });
@@ -396,6 +420,7 @@ async function syncCloud(mode = "pull") {
         pr: loadPrioritySell() || null,
       };
       const ok = await cloudUpdate(gid, gtk, payload);
+      fmLog("syncCloud_push", payload);
       if (ok) console.log("✅ 推送云端成功");
       else console.error("❌ 推送云端失败");
     };

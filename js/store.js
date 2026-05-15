@@ -85,6 +85,7 @@ function loadFunds() {
 function saveFunds(newFunds) {
   if (newFunds) funds = newFunds;
   localStorage.setItem(STORE_CODES, JSON.stringify(funds));
+  fmLog("saveFunds", { funds });
   dispatchUpdate("FUNDS");
 }
 
@@ -93,6 +94,7 @@ function loadPe() {
 }
 function savePe(dataObj) {
   localStorage.setItem(STORE_PE, JSON.stringify(dataObj));
+  fmLog("savePe", dataObj);
   dispatchUpdate("LOCAL_CONFIG");
 }
 
@@ -123,6 +125,7 @@ function saveHoldingsData(shares, equity, shortNames) {
     STORE_HOLDINGS,
     JSON.stringify({ shares, equity, shortNames }),
   );
+  fmLog("saveHoldingsData", { shares, equity, shortNames });
   dispatchUpdate("LOCAL_CONFIG");
 }
 
@@ -131,6 +134,7 @@ function loadSellPlan() {
 }
 function saveSellPlan(plan) {
   localStorage.setItem(STORE_SELL_PLAN, JSON.stringify(plan));
+  fmLog("saveSellPlan", plan);
 }
 
 // ---- Gist 云同步配置 ----
@@ -158,10 +162,12 @@ function loadPrioritySell() {
 }
 function savePrioritySell(code) {
   localStorage.setItem(STORE_PRIORITY_SELL, code);
+  fmLog("savePrioritySell", { code });
   dispatchUpdate("LOCAL_CONFIG");
 }
 function clearPrioritySell() {
   localStorage.removeItem(STORE_PRIORITY_SELL);
+  fmLog("clearPrioritySell", null);
   dispatchUpdate("LOCAL_CONFIG");
 }
 
@@ -188,6 +194,7 @@ function importSnapshot(str) {
     if (data.s) saveSellPlan(data.s);
     if (data.pr) savePrioritySell(data.pr);
     else clearPrioritySell();
+    fmLog("importSnapshot", { f: data.f, p: data.p });
     dispatchUpdate("FUNDS");
     dispatchUpdate("LOCAL_CONFIG");
     return true;
