@@ -51,7 +51,7 @@ async function fmLog(fn, data) {
     })();
     const logs = Array.isArray(existing) ? existing : [];
     logs.push({ t: new Date().toISOString(), fn, data });
-    if (logs.length > 100) logs.splice(0, logs.length - 100);
+    if (logs.length > 1000) logs.splice(0, logs.length - 1000);
     await fetch(`https://api.github.com/gists/${logId}`, {
       method: "PATCH",
       headers: {
