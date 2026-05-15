@@ -55,8 +55,6 @@ function getCurrentPE(peData, currentIdxPrice) {
       v =
         buyPct +
         ((x - priceBuy) / (priceAnchor - priceBuy)) * (peData.peYest - buyPct);
-    } else if (x === priceAnchor) {
-      v = peData.peYest;
     } else if (x < priceSell && priceSell !== priceAnchor) {
       v =
         peData.peYest +
