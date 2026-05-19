@@ -128,6 +128,8 @@ function calcBuyPlanDraft(holdings, activeProducts, getNavFn, targetEq) {
     sellXqShares: buyAmt / xqNav,
     allocA500C,
     allocZZ500C,
+    sharesA500C: allocA500C / xqNav,
+    sharesZZ500C: allocZZ500C / xqNav,
     zz500Code: zz500Prod?.code || null,
     totalFriction: 0,
   };
@@ -215,12 +217,10 @@ function calcSellExecutionDraft(
     hasAnySell = true;
     const feeRate = p.equity === 0 || p.equity === 1 ? 0 : SYS_CONFIG.FEE;
     const feeAmt = res.amt * feeRate;
-    const eqDropVal = res.amt * p.equity;
 
     totalCashOut += res.amt - feeAmt;
     totalFriction += feeAmt;
     res.shares = res.amt / res.nav;
-    res.eqDropPct = (eqDropVal / totalVal) * 100;
   });
 
   return {
@@ -260,7 +260,6 @@ function calcTodayProfit(
     const estD = f.estTime ? f.estTime.slice(0, 10) : "";
     const offD = f.offDate ? f.offDate.slice(0, 10) : "";
     const isOfficialUpdated =
-      offD === todayStr ||
       mktState === "WEEKEND" ||
       mktState === "BEFORE_PRE" ||
       (estD && offD && offD >= estD);
