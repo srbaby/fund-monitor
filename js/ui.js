@@ -359,9 +359,12 @@ function UI_buildHoldingPlanHtml(
           <div class="dr-summary-item" style="flex:1;"><div class="dr-lbl" style="margin-bottom:2px;">需要增权</div><div class="num" style="color:var(--buy); font-size:16px; font-weight:600; font-family:var(--f-num);">${fmt(diffPct, 2)}%</div></div>
         </div>
         <div class="dr-lbl" style="margin-bottom:6px; font-family:var(--f-zh);">资金调配 (固定转出)</div>
-        <div style="background:var(--bg2); border:1px solid var(--bd); border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;">
-          <div style="font-family:var(--f-zh); color:var(--t1); font-weight:500; font-size:13px;">转出 ${SHORT_NAMES[SYS_CONFIG.CODE_XQ]}</div>
-          <div class="num" style="color:var(--buy); font-size:15px; font-weight:600; font-family:var(--f-num);">${fmt(buyDraft.sellXqShares, 2)} <span style="font-size:11px; color:var(--t2); margin-left:2px; font-weight:400; font-family:var(--f-zh);">份</span></div>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <div style="background:var(--bg2); border:1px solid var(--bd); border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-family:var(--f-zh); color:var(--t1); font-size:13px;"><span style="font-weight:400;">转出</span> <span style="font-weight:500;">${SHORT_NAMES[SYS_CONFIG.CODE_XQ]}</span><span style="color:var(--t3); margin-left:4px;">→ ${SHORT_NAMES[SYS_CONFIG.CODE_A500]}</span></div>
+            <div class="num" style="color:var(--buy); font-size:15px; font-weight:600; font-family:var(--f-num); white-space:nowrap;">${fmt(buyDraft.sharesA500C, 2)} <span style="font-size:11px; color:var(--t2); margin-left:2px; font-weight:400; font-family:var(--f-zh);">份</span></div>
+          </div>
+          ${buyDraft.allocZZ500C > 0 ? `<div style="background:var(--bg2); border:1px solid var(--bd); border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;"><div style="font-family:var(--f-zh); color:var(--t1); font-size:13px;"><span style="font-weight:400;">转出</span> <span style="font-weight:500;">${SHORT_NAMES[SYS_CONFIG.CODE_XQ]}</span><span style="color:var(--t3); margin-left:4px;">→ ${buyDraft.zz500Code ? (SHORT_NAMES[buyDraft.zz500Code] || buyDraft.zz500Code) : "中证500C"}</span></div><div class="num" style="color:var(--buy); font-size:15px; font-weight:600; font-family:var(--f-num); white-space:nowrap;">${fmt(buyDraft.sharesZZ500C, 2)} <span style="font-size:11px; color:var(--t2); margin-left:2px; font-weight:400; font-family:var(--f-zh);">份</span></div></div>` : ""}
         </div>
         <div style="text-align:center; margin-top:10px; font-size:13px; font-family:var(--f-zh); color:var(--t2);">
           调配金额 <span class="num" style="font-weight:600; border-bottom:1px dashed var(--bd2); padding-bottom:2px; font-size:14px; color:var(--t1); margin-right:16px; font-family:var(--f-num);">${fmt(buyDraft.buyAmt, 2)}</span>
