@@ -21,15 +21,19 @@
 //   interact.js
 //     - syncCloud_push     云端推送完整 payload
 //
-// 日志格式（fm_log.json，最多1000条滚动覆盖）：
+// 日志格式（fm_log.json，最多200条滚动覆盖）：
 //   { t: ISO时间戳, fn: 触发函数名, data: 写入内容快照 }
 //
-// 性能说明：
-//   每次写日志 = 1次 GET + 1次 PATCH，单次约 1–4 秒，纯异步不阻塞 UI。
-//   单条体积约 200–600 字节，1000条约 200KB–600KB。
+// 容量说明：
+//   上限设为200条，基于实际使用观察（运行数天约产生70条）调整，
+//   按日均20次操作估算可覆盖约10天，满足日常排查需求。
+//   单条体积约 200–600 字节，200条约 40KB–120KB，体积轻量。
 //   importSnapshot 含完整持仓 h 字段，单条体积偏大；
 //   如体积成为问题，可将 importSnapshot 的 h 字段从日志中裁掉，
 //   因持仓已由 saveHoldingsData 单独记录。
+//
+// 性能说明：
+//   每次写日志 = 1次 GET + 1次 PATCH，单次约 1–4 秒，纯异步不阻塞 UI。
 //   GitHub API rate limit：认证用户 5000次/小时，当前使用频率无压力。
 //
 // 停用方式：
@@ -69,7 +73,7 @@ async function fmLog(fn, data) {
     })();
     const logs = Array.isArray(existing) ? existing : [];
     logs.push({ t: new Date().toISOString(), fn, data });
-    if (logs.length > 1000) logs.splice(0, logs.length - 1000);
+    if (logs.length > 200) logs.splice(0, logs.length - 200);
     await fetch(`https://api.github.com/gists/${logId}`, {
       method: "PATCH",
       headers: {
