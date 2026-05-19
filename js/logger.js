@@ -77,7 +77,12 @@ async function fmLog(fn, data) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        files: { "fm_log.json": { content: JSON.stringify(logs, null, 2) } },
+        files: {
+          "fm_log.json": {
+            content:
+              "[\n" + logs.map((l) => JSON.stringify(l)).join(",\n") + "\n]",
+          },
+        },
       }),
     });
   } catch (e) {
