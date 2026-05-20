@@ -1,18 +1,18 @@
 /* ════════ 字体加载 ════════ */
 @font-face {
-    font-family: "D-DIN";
+    font-family: "Alibaba Sans";
     src: url("../fonts/AlibabaSans-Regular.woff2") format("woff2");
     font-weight: 400;
     font-display: swap;
 }
 @font-face {
-    font-family: "D-DIN";
+    font-family: "Alibaba Sans";
     src: url("../fonts/AlibabaSans-Medium.woff2") format("woff2");
     font-weight: 500;
     font-display: swap;
 }
 @font-face {
-    font-family: "D-DIN";
+    font-family: "Alibaba Sans";
     src: url("../fonts/AlibabaSans-Bold.woff2") format("woff2");
     font-weight: 600;
     font-display: swap;
@@ -52,7 +52,7 @@
     --warn: #f87171;
     --sat: env(safe-area-inset-top, 0px);
     --sab: env(safe-area-inset-bottom, 0px);
-    --f-num: "D-DIN", "Helvetica Neue", Arial, sans-serif;
+    --f-num: "Alibaba Sans", "Helvetica Neue", Arial, sans-serif;
     --f-zh:
         -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue",
         "Microsoft YaHei", sans-serif;
