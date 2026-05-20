@@ -743,6 +743,7 @@ main {
     white-space: nowrap;
 }
 .pe-value {
+    font-family: var(--f-num);
     font-size: 20px;
     font-weight: 600;
     line-height: 1;
