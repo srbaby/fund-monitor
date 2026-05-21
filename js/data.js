@@ -33,7 +33,7 @@ function fetchEst(code) {
   return new Promise((resolve) => {
     const fin = injectScript(
       `https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`,
-      3000,
+      SYS_CONFIG.FETCH_EST_TIMEOUT,
       (v) => {
         delete window.jsonpResolvers[code];
         resolve(v);
@@ -88,7 +88,7 @@ function drainOff() {
       window.apidata = undefined;
       offBusy = false;
       resolve(val);
-      setTimeout(drainOff, 30);
+      setTimeout(drainOff, SYS_CONFIG.FETCH_OFF_DRAIN_DELAY);
     }
   };
 
@@ -120,7 +120,7 @@ function drainOff() {
     }
   };
   s.onerror = () => fin(null);
-  setTimeout(() => fin(null), 3000);
+  setTimeout(() => fin(null), SYS_CONFIG.FETCH_OFF_TIMEOUT);
   s.src = `https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz&code=${code}&page=1&per=1&v=${Date.now()}`;
   document.head.appendChild(s);
 }
