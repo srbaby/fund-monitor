@@ -5,20 +5,23 @@
 
 // ---- 系统参数 ----
 const SYS_CONFIG = {
-  FEE: 0.005, // 全局摩擦费率
-  BUFFER_ZONE: 1.75, // PE信号死区缓冲
-  EQUITY_DEV_LIMIT: 1.75, // 权益偏离警告阈值
-  PE_HIGH_THRESHOLD: 65, // 权益方向判断分界线（高于此值为高估区）
-  CODE_XQ: "003949", // 资金来源：兴全中长债
-  CODE_A500: "022435", // 增权优先品种：南方中证A500ETF联接C
-  LIMIT_A500C: 0.2, // A500C单品持仓上限（占总资产）
-  REFRESH_IDX: 10000, // 指数刷新间隔（ms）
-  REFRESH_API: 60000, // 基金数据刷新间隔（ms）
-  T_PRE_MARKET: 540, // 盘前开始（分钟）09:00
-  T_OPEN: 570, // 开盘（分钟）09:30
-  T_MID_BREAK: 690, // 午休开始（分钟）11:30
-  T_AFTERNOON: 780, // 下午开盘（分钟）13:00
-  T_CLOSE: 900, // 收盘（分钟）15:00
+  FEE: 0.005,              // 全局摩擦费率
+  BUFFER_ZONE: 1.75,       // PE信号死区缓冲
+  EQUITY_DEV_LIMIT: 1.75,  // 权益偏离警告阈值
+  PE_HIGH_THRESHOLD: 65,   // 权益方向判断分界线（高于此值为高估区）
+  CODE_XQ: "003949",       // 资金来源：兴全中长债
+  CODE_A500: "022435",     // 增权优先品种：南方中证A500ETF联接C
+  LIMIT_A500C: 0.2,        // A500C单品持仓上限（占总资产）
+  REFRESH_IDX: 10000,      // 指数刷新间隔（ms）
+  REFRESH_API: 60000,      // 基金数据刷新间隔（ms）
+  T_PRE_MARKET: 540,       // 盘前开始（分钟）09:00
+  T_OPEN: 570,             // 开盘（分钟）09:30
+  T_MID_BREAK: 690,        // 午休开始（分钟）11:30
+  T_AFTERNOON: 780,        // 下午开盘（分钟）13:00
+  T_CLOSE: 900,            // 收盘（分钟）15:00
+  FETCH_EST_TIMEOUT: 3000, // 估算净值请求超时（ms）
+  FETCH_OFF_TIMEOUT: 1500, // 官方净值单次请求超时（ms）
+  FETCH_OFF_DRAIN_DELAY: 0,// 官方净值串行队列间隔（ms）
 };
 
 // ---- 市场常量 ----
@@ -43,12 +46,12 @@ const INDICES = [
 
 // ---- 默认看板列表 ----
 const DEFAULT_CODES = [
-  SYS_CONFIG.CODE_XQ, // 003949 兴全稳泰债券A
-  "160622", // 鹏华丰利债券LOF
-  "110027", // 易方达安心回报A
-  "011554", // 海富通欣利混合A
-  "007466", // 华泰柏瑞红利低波联接A
-  SYS_CONFIG.CODE_A500, // 022435 南方中证A500ETF联接C
+  SYS_CONFIG.CODE_XQ,  // 003949 兴全稳泰债券A
+  "160622",            // 鹏华丰利债券LOF
+  "110027",            // 易方达安心回报A
+  "011554",            // 海富通欣利混合A
+  "007466",            // 华泰柏瑞红利低波联接A
+  SYS_CONFIG.CODE_A500,// 022435 南方中证A500ETF联接C
 ];
 
 // ---- 基金名称表 ----
