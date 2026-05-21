@@ -3,9 +3,8 @@
 //
 // 用途：记录所有本地写入和云端推送操作，供多端数据核查与问题排查。
 //
-// 配置：云同步格式第三段填入 LogGistID，与主 Gist 共用 Token。
-//   格式：GistID,Token,LogGistID
-//   Log Gist 初始内容须为 []（空数组）。
+// 配置：云同步格式 GistID,Token，日志写入主 Gist 的 fm_log.json 文件。
+//   首次使用前须在主 Gist 手动添加 fm_log.json，初始内容为 []。
 //
 // 加载顺序：index.html 中 config.js 之后、store.js 之前。
 //
@@ -40,24 +39,12 @@
 //   - 删除 logger.js 文件及 index.html 中对应的 <script> 标签
 //   - 删除 store.js 中所有 fmLog(...) 调用行
 //   - 删除 interact.js 中 fmLog(...) 调用行
-//   - interact.js openCloudConfig 的 saveLogGistId 调用可保留（无副作用）
 //
 // 再次启用：重新加入 logger.js 并在各调用点加回 fmLog(...) 即可。
 // ============================================================
 
-const STORE_LOG_GIST_ID = "fm_log_gist_id";
-
-function loadLogGistId() {
-  return localStorage.getItem(STORE_LOG_GIST_ID) || "";
-}
-function saveLogGistId(id) {
-  if (id) localStorage.setItem(STORE_LOG_GIST_ID, id);
-  else localStorage.removeItem(STORE_LOG_GIST_ID);
-}
-
 async function fmLog(fn, data) {
-  const logId = loadLogGistId();
-  const { token } = loadGistConfig();
+  const { id: logId, token } = loadGistConfig();
   if (!logId || !token) return;
   try {
     const res = await fetch(`https://api.github.com/gists/${logId}`, {
