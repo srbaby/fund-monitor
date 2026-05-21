@@ -189,10 +189,33 @@ function exportSnapshot() {
   return btoa(encodeURIComponent(JSON.stringify(data)));
 }
 
-function importSnapshot(str) {
+// 只更新 PE 定锚；内容与本地相同时返回 false 跳过
+function importPeSnapshot(p) {
+  if (!p) return false;
+  if (JSON.stringify(loadPe()) === JSON.stringify(p)) return false;
+  localStorage.setItem(STORE_PE, JSON.stringify(p));
+  fmLog("importPeSnapshot", p);
+  dispatchUpdate("LOCAL_CONFIG");
+  return true;
+}
+
+// 只更新持仓配置（f/h/s/pr）；内容与本地相同时返回 false 跳过
+function importSnapshot(data) {
   try {
-    const data = JSON.parse(decodeURIComponent(atob(str)));
-    if (data.f && Array.isArray(data.f)) {
+    if (!data || !data.f) return false;
+    const localF = JSON.stringify(funds);
+    const localH = localStorage.getItem(STORE_HOLDINGS) || "{}";
+    const localS = JSON.stringify(loadSellPlan());
+    const localPr = loadPrioritySell() || null;
+    const remoteH = JSON.stringify(data.h || {});
+    const remoteS = JSON.stringify(data.s || {});
+    if (
+      localF === JSON.stringify(data.f) &&
+      localH === remoteH &&
+      localS === remoteS &&
+      localPr === (data.pr || null)
+    ) return false;
+    if (Array.isArray(data.f)) {
       funds = data.f;
       localStorage.setItem(STORE_CODES, JSON.stringify(funds));
     }
@@ -200,11 +223,10 @@ function importSnapshot(str) {
       _holdingsCache = null;
       localStorage.setItem(STORE_HOLDINGS, JSON.stringify(data.h));
     }
-    if (data.p) localStorage.setItem(STORE_PE, JSON.stringify(data.p));
     if (data.s) saveSellPlan(data.s);
     if (data.pr) localStorage.setItem(STORE_PRIORITY_SELL, data.pr);
     else localStorage.removeItem(STORE_PRIORITY_SELL);
-    fmLog("importSnapshot", { f: data.f, p: data.p, h: data.h, s: data.s, pr: data.pr });
+    fmLog("importSnapshot", { f: data.f, h: data.h, s: data.s, pr: data.pr });
     dispatchUpdate("FUNDS");
     dispatchUpdate("LOCAL_CONFIG");
     return true;

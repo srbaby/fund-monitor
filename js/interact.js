@@ -78,7 +78,7 @@ function addFund() {
   if (/^\d{6}$/.test(code) && !funds.includes(code)) {
     saveFunds([...funds, code]);
     input.value = "";
-    syncCloud("push");
+    syncCloud("push_config");
     refreshData();
   } else input.value = "";
 }
@@ -91,7 +91,7 @@ function delFund(code) {
       : NAMES[code] || code;
   if (!confirm(`确认删除「${name}」？`)) return;
   saveFunds(funds.filter((c) => c !== code));
-  syncCloud("push");
+  syncCloud("push_config");
   refreshData();
 }
 
@@ -134,7 +134,7 @@ function confirmPe() {
 
   savePe({ bucketStr, peYest, priceAnchor, priceBuy, priceSell });
 
-  syncCloud("push_now");
+  syncCloud("push_pe_now");
   alert("✅ 定锚已更新，云端同步已在后台触发");
   closePeModal();
 }
@@ -331,7 +331,7 @@ function saveHoldings() {
   saveHoldingsData(shares, equity, shortNames);
   saveSellPlan(plan);
 
-  syncCloud("push_now");
+  syncCloud("push_config");
   alert("✅ 配置已保存，云端同步已在后台触发");
 }
 
@@ -415,52 +415,64 @@ function openCloudConfig() {
   });
 }
 
-// 返回 true 表示 pull 成功，false 表示失败或跳过
+// 返回 true 表示有实际数据变更，false 表示失败或内容无变化
+// mode: "pull" | "push_pe" | "push_pe_now" | "push_config"
 async function syncCloud(mode = "pull") {
   const { id: gid, token: gtk } = loadGistConfig();
   if (!gid || !gtk) return false;
 
   if (mode === "pull") {
-    console.log("☁️ 正在拉取云端数据...");
     _isSyncingPull = true;
     try {
-      const remoteData = await cloudFetch(gid, gtk);
-      if (remoteData && remoteData.f) {
-        const snapshot = btoa(encodeURIComponent(JSON.stringify(remoteData)));
-        if (importSnapshot(snapshot)) {
-          await refreshData();
-          console.log("✅ 云端数据已覆盖本地");
-          return true;
-        }
+      // 两文件并行拉取，各自比对，只在内容变化时写入
+      const [remotePe, remoteConfig] = await Promise.all([
+        cloudFetchPe(gid, gtk),
+        cloudFetchConfig(gid, gtk),
+      ]);
+      const peChanged = importPeSnapshot(remotePe);
+      const configChanged = importSnapshot(remoteConfig);
+      if (peChanged || configChanged) {
+        await refreshData();
+        console.log("✅ 云端数据已同步");
+        return true;
       }
       return false;
     } finally {
       _isSyncingPull = false;
     }
-  } else if (mode === "push" || mode === "push_now") {
-    if (_isSyncingPull) return false;
+  }
 
+  if (_isSyncingPull) return false;
+
+  if (mode === "push_pe" || mode === "push_pe_now") {
     const doPush = async () => {
-      console.log("☁️ 正在推送到云端...");
+      const peData = loadPe();
+      const ok = await cloudUpdatePe(gid, gtk, peData);
+      fmLog("syncCloud_push_pe", peData);
+      if (ok) console.log("✅ PE 推送成功");
+      else console.error("❌ PE 推送失败");
+    };
+    clearTimeout(_syncTimer);
+    if (mode === "push_pe_now") await doPush();
+    else _syncTimer = setTimeout(doPush, 2000);
+    return true;
+  }
+
+  if (mode === "push_config") {
+    const doPush = async () => {
       const payload = {
         f: funds,
         h: safeParse(localStorage.getItem(STORE_HOLDINGS), {}),
-        p: loadPe(),
         s: loadSellPlan(),
         pr: loadPrioritySell() || null,
       };
-      const ok = await cloudUpdate(gid, gtk, payload);
-      fmLog("syncCloud_push", payload);
-      if (ok) console.log("✅ 推送云端成功");
-      else console.error("❌ 推送云端失败");
+      const ok = await cloudUpdateConfig(gid, gtk, payload);
+      fmLog("syncCloud_push_config", payload);
+      if (ok) console.log("✅ Config 推送成功");
+      else console.error("❌ Config 推送失败");
     };
-
     clearTimeout(_syncTimer);
-    if (mode === "push_now") {
-      await doPush();
-    } else {
-      _syncTimer = setTimeout(doPush, 2000);
-    }
+    _syncTimer = setTimeout(doPush, 2000);
     return true;
   }
 

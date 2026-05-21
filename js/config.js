@@ -110,3 +110,7 @@ const STORE_GIST_TOKEN = "fm_gist_token";
 function isZZ500Product(name) {
   return !!(name && name.includes("中证500"));
 }
+
+// ---- Gist 文件名 ----
+const GIST_FILE_PE = "fm_pe.json";
+const GIST_FILE_CONFIG = "fm_config.json";

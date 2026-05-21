@@ -13,7 +13,6 @@ observeState("INDICES", UI_updateIndices);
 observeState("FUNDS", UI_updateFunds);
 observeState("LOCAL_CONFIG", () => {
   UI_updateLocalConfig();
-  syncCloud("push");
 });
 
 updateClock();

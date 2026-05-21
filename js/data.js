@@ -181,21 +181,20 @@ function getNavByCode(code) {
   return null;
 }
 
-async function cloudFetch(gistId, token) {
+async function _cloudReadFile(gistId, token, filename) {
   try {
     const res = await fetch(`https://api.github.com/gists/${gistId}`, {
       headers: { Authorization: `token ${token}` },
     });
     const data = await res.json();
-    const content = data.files["fm_config.json"].content;
-    return JSON.parse(content);
+    return JSON.parse(data.files[filename].content);
   } catch (e) {
-    console.error("Cloud Pull Failed", e);
+    console.error("Cloud Pull Failed", filename, e);
     return null;
   }
 }
 
-async function cloudUpdate(gistId, token, payload) {
+async function _cloudWriteFile(gistId, token, filename, payload) {
   try {
     const res = await fetch(`https://api.github.com/gists/${gistId}`, {
       method: "PATCH",
@@ -204,12 +203,25 @@ async function cloudUpdate(gistId, token, payload) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        files: { "fm_config.json": { content: JSON.stringify(payload) } },
+        files: { [filename]: { content: JSON.stringify(payload) } },
       }),
     });
     return res.ok;
   } catch (e) {
-    console.error("Cloud Push Failed", e);
+    console.error("Cloud Push Failed", filename, e);
     return false;
   }
+}
+
+function cloudFetchPe(gistId, token) {
+  return _cloudReadFile(gistId, token, GIST_FILE_PE);
+}
+function cloudFetchConfig(gistId, token) {
+  return _cloudReadFile(gistId, token, GIST_FILE_CONFIG);
+}
+function cloudUpdatePe(gistId, token, peData) {
+  return _cloudWriteFile(gistId, token, GIST_FILE_PE, peData);
+}
+function cloudUpdateConfig(gistId, token, payload) {
+  return _cloudWriteFile(gistId, token, GIST_FILE_CONFIG, payload);
 }
