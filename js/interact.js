@@ -353,7 +353,7 @@ async function manualPull() {
 async function _refreshCloudBtn() {
   const { id, token } = loadGistConfig();
   if (!id || !token) return;
-  await _verifyCloudConfig(id, token, loadLogGistId());
+  await _verifyCloudConfig(id, token);
   const cs = getCloudStatus();
   const cfgBtn = document.getElementById("cloudCfgBtn");
   if (!cfgBtn) return;
@@ -361,27 +361,19 @@ async function _refreshCloudBtn() {
   const bd = cs.ok ? "var(--dn-bd)" : "var(--sell-bd)";
   cfgBtn.style.color = col;
   cfgBtn.style.borderColor = bd;
-  cfgBtn.textContent = `⚙ 配置 (${cs.count}/3)`;
+  cfgBtn.textContent = `⚙ 配置 (${cs.count}/2)`;
 }
 
 // 验证已填字段的连通性，结果写入 store（后台静默执行，不阻塞 UI）
-async function _verifyCloudConfig(gid, token, logId) {
-  const count = [gid, token, logId].filter(Boolean).length;
-  setCloudStatus({ count, ok: false }); // 先写 count，ok 等验证结果
+async function _verifyCloudConfig(gid, token) {
+  const count = [gid, token].filter(Boolean).length;
+  setCloudStatus({ count, ok: false });
   if (count < 2) return;
   try {
     const res = await fetch(`https://api.github.com/gists/${gid}`, {
       headers: { Authorization: `token ${token}` },
     });
-    const gistOk = res.ok;
-    let logOk = true;
-    if (logId) {
-      const logRes = await fetch(`https://api.github.com/gists/${logId}`, {
-        headers: { Authorization: `token ${token}` },
-      });
-      logOk = logRes.ok;
-    }
-    setCloudStatus({ count, ok: gistOk && logOk });
+    setCloudStatus({ count, ok: res.ok });
   } catch {
     setCloudStatus({ count, ok: false });
   }
@@ -392,19 +384,15 @@ function openCloudConfig() {
 
   UI_showDialog({
     title: "☁️ 云同步配置 (GitHub Gist)",
-    desc: "输入 Gist ID、Token 和日志 Gist ID。置空并保存可关闭同步。",
-    placeholder: "格式：GistID,Token,LogGistID",
-    value:
-      gid && gtk
-        ? `${gid},${gtk}${loadLogGistId() ? "," + loadLogGistId() : ""}`
-        : "",
+    desc: "输入 Gist ID 和 Token。置空并保存可关闭同步。",
+    placeholder: "格式：GistID,Token",
+    value: gid && gtk ? `${gid},${gtk}` : "",
     showCancel: true,
     confirmText: "保存配置",
     onConfirm: async (textarea, modal) => {
       const val = textarea.value.trim();
       if (!val) {
         clearGistConfig();
-        saveLogGistId("");
         setCloudStatus({ count: 0, ok: false });
         document.body.removeChild(modal);
         return alert("已关闭云同步");
@@ -414,14 +402,12 @@ function openCloudConfig() {
       if (parts.length >= 2) {
         const newGid = parts[0].trim();
         const newToken = parts[1].trim();
-        const newLogId = parts[2]?.trim() || "";
         saveGistConfig(newGid, newToken);
-        saveLogGistId(newLogId);
         document.body.removeChild(modal);
         alert("✅ 配置已保存，正在拉取云端数据...");
         const ok = await syncCloud("pull");
         if (!ok) alert("⚠️ 云端拉取失败，请检查 Gist ID 和 Token 是否正确。");
-        _verifyCloudConfig(newGid, newToken, newLogId);
+        _verifyCloudConfig(newGid, newToken);
       } else {
         alert("❌ 格式错误，请使用英文逗号分隔");
       }
