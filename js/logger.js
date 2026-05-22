@@ -21,7 +21,7 @@
 //     - syncCloud_push     云端推送完整 payload
 //
 // 日志格式（fm_log.json，最多200条滚动覆盖）：
-//   { t: ISO时间戳, fn: 触发函数名, data: 写入内容快照 }
+//   { t: ISO时间戳, c: 客户端标识(ios/local/web), fn: 触发函数名, data: 写入内容快照 }
 //
 // 容量说明：
 //   上限设为200条，基于实际使用观察（运行数天约产生70条）调整，
@@ -43,6 +43,12 @@
 // 再次启用：重新加入 logger.js 并在各调用点加回 fmLog(...) 即可。
 // ============================================================
 
+function _getClient() {
+  if (/iPhone|iPad|iPod/.test(navigator.userAgent)) return "ios";
+  if (location.protocol === "file:") return "local";
+  return "web";
+}
+
 async function fmLog(fn, data) {
   const { id: logId, token } = loadGistConfig();
   if (!logId || !token) return;
@@ -59,7 +65,7 @@ async function fmLog(fn, data) {
       }
     })();
     const logs = Array.isArray(existing) ? existing : [];
-    logs.push({ t: new Date().toISOString(), fn, data });
+    logs.push({ t: new Date().toISOString(), c: _getClient(), fn, data });
     if (logs.length > 200) logs.splice(0, logs.length - 200);
     await fetch(`https://api.github.com/gists/${logId}`, {
       method: "PATCH",
