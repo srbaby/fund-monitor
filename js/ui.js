@@ -242,7 +242,7 @@ function UI_renderHoldingDrawerBody(
     </div>
     <div class="dr-card" style="position:relative; z-index:1; border-radius:0 12px 12px 12px; padding:4px 0;">
       <div style="${gridDet} padding:6px 12px; border-bottom:1px solid var(--bd2); font-size:11px; color:var(--t3); font-family:var(--f-zh); font-weight:400;">
-        <div>产品简称</div><div style="display:flex;justify-content:flex-end;">今日涨跌(¥)</div><div style="display:flex;justify-content:flex-end;">持仓占比</div><div style="display:flex;justify-content:flex-end;">持仓金额(¥)</div>
+        <div>产品简称</div><div style="display:flex;justify-content:flex-end;">今日收益(¥)</div><div style="display:flex;justify-content:flex-end;">持仓占比</div><div style="display:flex;justify-content:flex-end;">持仓金额(¥)</div>
       </div>`;
 
   activeProds.forEach((p, idx) => {
@@ -315,8 +315,10 @@ function UI_renderHoldingDrawerBody(
   const _count = _cs.count;
   const _canPull = isCloudConfigured();
   // 配置按钮：有填写的全部验证通过→绿，有填写但验证失败→红，0个→灰
-  const cfgCol = _count === 0 ? "var(--t3)" : _cs.ok ? "var(--dn)" : "var(--sell)";
-  const cfgBd = _count === 0 ? "var(--bd2)" : _cs.ok ? "var(--dn-bd)" : "var(--sell-bd)";
+  const cfgCol =
+    _count === 0 ? "var(--t3)" : _cs.ok ? "var(--dn)" : "var(--sell)";
+  const cfgBd =
+    _count === 0 ? "var(--bd2)" : _cs.ok ? "var(--dn-bd)" : "var(--sell-bd)";
   const cfgLabel = `⚙ 配置 (${_count}/3)`;
   // 拉取按钮：未配置禁用+灰，已配置中性色（不用绿）
   const pullDisabled = _canPull ? "" : "disabled";
@@ -364,7 +366,7 @@ function UI_buildHoldingPlanHtml(
             <div style="font-family:var(--f-zh); color:var(--t1); font-size:13px;"><span style="font-weight:400;">转出</span> <span style="font-weight:500;">${SHORT_NAMES[SYS_CONFIG.CODE_XQ]}</span><span style="color:var(--t3); margin-left:4px;">→ ${SHORT_NAMES[SYS_CONFIG.CODE_A500]}</span></div>
             <div class="num" style="color:var(--buy); font-size:15px; font-weight:600; font-family:var(--f-num); white-space:nowrap;">${fmt(buyDraft.sharesA500C, 2)} <span style="font-size:11px; color:var(--t2); margin-left:2px; font-weight:400; font-family:var(--f-zh);">份</span></div>
           </div>
-          ${buyDraft.allocZZ500C > 0 ? `<div style="background:var(--bg2); border:1px solid var(--bd); border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;"><div style="font-family:var(--f-zh); color:var(--t1); font-size:13px;"><span style="font-weight:400;">转出</span> <span style="font-weight:500;">${SHORT_NAMES[SYS_CONFIG.CODE_XQ]}</span><span style="color:var(--t3); margin-left:4px;">→ ${buyDraft.zz500Code ? (SHORT_NAMES[buyDraft.zz500Code] || buyDraft.zz500Code) : "中证500C"}</span></div><div class="num" style="color:var(--buy); font-size:15px; font-weight:600; font-family:var(--f-num); white-space:nowrap;">${fmt(buyDraft.sharesZZ500C, 2)} <span style="font-size:11px; color:var(--t2); margin-left:2px; font-weight:400; font-family:var(--f-zh);">份</span></div></div>` : ""}
+          ${buyDraft.allocZZ500C > 0 ? `<div style="background:var(--bg2); border:1px solid var(--bd); border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;"><div style="font-family:var(--f-zh); color:var(--t1); font-size:13px;"><span style="font-weight:400;">转出</span> <span style="font-weight:500;">${SHORT_NAMES[SYS_CONFIG.CODE_XQ]}</span><span style="color:var(--t3); margin-left:4px;">→ ${buyDraft.zz500Code ? SHORT_NAMES[buyDraft.zz500Code] || buyDraft.zz500Code : "中证500C"}</span></div><div class="num" style="color:var(--buy); font-size:15px; font-weight:600; font-family:var(--f-num); white-space:nowrap;">${fmt(buyDraft.sharesZZ500C, 2)} <span style="font-size:11px; color:var(--t2); margin-left:2px; font-weight:400; font-family:var(--f-zh);">份</span></div></div>` : ""}
         </div>
         <div style="text-align:center; margin-top:10px; font-size:13px; font-family:var(--f-zh); color:var(--t2);">
           调配金额 <span class="num" style="font-weight:600; border-bottom:1px dashed var(--bd2); padding-bottom:2px; font-size:14px; color:var(--t1); margin-right:16px; font-family:var(--f-num);">${fmt(buyDraft.buyAmt, 2)}</span>
@@ -632,7 +634,8 @@ function renderCards(results, fl, today, tradingDay) {
     container.innerHTML = results
       .map((f) => {
         const pct = getActivePct(f, today, tradingDay);
-        const cc = pct != null ? (pct > 0 ? "up-card" : pct < 0 ? "down-card" : "") : "";
+        const cc =
+          pct != null ? (pct > 0 ? "up-card" : pct < 0 ? "down-card" : "") : "";
         return `<div class="fund-card ${cc}${collapsed ? " collapsed" : ""}" data-code="${f.code}">${buildCardInnerHtml(f, fl, today, tradingDay)}</div>`;
       })
       .join("");
@@ -642,7 +645,8 @@ function renderCards(results, fl, today, tradingDay) {
     const el = container.querySelector(`[data-code="${f.code}"]`);
     if (el) {
       const pct = getActivePct(f, today, tradingDay);
-      const cc = pct != null ? (pct > 0 ? "up-card" : pct < 0 ? "down-card" : "") : "";
+      const cc =
+        pct != null ? (pct > 0 ? "up-card" : pct < 0 ? "down-card" : "") : "";
       el.className = `fund-card ${cc}${collapsed ? " collapsed" : ""}`;
       el.innerHTML = buildCardInnerHtml(f, fl, today, tradingDay);
     }
@@ -678,7 +682,8 @@ function renderTable(results, fl, today, tradingDay) {
     container.innerHTML = results
       .map((f) => {
         const pct = getActivePct(f, today, tradingDay);
-        const cc = pct != null ? (pct > 0 ? "up-row" : pct < 0 ? "down-row" : "") : "";
+        const cc =
+          pct != null ? (pct > 0 ? "up-row" : pct < 0 ? "down-row" : "") : "";
         return `<tr class="${cc}" data-code="${f.code}">${buildTableInnerHtml(f, fl, today, tradingDay)}</tr>`;
       })
       .join("");
@@ -688,7 +693,8 @@ function renderTable(results, fl, today, tradingDay) {
     const el = container.querySelector(`[data-code="${f.code}"]`);
     if (el) {
       const pct = getActivePct(f, today, tradingDay);
-      el.className = pct != null ? (pct > 0 ? "up-row" : pct < 0 ? "down-row" : "") : "";
+      el.className =
+        pct != null ? (pct > 0 ? "up-row" : pct < 0 ? "down-row" : "") : "";
       el.innerHTML = buildTableInnerHtml(f, fl, today, tradingDay);
     }
   });
@@ -744,7 +750,13 @@ function UI_updateLocalConfig() {
   const uiResults = funds.map((c) => resultMap.get(c)).filter(Boolean);
 
   updatePeBar();
-  renderTodayProfit(uiResults, loadHoldings(), getActiveProducts(), mktState, today);
+  renderTodayProfit(
+    uiResults,
+    loadHoldings(),
+    getActiveProducts(),
+    mktState,
+    today,
+  );
 }
 
 // 3. 基金净值更新、或列表增删时触发 (每60秒 / 手动增删)
@@ -766,7 +778,13 @@ function UI_updateFunds() {
     renderTable(uiResults, fl, today, tradingDay);
   }
 
-  renderTodayProfit(uiResults, loadHoldings(), getActiveProducts(), mktState, today);
+  renderTodayProfit(
+    uiResults,
+    loadHoldings(),
+    getActiveProducts(),
+    mktState,
+    today,
+  );
   updatePeBar();
 
   const hasData = uiResults.length > 0;
