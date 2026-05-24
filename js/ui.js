@@ -265,7 +265,7 @@ function UI_renderHoldingDrawerBody(
       <div style="${gridDet} align-items:center; padding:7px 12px; ${idx === activeProds.length - 1 ? "" : "border-bottom:1px solid var(--bd);"}">
         <div style="font-family:var(--f-zh); font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
         <div style="display:flex;justify-content:flex-end;font-size:13px;font-weight:600;" class="num ${pnlCls}">${pnlTxt}</div>
-        <div class="num" style="display:flex;justify-content:flex-end;font-size:13px;font-weight:400;color:var(--t2);font-family:var(--f-num)">${ratioStr}</div>
+        <div class="num" style="display:flex;justify-content:flex-end;font-size:13px;font-weight:400;color:var(--t2);">${ratioStr}</div>
         <div class="num" style="display:flex;justify-content:flex-end;font-size:13px;font-weight:600;color:var(--t1);">${val ? fmt(val, 2) : "--"}</div>
       </div>`;
   });
@@ -356,21 +356,21 @@ function UI_buildHoldingPlanHtml(
       <div style="display:inline-block; background:var(--buy-bg); border:1px solid var(--buy-bd); border-bottom:none; color:var(--buy); font-size:13px; font-weight:600; padding:6px 14px; border-radius:8px 8px 0 0; font-family:var(--f-zh); margin-bottom:-1px; position:relative; z-index:2;">⬆ 增权预案</div>
       <div class="dr-card" style="position:relative; z-index:1; border-radius:0 12px 12px 12px; border:1px solid var(--buy-bd); background:var(--bg3); padding:12px;">
         <div class="dr-summary-box" style="margin-bottom:12px;">
-          <div class="dr-summary-item" style="flex:1;"><div class="dr-lbl" style="margin-bottom:2px;">当前权益</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600; font-family:var(--f-num);">${fmt(eqData.equity, 2)}%</div></div>
-          <div class="dr-summary-item" style="flex:1; border-left:1px solid var(--bd2); border-right:1px solid var(--bd2); padding:0 4px;"><div class="dr-lbl" style="margin-bottom:2px;">测算目标</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600; font-family:var(--f-num);">${buyDraft.targetEq}%</div></div>
-          <div class="dr-summary-item" style="flex:1;"><div class="dr-lbl" style="margin-bottom:2px;">需要增权</div><div class="num" style="color:var(--buy); font-size:16px; font-weight:600; font-family:var(--f-num);">${fmt(diffPct, 2)}%</div></div>
+          <div class="dr-summary-item" style="flex:1;"><div class="dr-lbl" style="margin-bottom:2px;">当前权益</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600;">${fmt(eqData.equity, 2)}%</div></div>
+          <div class="dr-summary-item" style="flex:1; border-left:1px solid var(--bd2); border-right:1px solid var(--bd2); padding:0 4px;"><div class="dr-lbl" style="margin-bottom:2px;">测算目标</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600;">${buyDraft.targetEq}%</div></div>
+          <div class="dr-summary-item" style="flex:1;"><div class="dr-lbl" style="margin-bottom:2px;">需要增权</div><div class="num" style="color:var(--buy); font-size:16px; font-weight:600;">${fmt(diffPct, 2)}%</div></div>
         </div>
         <div class="dr-lbl" style="margin-bottom:6px; font-family:var(--f-zh);">资金调配 (固定转出)</div>
         <div style="display:flex; flex-direction:column; gap:6px;">
           <div style="background:var(--bg2); border:1px solid var(--bd); border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;">
             <div style="font-family:var(--f-zh); color:var(--t1); font-size:13px;"><span style="font-weight:400;">转出</span> <span style="font-weight:500;">${SHORT_NAMES[SYS_CONFIG.CODE_XQ]}</span><span style="color:var(--t3); margin-left:4px;">→ ${SHORT_NAMES[SYS_CONFIG.CODE_A500]}</span></div>
-            <div class="num" style="color:var(--buy); font-size:15px; font-weight:600; font-family:var(--f-num); white-space:nowrap;">${fmt(buyDraft.sharesA500C, 2)} <span style="font-size:11px; color:var(--t2); margin-left:2px; font-weight:400; font-family:var(--f-zh);">份</span></div>
+            <div class="num" style="color:var(--buy); font-size:15px; font-weight:600; white-space:nowrap;">${fmt(buyDraft.sharesA500C, 2)} <span style="font-size:11px; color:var(--t2); margin-left:2px; font-weight:400; font-family:var(--f-zh);">份</span></div>
           </div>
-          ${buyDraft.allocZZ500C > 0 ? `<div style="background:var(--bg2); border:1px solid var(--bd); border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;"><div style="font-family:var(--f-zh); color:var(--t1); font-size:13px;"><span style="font-weight:400;">转出</span> <span style="font-weight:500;">${SHORT_NAMES[SYS_CONFIG.CODE_XQ]}</span><span style="color:var(--t3); margin-left:4px;">→ ${buyDraft.zz500Code ? SHORT_NAMES[buyDraft.zz500Code] || buyDraft.zz500Code : "中证500C"}</span></div><div class="num" style="color:var(--buy); font-size:15px; font-weight:600; font-family:var(--f-num); white-space:nowrap;">${fmt(buyDraft.sharesZZ500C, 2)} <span style="font-size:11px; color:var(--t2); margin-left:2px; font-weight:400; font-family:var(--f-zh);">份</span></div></div>` : ""}
+          ${buyDraft.allocZZ500C > 0 ? `<div style="background:var(--bg2); border:1px solid var(--bd); border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;"><div style="font-family:var(--f-zh); color:var(--t1); font-size:13px;"><span style="font-weight:400;">转出</span> <span style="font-weight:500;">${SHORT_NAMES[SYS_CONFIG.CODE_XQ]}</span><span style="color:var(--t3); margin-left:4px;">→ ${buyDraft.zz500Code ? SHORT_NAMES[buyDraft.zz500Code] || buyDraft.zz500Code : "中证500C"}</span></div><div class="num" style="color:var(--buy); font-size:15px; font-weight:600; white-space:nowrap;">${fmt(buyDraft.sharesZZ500C, 2)} <span style="font-size:11px; color:var(--t2); margin-left:2px; font-weight:400; font-family:var(--f-zh);">份</span></div></div>` : ""}
         </div>
         <div style="text-align:center; margin-top:10px; font-size:13px; font-family:var(--f-zh); color:var(--t2);">
-          调配金额 <span class="num" style="font-weight:600; border-bottom:1px dashed var(--bd2); padding-bottom:2px; font-size:14px; color:var(--t1); margin-right:16px; font-family:var(--f-num);">${fmt(buyDraft.buyAmt, 2)}</span>
-          交易磨损 <span class="num" style="font-weight:600; border-bottom:1px dashed var(--bd2); padding-bottom:2px; color:var(--warn); font-size:14px; font-family:var(--f-num);">${fmt(friction, 2)}</span>
+          调配金额 <span class="num" style="font-weight:600; border-bottom:1px dashed var(--bd2); padding-bottom:2px; font-size:14px; color:var(--t1); margin-right:16px;">${fmt(buyDraft.buyAmt, 2)}</span>
+          交易磨损 <span class="num" style="font-weight:600; border-bottom:1px dashed var(--bd2); padding-bottom:2px; color:var(--warn); font-size:14px;">${fmt(friction, 2)}</span>
         </div>
       </div>
     </div>`;
@@ -383,9 +383,9 @@ function UI_buildHoldingPlanHtml(
       <div style="display:inline-block; background:var(--sell-bg); border:1px solid var(--sell-bd); border-bottom:none; color:var(--sell); font-size:13px; font-weight:600; padding:6px 14px; border-radius:8px 8px 0 0; font-family:var(--f-zh); margin-bottom:-1px; position:relative; z-index:2;">⬇ 降权预案</div>
       <div class="dr-card" style="position:relative; z-index:1; border-radius:0 12px 12px 12px; border:1px solid var(--sell-bd); background:var(--bg3); padding:12px;">
         <div class="dr-summary-box" style="margin-bottom:12px;">
-          <div class="dr-summary-item" style="flex:1;"><div class="dr-lbl" style="margin-bottom:2px;">当前权益</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600; font-family:var(--f-num);">${fmt(eqData.equity, 2)}%</div></div>
-          <div class="dr-summary-item" style="flex:1; border-left:1px solid var(--bd2); border-right:1px solid var(--bd2); padding:0 4px;"><div class="dr-lbl" style="margin-bottom:2px;">测算目标</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600; font-family:var(--f-num);">${sellDraft.targetEq}%</div></div>
-          <div class="dr-summary-item" style="flex:1;"><div class="dr-lbl" style="margin-bottom:2px;">需要降权</div><div class="num" style="color:var(--sell); font-size:16px; font-weight:600; font-family:var(--f-num);">${fmt(eqData.equity - sellDraft.targetEq, 2)}%</div></div>
+          <div class="dr-summary-item" style="flex:1;"><div class="dr-lbl" style="margin-bottom:2px;">当前权益</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600;">${fmt(eqData.equity, 2)}%</div></div>
+          <div class="dr-summary-item" style="flex:1; border-left:1px solid var(--bd2); border-right:1px solid var(--bd2); padding:0 4px;"><div class="dr-lbl" style="margin-bottom:2px;">测算目标</div><div class="num" style="color:var(--t2); font-size:16px; font-weight:600;">${sellDraft.targetEq}%</div></div>
+          <div class="dr-summary-item" style="flex:1;"><div class="dr-lbl" style="margin-bottom:2px;">需要降权</div><div class="num" style="color:var(--sell); font-size:16px; font-weight:600;">${fmt(eqData.equity - sellDraft.targetEq, 2)}%</div></div>
         </div>
         <div class="dr-lbl" style="margin-bottom:6px; font-family:var(--f-zh);">资金调配 (按权重转出)</div>
         <div style="display:flex; flex-direction:column; gap:6px;">`;
@@ -396,7 +396,7 @@ function UI_buildHoldingPlanHtml(
         html += `
           <div style="background:var(--bg2); border:1px solid var(--bd); border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;">
             <div style="font-family:var(--f-zh); color:var(--t1); font-size:13px;"><span style="font-weight:400;">转出</span> <span style="font-weight:600;">${p.name}</span></div>
-            <div style="display:flex; align-items:center;"><span class="num" style="color:var(--sell); font-size:15px; font-weight:600; font-family:var(--f-num);">${fmt(res.shares, 2)}</span><span style="font-size:11px; color:var(--t2); font-weight:400; margin-left:3px; font-family:var(--f-zh);">份</span></div>
+            <div style="display:flex; align-items:center;"><span class="num" style="color:var(--sell); font-size:15px; font-weight:600;">${fmt(res.shares, 2)}</span><span style="font-size:11px; color:var(--t2); font-weight:400; margin-left:3px; font-family:var(--f-zh);">份</span></div>
           </div>`;
       }
     });
@@ -404,8 +404,8 @@ function UI_buildHoldingPlanHtml(
     html += `
         </div>
         <div style="text-align:center; margin-top:10px; font-size:13px; font-family:var(--f-zh); color:var(--t2);">
-          测算总金额 <span class="num" style="font-weight:600; border-bottom:1px dashed var(--bd2); padding-bottom:2px; font-size:14px; color:var(--t1); margin-right:16px; font-family:var(--f-num);">${fmt(sellDraft.totalCashOut + sellDraft.totalFriction, 2)}</span>
-          交易磨损 <span class="num" style="font-weight:600; border-bottom:1px dashed var(--bd2); padding-bottom:2px; color:var(--warn); font-size:14px; font-family:var(--f-num);">${fmt(sellDraft.totalFriction, 2)}</span>
+          测算总金额 <span class="num" style="font-weight:600; border-bottom:1px dashed var(--bd2); padding-bottom:2px; font-size:14px; color:var(--t1); margin-right:16px;">${fmt(sellDraft.totalCashOut + sellDraft.totalFriction, 2)}</span>
+          交易磨损 <span class="num" style="font-weight:600; border-bottom:1px dashed var(--bd2); padding-bottom:2px; color:var(--warn); font-size:14px;">${fmt(sellDraft.totalFriction, 2)}</span>
         </div>
       </div>
     </div>`;
@@ -428,7 +428,7 @@ function updateClock() {
     .map((v) => String(v).padStart(2, "0"))
     .join(":");
   document.getElementById("liveDate").innerHTML =
-    `<span class="num" style="font-family:var(--f-num)">${n.getFullYear()}/${String(n.getMonth() + 1).padStart(2, "0")}/${String(n.getDate()).padStart(2, "0")}</span> ${DAYS[n.getDay()]}`;
+    `<span class="num">${n.getFullYear()}/${String(n.getMonth() + 1).padStart(2, "0")}/${String(n.getDate()).padStart(2, "0")}</span> ${DAYS[n.getDay()]}`;
   const state = getMarketState();
   if (state !== _mktState) {
     _mktState = state;
@@ -478,7 +478,7 @@ function renderIndices(map) {
   document.getElementById("idxBar").innerHTML = INDICES.map((idx) => {
     const d = map[idx.id];
     if (!d || !d.f2)
-      return `<div class="idx-cell"><div class="idx-lbl">${idx.lbl}</div><div class="idx-row"><div class="idx-chg flat num" style="font-family:var(--f-num)">—</div></div></div>`;
+      return `<div class="idx-cell"><div class="idx-lbl">${idx.lbl}</div><div class="idx-row"><div class="idx-chg flat num">—</div></div></div>`;
     const price = typeof d.f2 === "number" ? d.f2.toFixed(2) : String(d.f2);
     const pct = d.f3 ?? 0,
       cls = pct > 0 ? "up" : pct < 0 ? "down" : "flat",
@@ -491,7 +491,7 @@ function renderIndices(map) {
           : "flash-down"
         : "";
     idxPrev[idx.id] = price;
-    return `<div class="idx-cell ${cls} ${flash}"><div class="idx-lbl">${idx.lbl}</div><div class="idx-row"><div class="idx-chg num ${cls}" style="font-family:var(--f-num)">${sign}${typeof pct === "number" ? pct.toFixed(2) : pct}%</div><div class="idx-price num" style="font-family:var(--f-num)">${price}</div></div></div>`;
+    return `<div class="idx-cell ${cls} ${flash}"><div class="idx-lbl">${idx.lbl}</div><div class="idx-row"><div class="idx-chg num ${cls}">${sign}${typeof pct === "number" ? pct.toFixed(2) : pct}%</div><div class="idx-price num">${price}</div></div></div>`;
   }).join("");
 }
 
@@ -656,7 +656,7 @@ function renderCards(results, fl, today, tradingDay) {
 function buildTableInnerHtml(f, fl, today, tradingDay) {
   const dName = getDisplayName(f);
   if (f.error)
-    return `<td><span class="tbl-drag">⠿</span><div style="display:inline-block;vertical-align:top"><div class="tbl-name" style="color:var(--t3)">${dName}</div><div class="tbl-code num" style="font-family:var(--f-num)">${f.code}</div></div></td><td colspan="2" style="color:var(--t3);font-size:12px">⚠ 获取超时</td><td><button class="tbl-del" onclick="delFund('${f.code}')">删除</button></td>`;
+    return `<td><span class="tbl-drag">⠿</span><div style="display:inline-block;vertical-align:top"><div class="tbl-name" style="color:var(--t3)">${dName}</div><div class="tbl-code num">${f.code}</div></div></td><td colspan="2" style="color:var(--t3);font-size:12px">⚠ 获取超时</td><td><button class="tbl-del" onclick="delFund('${f.code}')">删除</button></td>`;
   const ep = fp(f.estPct),
     op = fp(f.offPct),
     { ef, of2 } = (fl || {})[f.code] || { ef: "", of2: "" };
@@ -664,9 +664,9 @@ function buildTableInnerHtml(f, fl, today, tradingDay) {
     ((f.estTime && f.estTime.slice(0, 10) === today) || tradingDay) &&
     (!f.offDate || f.offDate.slice(0, 10) < today);
 
-  return `<td><span class="tbl-drag">⠿</span><div style="display:inline-block;vertical-align:top"><div class="tbl-name">${dName}</div><div class="tbl-code num" style="font-family:var(--f-num)">${f.code}</div></div></td>
-    <td><div class="tbl-pct num ${ep.cls} ${ef}" style="font-family:var(--f-num)">${ep.txt}</div><div class="tbl-nav">净值 <span class="nv num" style="font-family:var(--f-num)">${f.estVal || "--"}</span></div><div class="tbl-time num" style="font-family:var(--f-num)">${f.estTime || "--"}</div></td>
-    <td><div style="${tblStale ? "opacity:0.35;filter:grayscale(1)" : ""}"><div class="tbl-pct num ${op.cls} ${of2}" style="font-family:var(--f-num)">${op.txt}</div><div class="tbl-nav">净值 <span class="nv num" style="font-family:var(--f-num)">${f.offVal || "--"}</span></div><div class="tbl-time num" style="font-family:var(--f-num)">${f.offDate || "--"}</div></div></td>
+  return `<td><span class="tbl-drag">⠿</span><div style="display:inline-block;vertical-align:top"><div class="tbl-name">${dName}</div><div class="tbl-code num">${f.code}</div></div></td>
+    <td><div class="tbl-pct num ${ep.cls} ${ef}">${ep.txt}</div><div class="tbl-nav">净值 <span class="nv num">${f.estVal || "--"}</span></div><div class="tbl-time num">${f.estTime || "--"}</div></td>
+    <td><div style="${tblStale ? "opacity:0.35;filter:grayscale(1)" : ""}"><div class="tbl-pct num ${op.cls} ${of2}">${op.txt}</div><div class="tbl-nav">净值 <span class="nv num">${f.offVal || "--"}</span></div><div class="tbl-time num">${f.offDate || "--"}</div></div></td>
     <td><button class="tbl-del" onclick="delFund('${f.code}')">删除</button></td>`;
 }
 
