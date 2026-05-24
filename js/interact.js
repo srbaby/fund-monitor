@@ -36,7 +36,10 @@ function rebuildSortable() {
     const o = Array.from(evt.to.children)
       .map((el) => el.dataset.code)
       .filter(Boolean);
-    if (o.length === funds.length) saveFunds(o);
+    if (o.length === funds.length) {
+      saveFunds(o);
+      syncCloud("push_config");
+    }
   };
   cardSortable = Sortable.create(document.getElementById("cardView"), {
     handle: ".drag-handle",
