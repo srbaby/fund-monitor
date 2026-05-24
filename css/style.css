@@ -92,7 +92,7 @@ body {
     color: var(--flat);
 }
 .num {
-    font-family: var(--f-num);
+    font-family: var(--f-num) !important; /* ✅ 新增：防御级优先级，反杀所有劫持插件 */
 }
 
 /* ════════ Header ════════ */
@@ -156,7 +156,6 @@ body {
     margin-left: 12px;
 }
 .hd-time {
-    font-family: var(--f-num);
     font-size: 20px;
     font-weight: 600;
     line-height: 1;
@@ -218,13 +217,11 @@ body {
     gap: 6px;
 }
 .idx-chg {
-    font-family: var(--f-num); /* ✅ 新增：精准指定纯数字节点 */
     font-size: 16px;
     font-weight: 600;
     line-height: 1;
 }
 .idx-price {
-    font-family: var(--f-num); /* ✅ 新增：精准指定纯数字节点 */
     font-size: 11px;
     font-weight: 400;
     color: var(--t2);
@@ -341,7 +338,6 @@ body.collapsed-mode main {
     border: none;
     outline: none;
     color: var(--t1);
-    font-family: var(--f-num);
     font-size: 14px;
     padding: 9px 0;
     letter-spacing: 1px;
@@ -432,7 +428,6 @@ main {
     word-break: break-word;
 }
 .card-code {
-    font-family: var(--f-num);
     font-size: 10px;
     color: var(--t3);
     font-weight: 400;
@@ -498,7 +493,6 @@ main {
     font-weight: 500;
 }
 .dh-pct {
-    font-family: var(--f-num);
     font-size: 26px;
     font-weight: 600;
     line-height: 1;
@@ -516,12 +510,10 @@ main {
     opacity: 0.8;
 }
 .dh-meta b {
-    font-family: var(--f-num); /* ✅ 新增：仅给纯数字加 */
     color: var(--t2);
 }
 .inline-pct {
     display: none;
-    font-family: var(--f-num);
     font-size: 14px;
     font-weight: 600;
     flex-shrink: 0;
@@ -666,13 +658,11 @@ main {
     font-weight: 600;
 }
 .tbl-code {
-    font-family: var(--f-num);
     font-size: 11px;
     color: var(--t3);
     margin-top: 4px;
 }
 .tbl-pct {
-    font-family: var(--f-num);
     font-size: 22px;
     font-weight: 600;
     border-radius: 6px;
@@ -685,12 +675,10 @@ main {
     margin-top: 5px;
 }
 .tbl-nav .nv {
-    font-family: var(--f-num); /* ✅ 新增：仅给纯数字加 */
     color: var(--t1);
     font-weight: 500;
 }
 .tbl-time {
-    font-family: var(--f-num);
     font-size: 11px;
     color: var(--t2);
     margin-top: 4px;
@@ -743,7 +731,6 @@ main {
     white-space: nowrap;
 }
 .pe-value {
-    font-family: var(--f-num);
     font-size: 20px;
     font-weight: 600;
     line-height: 1;
@@ -966,7 +953,6 @@ main {
     word-break: break-word;
 }
 .dr-val {
-    font-family: var(--f-num);
     font-size: 15px;
     font-weight: 600;
     color: var(--t1);
@@ -1015,7 +1001,6 @@ main {
     border: 1px solid var(--bd2);
     border-radius: 10px;
     color: var(--t1);
-    font-family: var(--f-num);
     font-weight: 600;
     padding: 12px 16px;
     outline: none;
@@ -1073,7 +1058,6 @@ main {
     border: 1px solid var(--bd2);
     border-radius: 10px;
     color: var(--t1);
-    font-family: var(--f-num);
     font-size: 12px;
     padding: 12px;
     outline: none;
@@ -1193,7 +1177,6 @@ main {
 .dr-badge {
     font-size: 12px;
     font-weight: 500;
-    font-family: var(--f-num);
     padding: 2px 6px;
     border-radius: 6px;
     border: 1px solid var(--bd2);
