@@ -150,7 +150,7 @@ function fetchIndices() {
   return new Promise((resolve) => {
     const cb = "_idx_" + Date.now() + "_" + _idxCounter++;
     const fin = injectScript(
-      `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f12,f14&secids=1.000300,1.000510,1.000905,2.H30269,1.000832,116.HSI,124.HSI,100.HSI&cb=${cb}&_=${Date.now()}`,
+      `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f12,f14&secids=1.000300,1.000510,1.000905,1.000832,1.000012,116.HSI,124.HSI,100.HSI&cb=${cb}&_=${Date.now()}`,
       5000,
       () => {
         delete window[cb];
