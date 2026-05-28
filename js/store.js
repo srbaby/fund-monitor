@@ -199,12 +199,13 @@ function importPeSnapshot(p) {
   return true;
 }
 
-// 只更新持仓配置（f/h/s/pr）；内容与本地相同时返回 false 跳过
 function importSnapshot(data) {
   try {
     if (!data || !data.f) return false;
     const localF = JSON.stringify(funds);
-    const localH = localStorage.getItem(STORE_HOLDINGS) || "{}";
+    const localH = JSON.stringify(
+      safeParse(localStorage.getItem(STORE_HOLDINGS), {}),
+    );
     const localS = JSON.stringify(loadSellPlan());
     const localPr = loadPrioritySell() || null;
     const remoteH = JSON.stringify(data.h || {});
@@ -214,7 +215,8 @@ function importSnapshot(data) {
       localH === remoteH &&
       localS === remoteS &&
       localPr === (data.pr || null)
-    ) return false;
+    )
+      return false;
     if (Array.isArray(data.f)) {
       funds = data.f;
       localStorage.setItem(STORE_CODES, JSON.stringify(funds));
