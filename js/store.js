@@ -92,6 +92,7 @@ function loadFunds() {
 function saveFunds(newFunds) {
   if (newFunds) funds = newFunds;
   localStorage.setItem(STORE_CODES, JSON.stringify(funds));
+  bumpConfigVer();
   fmLog("saveFunds", { funds });
   dispatchUpdate("FUNDS");
 }
@@ -132,6 +133,7 @@ function saveHoldingsData(shares, equity, shortNames) {
     STORE_HOLDINGS,
     JSON.stringify({ shares, equity, shortNames }),
   );
+  bumpConfigVer();
   fmLog("saveHoldingsData", { shares, equity, shortNames });
   dispatchUpdate("LOCAL_CONFIG");
 }
@@ -169,13 +171,26 @@ function loadPrioritySell() {
 }
 function savePrioritySell(code) {
   localStorage.setItem(STORE_PRIORITY_SELL, code);
+  bumpConfigVer();
   fmLog("savePrioritySell", { code });
   dispatchUpdate("LOCAL_CONFIG");
 }
 function clearPrioritySell() {
   localStorage.removeItem(STORE_PRIORITY_SELL);
+  bumpConfigVer();
   fmLog("clearPrioritySell", null);
   dispatchUpdate("LOCAL_CONFIG");
+}
+
+function loadConfigVer() {
+  return localStorage.getItem(STORE_CONFIG_VER) || "";
+}
+function bumpConfigVer() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  const v = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  localStorage.setItem(STORE_CONFIG_VER, v);
+  return v;
 }
 
 function exportSnapshot() {
@@ -202,21 +217,8 @@ function importPeSnapshot(p) {
 function importSnapshot(data) {
   try {
     if (!data || !data.f) return false;
-    const localF = JSON.stringify(funds);
-    const localH = JSON.stringify(
-      safeParse(localStorage.getItem(STORE_HOLDINGS), {}),
-    );
-    const localS = JSON.stringify(loadSellPlan());
-    const localPr = loadPrioritySell() || null;
-    const remoteH = JSON.stringify(data.h || {});
-    const remoteS = JSON.stringify(data.s || {});
-    if (
-      localF === JSON.stringify(data.f) &&
-      localH === remoteH &&
-      localS === remoteS &&
-      localPr === (data.pr || null)
-    )
-      return false;
+    const remoteV = data.v || "";
+    if (remoteV <= loadConfigVer()) return false;
     if (Array.isArray(data.f)) {
       funds = data.f;
       localStorage.setItem(STORE_CODES, JSON.stringify(funds));
@@ -225,10 +227,17 @@ function importSnapshot(data) {
       _holdingsCache = null;
       localStorage.setItem(STORE_HOLDINGS, JSON.stringify(data.h));
     }
-    if (data.s) saveSellPlan(data.s);
+    if (data.s) localStorage.setItem(STORE_SELL_PLAN, JSON.stringify(data.s));
     if (data.pr) localStorage.setItem(STORE_PRIORITY_SELL, data.pr);
     else localStorage.removeItem(STORE_PRIORITY_SELL);
-    fmLog("importSnapshot", { f: data.f, h: data.h, s: data.s, pr: data.pr });
+    localStorage.setItem(STORE_CONFIG_VER, remoteV);
+    fmLog("importSnapshot", {
+      v: remoteV,
+      f: data.f,
+      h: data.h,
+      s: data.s,
+      pr: data.pr,
+    });
     dispatchUpdate("FUNDS");
     dispatchUpdate("LOCAL_CONFIG");
     return true;
