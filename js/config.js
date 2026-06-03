@@ -105,6 +105,7 @@ const STORE_PE = "jy_pe_v2_lagrange";
 const STORE_HOLDINGS = "jy_holdings_v1";
 const STORE_SELL_PLAN = "jy_sell_plan_v1";
 const STORE_PRIORITY_SELL = "jy_priority_sell_v1";
+const STORE_CONFIG_VER = "jy_config_ver_v1";
 const STORE_GIST_ID = "fm_gist_id";
 const STORE_GIST_TOKEN = "fm_gist_token";
 
