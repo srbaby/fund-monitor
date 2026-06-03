@@ -432,14 +432,15 @@ async function syncCloud(mode = "pull") {
         cloudFetchPe(gid, gtk),
         cloudFetchConfig(gid, gtk),
       ]);
+      if (!remotePe && !remoteConfig) return false; // 两文件均拉取失败
       const peChanged = importPeSnapshot(remotePe);
       const configChanged = importSnapshot(remoteConfig);
-      if (peChanged || configChanged) {
-        await refreshData();
-        console.log("✅ 云端数据已同步");
-        return true;
-      }
-      return false;
+      // 本地版本比云端新（上次推送丢失）→ 反向推送自愈，待守卫解除后触发
+      if (remoteConfig && loadConfigVer() > (remoteConfig.v || ""))
+        setTimeout(() => syncCloud("push_config"), 0);
+      if (peChanged || configChanged) console.log("✅ 云端数据已同步");
+      await refreshData();
+      return true;
     } finally {
       _isSyncingPull = false;
     }
@@ -464,6 +465,7 @@ async function syncCloud(mode = "pull") {
   if (mode === "push_config") {
     const doPush = async () => {
       const payload = {
+        v: loadConfigVer(),
         f: funds,
         h: safeParse(localStorage.getItem(STORE_HOLDINGS), {}),
         s: loadSellPlan(),
