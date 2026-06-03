@@ -312,10 +312,9 @@ function handleHoldingAction() {
 }
 
 function saveHoldings() {
-  const raw = _loadRaw() || {};
-  const shares = { ...(raw.shares || {}) };
-  const equity = { ...(raw.equity || {}) };
-  const shortNames = { ...(raw.shortNames || {}) };
+  const shares = {};
+  const equity = {};
+  const shortNames = {};
   const plan = {};
 
   getActiveProducts().forEach((p) => {
@@ -327,7 +326,6 @@ function saveHoldings() {
     shares[p.code] = Math.max(0, sv);
     equity[p.code] = Math.min(1, Math.max(0, ev));
     if (sn) shortNames[p.code] = sn;
-    else delete shortNames[p.code];
     if (wt !== "") plan[p.code] = parseFloat(wt);
   });
 
