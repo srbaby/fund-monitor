@@ -101,7 +101,8 @@ function delFund(code) {
 // ---- PE 定锚操作 ----
 function openPeModal() {
   const peData = loadPe() || {};
-  document.getElementById("peModalBucket").value = peData.bucketStr || "65,70";
+  document.getElementById("peModalBucket").value =
+    peData.bucketStr || DEFAULT_BUCKET;
   document.getElementById("peModalInputPct").value = peData.peYest || "";
   document.getElementById("peModalPriceAnchor").value =
     peData.priceAnchor || "";
@@ -151,7 +152,7 @@ function liveUpdateHoldingPlan() {
 
   const activeProds = getActiveProducts();
   const peData = loadPe();
-  const rt300Price = getIndices()["000300"]?.f2 ?? null;
+  const rt300Price = getIndices()[SYS_CONFIG.IDX_PE]?.f2 ?? null;
   const currentPE = getCurrentPE(peData, rt300Price);
   const targetEqNeutral = getDynamicTarget("neutral", peData?.bucketStr);
 
@@ -207,7 +208,7 @@ function openHoldingDrawer() {
     shortNameMap = loadShortNames();
   const activeProds = getActiveProducts();
   const peData = loadPe();
-  const rt300Price = getIndices()["000300"]?.f2 ?? null;
+  const rt300Price = getIndices()[SYS_CONFIG.IDX_PE]?.f2 ?? null;
   const currentPE = getCurrentPE(peData, rt300Price);
   const targetEqNeutral = getDynamicTarget("neutral", peData?.bucketStr);
 
@@ -425,7 +426,7 @@ async function syncCloud(mode = "pull") {
   if (mode === "pull") {
     _isSyncingPull = true;
     try {
-      // 两文件并行拉取，各自比对，只在内容变化时写入
+      // 两文件并行拉取：PE 按内容比对，config 按版本号判据，各自决定是否采纳
       const [remotePe, remoteConfig] = await Promise.all([
         cloudFetchPe(gid, gtk),
         cloudFetchConfig(gid, gtk),

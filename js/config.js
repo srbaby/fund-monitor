@@ -11,6 +11,7 @@ const SYS_CONFIG = {
   PE_HIGH_THRESHOLD: 65, // 权益方向判断分界线（高于此值为高估区）
   CODE_XQ: "003949", // 资金来源：兴全中长债
   CODE_A500: "022435", // 增权优先品种：南方中证A500ETF联接C
+  IDX_PE: "000300", // 实时PE锚定指数：沪深300
   LIMIT_A500C: 0.2, // A500C单品持仓上限（占总资产）
   REFRESH_IDX: 10000, // 指数刷新间隔（ms）
   REFRESH_API: 60000, // 基金数据刷新间隔（ms）
@@ -19,6 +20,7 @@ const SYS_CONFIG = {
   T_MID_BREAK: 690, // 午休开始（分钟）11:30
   T_AFTERNOON: 780, // 下午开盘（分钟）13:00
   T_CLOSE: 900, // 收盘（分钟）15:00
+  T_OFF_UPDATE: 1170, // 官方净值更新时点（分钟）19:30
   FETCH_EST_TIMEOUT: 3000, // 估算净值请求超时（ms）
   FETCH_OFF_TIMEOUT: 1500, // 官方净值单次请求超时（ms）
   FETCH_OFF_DRAIN_DELAY: 0, // 官方净值串行队列间隔（ms）
@@ -53,6 +55,9 @@ const DEFAULT_CODES = [
   "007466", // 华泰柏瑞红利低波联接A
   SYS_CONFIG.CODE_A500, // 022435 南方中证A500ETF联接C
 ];
+
+// ---- 默认 PE 档位 ----
+const DEFAULT_BUCKET = "65,70";
 
 // ---- 基金名称表 ----
 const NAMES = {

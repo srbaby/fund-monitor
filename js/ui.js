@@ -507,7 +507,7 @@ function updatePeBar() {
   }
 
   const peData = loadPe();
-  const rt300Price = getIndices()["000300"]?.f2 ?? null;
+  const rt300Price = getIndices()[SYS_CONFIG.IDX_PE]?.f2 ?? null;
   const currentPE = getCurrentPE(peData, rt300Price);
 
   if (!currentPE) {

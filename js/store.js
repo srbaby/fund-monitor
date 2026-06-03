@@ -193,17 +193,6 @@ function bumpConfigVer() {
   return v;
 }
 
-function exportSnapshot() {
-  const data = {
-    f: funds,
-    h: safeParse(localStorage.getItem(STORE_HOLDINGS), {}),
-    p: loadPe(),
-    s: loadSellPlan(),
-    pr: loadPrioritySell() || null,
-  };
-  return btoa(encodeURIComponent(JSON.stringify(data)));
-}
-
 // 只更新 PE 定锚；内容与本地相同时返回 false 跳过
 function importPeSnapshot(p) {
   if (!p) return false;

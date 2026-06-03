@@ -57,7 +57,7 @@ function fetchOff(code) {
     const ttl =
       isTodayData || day === 0 || day === 6
         ? 12 * 3600000
-        : timeNum >= 19 * 60 + 30
+        : timeNum >= SYS_CONFIG.T_OFF_UPDATE
           ? 5 * 60000
           : 3600000;
     if (now.getTime() - cached.ts < ttl) return Promise.resolve(cached.data);

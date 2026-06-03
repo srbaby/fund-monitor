@@ -8,7 +8,7 @@
 //
 // 加载顺序：index.html 中 config.js 之后、store.js 之前。
 //
-// 当前接入点（8处）：
+// 当前接入点（10处）：
 //   store.js
 //     - saveFunds          基金列表变更（含拖拽排序）
 //     - savePe             PE 定锚更新
@@ -16,9 +16,11 @@
 //     - saveSellPlan       降权预案保存
 //     - savePrioritySell   设置优先卖出品种
 //     - clearPrioritySell  清除优先卖出品种
-//     - importSnapshot     云端拉取覆盖本地（记录 f/p/h/s/pr 完整字段）
+//     - importSnapshot     云端 config 拉取覆盖本地（记录 v/f/h/s/pr 完整字段）
+//     - importPeSnapshot   云端 PE 拉取覆盖本地
 //   interact.js
-//     - syncCloud_push     云端推送完整 payload
+//     - syncCloud_push_pe      PE 推送（fm_pe.json）
+//     - syncCloud_push_config  配置推送（fm_config.json，含版本号 v）
 //
 // 日志格式（fm_log.json，最多200条滚动覆盖）：
 //   { t: ISO时间戳, c: 客户端标识(ios/local/web), fn: 触发函数名, data: 写入内容快照 }
