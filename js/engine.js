@@ -49,19 +49,17 @@ function getCurrentPE(peData, currentIdxPrice) {
     const x = currentIdxPrice;
     const { priceBuy, priceAnchor, priceSell } = peData;
 
-    if (x <= priceBuy) {
-      v = buyPct;
-    } else if (x < priceAnchor && priceAnchor !== priceBuy) {
+    if (x < priceAnchor && priceAnchor !== priceBuy) {
+      // 线性外推：低于 priceBuy 时继续走，不在 buyPct 处硬截
       v =
         buyPct +
         ((x - priceBuy) / (priceAnchor - priceBuy)) * (peData.peYest - buyPct);
-    } else if (x < priceSell && priceSell !== priceAnchor) {
+    } else if (priceSell !== priceAnchor) {
+      // 线性外推：高于 priceSell 时继续走，不在 sellPct 处硬截
       v =
         peData.peYest +
         ((x - priceAnchor) / (priceSell - priceAnchor)) *
           (sellPct - peData.peYest);
-    } else {
-      v = sellPct;
     }
     isDynamic = true;
   }
