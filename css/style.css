@@ -619,7 +619,7 @@ main {
     border-bottom: none;
 }
 .fund-table td {
-    padding: 16px 20px;
+    padding: 5px 20px 7px;
     background: var(--bg2);
     border-top: 1px solid var(--bd);
     border-bottom: 1px solid var(--bd);
@@ -666,13 +666,13 @@ main {
     font-size: 22px;
     font-weight: 600;
     border-radius: 6px;
-    padding: 2px 4px;
+    padding: 0 4px;
     margin-left: -4px;
 }
 .tbl-nav {
     font-size: 13px;
     color: var(--t2);
-    margin-top: 5px;
+    margin-top: 2px;
 }
 .tbl-nav .nv {
     color: var(--t1);
@@ -681,7 +681,7 @@ main {
 .tbl-time {
     font-size: 11px;
     color: var(--t2);
-    margin-top: 4px;
+    margin-top: 3px;
 }
 .tbl-del {
     font-size: 12px;
@@ -1286,7 +1286,7 @@ main {
         display: block !important;
     }
     main {
-        padding: 20px 24px 20px;
+        padding: 14px 24px 14px;
         max-width: 1200px;
         margin: 0 auto;
     }
