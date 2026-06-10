@@ -13,6 +13,9 @@ concurrency:
   group: pe-night-engine
   cancel-in-progress: false
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"   # checkout/setup-python 提前切Node24，规避2026-06-16弃用
+
 jobs:
   update-gist:
     runs-on: ubuntu-latest
@@ -23,7 +26,8 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install akshare pandas
+          cache-dependency-path: automation/requirements.txt
+      - run: pip install -r automation/requirements.txt
       - name: 抓取并写入Gist
         env:
           PE_GIST_ID: ${{ secrets.PE_GIST_ID }}

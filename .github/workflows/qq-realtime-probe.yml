@@ -9,6 +9,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"   # 规避2026-06-16 Node20弃用
+
 concurrency:
   group: qq-probe
   cancel-in-progress: false
