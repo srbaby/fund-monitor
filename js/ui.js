@@ -495,6 +495,29 @@ function renderIndices(map) {
   }).join("");
 }
 
+// 旁路PE引擎读数（并行验证期：与现行读数同屏观察偏差；v=null 表示现行无锚仅展示旁路）
+function _renderEngineBar(v) {
+  if (!_peDOM.engineBar) return;
+  const eng = getEnginePE(loadPeEngine(), getQQIndex());
+  if (!eng) {
+    _peDOM.engineBar.style.display = "none";
+    return;
+  }
+  const modeTxt =
+    eng.mode === "mcap"
+      ? "实时·总市值"
+      : eng.mode === "price"
+        ? "实时·点位等比(降级)"
+        : "昨收";
+  let diffHtml = "";
+  if (v != null) {
+    const dv = eng.pct - v;
+    diffHtml = ` <span style="color:var(--t3)">· 与现行差</span> <span class="num" style="color:${Math.abs(dv) >= 1 ? "var(--warn)" : "var(--t2)"}">${dv > 0 ? "+" : ""}${dv.toFixed(2)}pp</span>`;
+  }
+  _peDOM.engineBar.innerHTML = `<span style="color:var(--t3)">旁路</span> <span class="num" style="color:var(--t1);font-weight:600">${eng.pct.toFixed(2)}%</span> <span class="num" style="color:var(--t2)">PE ${eng.pe.toFixed(2)}</span> <span style="color:var(--t3)">${modeTxt} · 锚${eng.date.slice(5)}</span>${diffHtml}`;
+  _peDOM.engineBar.style.display = "block";
+}
+
 function updatePeBar() {
   if (!_peDOMReady) {
     _peDOM.display = document.getElementById("peDisplay");
@@ -503,6 +526,7 @@ function updatePeBar() {
     _peDOM.eqDiv = document.getElementById("peEquityInfo");
     _peDOM.loEl = document.getElementById("peTrackLo");
     _peDOM.hiEl = document.getElementById("peTrackHi");
+    _peDOM.engineBar = document.getElementById("peEngineBar");
     _peDOMReady = true;
   }
 
@@ -518,6 +542,7 @@ function updatePeBar() {
     [_peDOM.marker, _peDOM.loEl, _peDOM.hiEl, _peDOM.eqDiv].forEach((el) => {
       if (el) el.style.display = "none";
     });
+    _renderEngineBar(null); // 旁路引擎独立于手工锚，无锚时仍可显示
     return;
   }
 
@@ -566,6 +591,8 @@ function updatePeBar() {
       _peDOM.eqDiv.style.display = "flex";
     } else _peDOM.eqDiv.style.display = "none";
   }
+
+  _renderEngineBar(v);
 
   if (v <= bounds.buyPct) {
     _peDOM.display.className = "pe-value pe-danger-dn";

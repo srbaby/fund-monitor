@@ -106,6 +106,29 @@ function savePe(dataObj) {
   dispatchUpdate("LOCAL_CONFIG");
 }
 
+// ---- 旁路PE引擎（Gist夜间数据 + 腾讯实时快照）----
+let _qqIndex = null;
+function getQQIndex() {
+  return _qqIndex;
+}
+function setQQIndex(d) {
+  _qqIndex = d;
+  dispatchUpdate("INDICES");
+}
+
+let _peEngine; // undefined=未读, null=无数据
+function loadPeEngine() {
+  if (_peEngine === undefined)
+    _peEngine = safeParse(localStorage.getItem(STORE_PE_ENGINE), null);
+  return _peEngine;
+}
+function setPeEngine(data) {
+  if (!data || !Array.isArray(data.peSorted) || !data.peSorted.length) return;
+  _peEngine = data;
+  localStorage.setItem(STORE_PE_ENGINE, JSON.stringify(data));
+  dispatchUpdate("INDICES");
+}
+
 let _holdingsCache = null;
 function _loadRaw() {
   if (_holdingsCache) return _holdingsCache;

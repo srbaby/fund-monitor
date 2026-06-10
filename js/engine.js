@@ -67,6 +67,43 @@ function getCurrentPE(peData, currentIdxPrice) {
   return { value: v, isDynamic, rawData: peData, bounds: { buyPct, sellPct } };
 }
 
+// 旁路PE引擎（并行验证方案）：
+//   实时PE = 昨夜官方PE × (腾讯实时总市值 / 昨收总市值)   ← 乐咕口径恒等式（∑总市值/∑滚动净利润，盈利盘中不变）
+//   百分位 = 全量历史排序数组二分查找（精确ECDF，与 hs300_daily 的 (pe<=x)/n 口径一致）
+//   mode: mcap=总市值恒等式 / price=点位等比降级 / close=无实时数据回落昨收
+function getEnginePE(engineData, qqIdx) {
+  if (
+    !engineData ||
+    !Array.isArray(engineData.peSorted) ||
+    !engineData.peSorted.length ||
+    engineData.peYest == null
+  )
+    return null;
+  let pe = engineData.peYest,
+    mode = "close";
+  if (qqIdx && qqIdx.mcap > 0 && engineData.mcapYest > 0) {
+    pe = engineData.peYest * (qqIdx.mcap / engineData.mcapYest);
+    mode = "mcap";
+  } else if (qqIdx && qqIdx.price > 0 && engineData.priceYest > 0) {
+    pe = engineData.peYest * (qqIdx.price / engineData.priceYest);
+    mode = "price";
+  }
+  const a = engineData.peSorted;
+  let lo = 0,
+    hi = a.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (a[mid] <= pe) lo = mid + 1;
+    else hi = mid;
+  }
+  return {
+    pe,
+    pct: (lo / a.length) * 100,
+    mode,
+    date: engineData.date || "",
+  };
+}
+
 // 边界：最低档增权时 idx+1 超出数组，Math.min 兜底返回同档 target
 // 边界：最高档降权时 idx-1 为 -1，Math.max 兜底返回同档 target
 function getDynamicTarget(mode, peBucketStr) {

@@ -106,6 +106,7 @@ const PE_EQUITY_TABLE = [
 
 // ---- localStorage Key ----
 const STORE_CODES = "fm_v20";
+const STORE_PE_ENGINE = "jy_pe_engine_v1";
 const STORE_PE = "jy_pe_v2_lagrange";
 const STORE_HOLDINGS = "jy_holdings_v1";
 const STORE_SELL_PLAN = "jy_sell_plan_v1";
@@ -123,3 +124,4 @@ function isZZ500Product(name) {
 // ---- Gist 文件名 ----
 const GIST_FILE_PE = "fm_pe.json";
 const GIST_FILE_CONFIG = "fm_config.json";
+const GIST_FILE_PE_ENGINE = "fm_pe_engine.json"; // 旁路PE引擎（GitHub Actions夜间写入）

@@ -24,9 +24,14 @@ syncCloud("pull").then((ok) => {
   const { id, token } = loadGistConfig();
   if (id && token) _verifyCloudConfig(id, token);
 });
+pullPeEngine();
+fetchQQIndex();
 
 setInterval(() => {
-  if (!document.hidden) fetchIndices();
+  if (!document.hidden) {
+    fetchIndices();
+    fetchQQIndex();
+  }
 }, SYS_CONFIG.REFRESH_IDX);
 setInterval(() => {
   if (!document.hidden) refreshData();
@@ -35,7 +40,9 @@ setInterval(() => {
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
     fetchIndices();
+    fetchQQIndex();
     refreshData();
+    pullPeEngine();
     const { id, token } = loadGistConfig();
     if (id && token) _verifyCloudConfig(id, token);
   }

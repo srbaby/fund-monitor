@@ -341,6 +341,18 @@ function saveHoldings() {
 let _syncTimer = null;
 let _isSyncingPull = false;
 
+// 拉取旁路PE引擎数据（GitHub Actions 夜间写入的 fm_pe_engine.json，与主同步解耦）
+// 30分钟节流（引擎数据每晚才更新一次）；失败静默（旁路是验证体系，不打扰主流程）
+let _peEnginePullTs = 0;
+async function pullPeEngine() {
+  const { id, token } = loadGistConfig();
+  if (!id || !token) return;
+  if (loadPeEngine() && Date.now() - _peEnginePullTs < 1800000) return;
+  _peEnginePullTs = Date.now();
+  const data = await cloudFetchPeEngine(id, token);
+  if (data) setPeEngine(data);
+}
+
 async function manualPull() {
   const ok = await syncCloud("pull");
   if (ok) {

@@ -171,6 +171,42 @@ function fetchIndices() {
   });
 }
 
+// 腾讯指数快照：取沪深300实时总市值/PE_TTM（旁路PE引擎数据源）
+// qt.gtimg 返回 `v_sh000300="..."` 全局变量赋值，~分隔：[3]点位 [30]时间戳 [39]PE [45]总市值(亿)
+let _qqBusy = false;
+function fetchQQIndex() {
+  if (_qqBusy) return;
+  _qqBusy = true;
+  const s = document.createElement("script");
+  s.charset = "GBK";
+  let done = false;
+  const fin = () => {
+    if (done) return;
+    done = true;
+    s.remove();
+    _qqBusy = false;
+    try {
+      const raw = window.v_sh000300;
+      if (typeof raw === "string") {
+        const f = raw.split("~");
+        const d = {
+          price: parseFloat(f[3]),
+          ts: f[30] || "",
+          pe: parseFloat(f[39]),
+          mcap: parseFloat(f[45]),
+        };
+        if (d.price > 0) setQQIndex(d);
+      }
+    } catch (e) {}
+    window.v_sh000300 = undefined;
+  };
+  s.onload = fin;
+  s.onerror = fin;
+  setTimeout(fin, 5000);
+  s.src = `https://qt.gtimg.cn/q=sh000300&r=${Date.now()}`;
+  document.head.appendChild(s);
+}
+
 function getNavByCode(code) {
   const f = getLastResults().find((r) => r.code === code);
   if (!f) return null;
@@ -218,6 +254,9 @@ function cloudFetchPe(gistId, token) {
 }
 function cloudFetchConfig(gistId, token) {
   return _cloudReadFile(gistId, token, GIST_FILE_CONFIG);
+}
+function cloudFetchPeEngine(gistId, token) {
+  return _cloudReadFile(gistId, token, GIST_FILE_PE_ENGINE);
 }
 function cloudUpdatePe(gistId, token, peData) {
   return _cloudWriteFile(gistId, token, GIST_FILE_PE, peData);
