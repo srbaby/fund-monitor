@@ -1,0 +1,40 @@
+name: PE夜间数据引擎
+
+on:
+  schedule:
+    - cron: "30 12 * * 1-5"   # UTC 12:30 = 北京 20:30（乐咕更新后首试）
+    - cron: "30 14 * * 1-5"   # UTC 14:30 = 北京 22:30（兜底重试）
+  workflow_dispatch:           # 手机GitHub App可随时手动触发
+
+permissions:
+  contents: write   # 提交验证日志副本 automation/validation-log.json
+
+concurrency:
+  group: pe-night-engine
+  cancel-in-progress: false
+
+jobs:
+  update-gist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install akshare pandas
+      - name: 抓取并写入Gist
+        env:
+          PE_GIST_ID: ${{ secrets.PE_GIST_ID }}
+          PE_GIST_TOKEN: ${{ secrets.PE_GIST_TOKEN }}
+          RUN_SLOT: ${{ github.event.schedule == '30 12 * * 1-5' && 'early' || github.event_name == 'schedule' && 'late' || 'manual' }}
+        run: python automation/pe_nightly.py
+      - name: 提交验证日志副本
+        run: |
+          git config user.name "pe-engine-bot"
+          git config user.email "actions@github.com"
+          git add automation/validation-log.json
+          git diff --cached --quiet || git commit -m "engine: 验证日志 $(TZ=Asia/Shanghai date '+%m-%d')"
+          git pull --rebase origin main
+          git push
