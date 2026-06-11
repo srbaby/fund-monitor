@@ -6,6 +6,7 @@
 - **数据通道（AI可直接fetch，无需用户贴数据）**：
   - 验证日志：`https://raw.githubusercontent.com/srbaby/fund-monitor/main/automation/validation-log.json`
   - 探针日志：`https://raw.githubusercontent.com/srbaby/fund-monitor/main/automation/probe-log.md`
+  - ⚠ **raw 链接有CDN缓存（实测可陈旧20分钟以上），AI读取必须加随机参数**如 `?nc=随机数`；判断"是否已更新"前先核对 `v` 字段，与腾讯接口防缓存纪律同理（2026-06-11晚AI误判事故教训）。
 - **当前阶段**：并行验证期（2026-06-10起，预计两周）。现行手工方案仍是唯一执行依据，旁路只观察。
 - **待决事项**：① ~~腾讯指数级总市值是否盘中实时~~ **已判定=实时**（2026-06-11盘中双采样实测：ts与真实时钟偏差≤2秒；12秒内总市值独立跳动−7.67亿且与点位变动不等比→非点位等比伪实时。主路无需改成分股聚合）；② log的errPp达标（|中位|<0.15pp且无>0.5pp离群）→ 议转正，落档走 2号SOP/9号规范，并决定 hs300_daily 漂移修正体系去留；③ 6/12月成分调整生效日errPp会放大，属预期（**最近一次：2026-06-15周一生效，当晚errPp异常勿误判**）；④ 探针只剩两个收尾采样（午休/盘后ts冻结确认+东财对照），完成即删探针与workflow；⑤ 数据备胎（腾讯+中证官网）已验证可用，断供时走"映射扩展到20年"专题（见下方"数据源研究固化"）；官方peg口径判定为该专题前置待办。
 
@@ -24,21 +25,19 @@
 
 ## 组件
 
-| 文件                                         | 职责                                                         |
-| -------------------------------------------- | ------------------------------------------------------------ |
-| `pe_nightly.py`                              | Actions夜间跑：抓乐咕全量PE → 排序数组+昨收锚+腾讯收盘总市值 → 写Gist `fm_pe_engine.json`；自动追加"恒等式预测 vs 官方"逐日验证日志。`RUN_SLOT=early`时乐咕未更新温和退出，其余值报错 |
-| `probe_intraday.py`                          | 临时探针：盘中采样腾讯/东财指数级PE与总市值字段，验证是否实时（结论敲定后连同workflow删除） |
-| `cf_worker_pe_trigger.js`                    | **定时触发器（部署在 Cloudflare Worker `pe-night-trigger`，此处为源码存档）**：北京20:30首试/21:30兜底/22:00哨兵三槽，每槽先查 validation-log 日期再决定是否 dispatch（幂等）；哨兵每晚必推 Bark 🟢锚已写+最新errPp / 🔴未写+最后补触发；dispatch 传 slot 参数（前两槽early/哨兵和手动late）。⚠️ CF cron 星期字段1=周日，须用 MON-FRI 缩写 |
-| `../.github/workflows/pe-night-engine.yml`   | 仅 workflow_dispatch（**GH 自带 cron 已删**：实测延迟3h+，2026-06-11 迁移至 CF Worker）；slot 输入参数见上 |
+| 文件  | 职责  |
+| --- | --- |
+| `pe_nightly.py` | Actions夜间跑：抓乐咕全量PE → 排序数组+昨收锚+腾讯收盘总市值 → 写Gist `fm_pe_engine.json`；自动追加"恒等式预测 vs 官方"逐日验证日志。`RUN_SLOT=early`时乐咕未更新温和退出，其余值报错 |
+| `probe_intraday.py` | 临时探针：盘中采样腾讯/东财指数级PE与总市值字段，验证是否实时（结论敲定后连同workflow删除） |
+| `cf_worker_pe_trigger.js` | **定时触发器（部署在 Cloudflare Worker `pe-night-trigger`，此处为源码存档）**：北京20:30首试/21:30兜底/22:00哨兵三槽，每槽先查 validation-log 日期再决定是否 dispatch（幂等）；哨兵每晚必推 Bark 🟢锚已写+最新errPp / 🔴未写+最后补触发；dispatch 传 slot 参数（前两槽early/哨兵和手动late）。⚠️ CF cron 星期字段1=周日，须用 MON-FRI 缩写 |
+| `../.github/workflows/pe-night-engine.yml` | 仅 workflow_dispatch（**GH 自带 cron 已删**：实测延迟3h+，2026-06-11 迁移至 CF Worker）；slot 输入参数见上 |
 | `../.github/workflows/qq-realtime-probe.yml` | 北京10:02/14:02采样 → 提交到 `probe-log.md`（探针收尾后删除） |
 
 看板端：`getEnginePE`(engine.js纯函数) + `fetchQQIndex`(data.js) + `pullPeEngine`(interact.js) + PE栏下方旁路读数行(ui.js/index.html)。腾讯快照挂现有10秒行情节拍，引擎数据开机/回前台拉取（30分钟节流）。
 
 ## 一次性配置（GitHub操作）
 
-1. 仓库 **Settings → Secrets and variables → Actions** 新增两个 secret：
-   - `PE_GIST_ID`：与看板云同步用的同一个 Gist ID
-   - `PE_GIST_TOKEN`：有 gist 权限的 token（可用看板现用的）
+1. 仓库 **Settings → Secrets and variables → Actions** 新增两个 secret：- `PE_GIST_ID`：与看板云同步用的同一个 Gist ID- `PE_GIST_TOKEN`：有 gist 权限的 token（可用看板现用的）
 2. push 本目录与 `.github/`。Gist 里的 `fm_pe_engine.json` 由首次运行自动创建。
 3. 看板端**零配置**（复用已存的 GistID/Token）。
 
@@ -79,6 +78,13 @@
 - 官方 peg 14.31 vs 乐咕滚动 13.56（差5.5%）：盈利口径不同（静态/滚动/负值处理，**待办：本地对照乐咕序列判定**，年报季跳变可甄别）。两家绝对值不可互查对方分布；各自自洽算百分位则因排序不变性可比。
 - **数据备胎定位（腾讯+中证官网）**：乐咕仍是主线，且每日全量拉取、20年序列始终在手，无单日断供之虞。万一乐咕数据源消失：用中证官网序列与手中乐咕历史做**映射匹配**（同窗对照标定口径转换），把官方数据扩展到20年口径作为替代主线——具体映射方法**后面专题研究**（候选素材：同窗百分位对照、口径比值序列、腾讯mcap链式衔接断点）。
 - 腾讯接口请求纪律：必须带随机参数防CDN陈旧缓存（实测裸请求返回过5月21日缓存）；看板现行10秒单标的轮询远低于风控阈值。
+
+**百分位口径备忘（2026-06-11 晚会话定论）**
+
+- 本系脚本/引擎/看板统一用 `(pe<=x)/n` 口径，与乐咕官网分位点存在 0~0.33pp 的**平局(ties)显示差**：PE 仅2位小数，同值历史重现3~13次，`<=` 把平局全计入而官网口径更紧。近244日实测：中位差0.16pp、P90=0.25pp、max=0.33pp。
+- "多算第一天"假设已否决（单样本权重仅0.019pp，量级不符）。
+- **不修**：三处同口径自洽，触发判定两侧对称无决策影响；与官网对照时心算留 0.3pp 余量即可。
+- **权威序（大亨定论）**：本系脚本口径 = canonical（含首日样本、`<=`平局全计入，2005年起长期一致）；乐咕官网/任何第三方百分位仅作 sanity check，偏差≤0.33pp 一律不理睬、不纠偏。理由：体系内档位机/触发线/12档曲线全在脚本口径坐标系内，绝对值平移会使8个月状态机历史错位，纯害无利。
 
 **标签语义提示**
 
