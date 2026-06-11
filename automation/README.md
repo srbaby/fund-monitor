@@ -26,10 +26,11 @@
 
 | 文件                                         | 职责                                                         |
 | -------------------------------------------- | ------------------------------------------------------------ |
-| `pe_nightly.py`                              | Actions夜间跑：抓乐咕全量PE → 排序数组+昨收锚+腾讯收盘总市值 → 写Gist `fm_pe_engine.json`；自动追加"恒等式预测 vs 官方"逐日验证日志 |
+| `pe_nightly.py`                              | Actions夜间跑：抓乐咕全量PE → 排序数组+昨收锚+腾讯收盘总市值 → 写Gist `fm_pe_engine.json`；自动追加"恒等式预测 vs 官方"逐日验证日志。`RUN_SLOT=early`时乐咕未更新温和退出，其余值报错 |
 | `probe_intraday.py`                          | 临时探针：盘中采样腾讯/东财指数级PE与总市值字段，验证是否实时（结论敲定后连同workflow删除） |
-| `../.github/workflows/pe-night-engine.yml`   | 北京20:30首试 + 22:30兜底，workflow_dispatch可手动           |
-| `../.github/workflows/qq-realtime-probe.yml` | 北京10:02/14:02采样 → 提交到 `probe-log.md`                  |
+| `cf_worker_pe_trigger.js`                    | **定时触发器（部署在 Cloudflare Worker `pe-night-trigger`，此处为源码存档）**：北京20:30首试/21:30兜底/22:00哨兵三槽，每槽先查 validation-log 日期再决定是否 dispatch（幂等）；哨兵每晚必推 Bark 🟢锚已写+最新errPp / 🔴未写+最后补触发；dispatch 传 slot 参数（前两槽early/哨兵和手动late）。⚠️ CF cron 星期字段1=周日，须用 MON-FRI 缩写 |
+| `../.github/workflows/pe-night-engine.yml`   | 仅 workflow_dispatch（**GH 自带 cron 已删**：实测延迟3h+，2026-06-11 迁移至 CF Worker）；slot 输入参数见上 |
+| `../.github/workflows/qq-realtime-probe.yml` | 北京10:02/14:02采样 → 提交到 `probe-log.md`（探针收尾后删除） |
 
 看板端：`getEnginePE`(engine.js纯函数) + `fetchQQIndex`(data.js) + `pullPeEngine`(interact.js) + PE栏下方旁路读数行(ui.js/index.html)。腾讯快照挂现有10秒行情节拍，引擎数据开机/回前台拉取（30分钟节流）。
 
@@ -60,11 +61,14 @@
 
 - `pe_nightly.py` 日期检查 `last_date != today_bj`：槽位延迟跨午夜后（含手动触发！）会 exit 1 拒写当晚有效锚。06-10 晚靠手动运行掩盖。修法：放宽为"last_date ∈ {今天, 昨天(若现在<凌晨阈值)}"。
 
-**验证期手动SOP（大亨执行）**
+**验证期SOP（2026-06-11 改版：CF Worker 哨兵替代每晚人工核对）**
 
-1. 每交易日 22:35 前后：查本文件同目录 `validation-log.json` 的 `date` 是否=当天；不是 → 手动跑「PE夜间数据引擎」。**必须 24:00 前**（跨午夜bug连手动也中招）。不管自动有没有跑，晚间核对一次。
-2. 探针收尾：午休 12:30 一次（ts应冻结~11:30）+ 盘后 ~18:00 一次（ts应冻结收盘）→ 完成后删 `probe_intraday.py` + `qq-realtime-probe.yml`。
-3. 盘中不手动跑引擎（恒等式用收盘mcap，盘中跑只会跳过或报错）。
+1. ~~每晚22:35人工核对~~ → **已自动化**：CF Worker `pe-night-trigger` 三槽自愈（北京20:30/21:30/22:00），22:00 哨兵每晚必推 Bark——🟢 = 锚已写+当晚errPp，无需任何操作；🔴 = 前两槽未成（推送同时已自动补触发最后一次），应急窗口 2 小时至 24:00 跨午夜红线。
+2. **红灯应急路径（按优先级）**：① 等几分钟，大概率已自愈；② GitHub App → fund-monitor → Actions → PE夜间数据引擎 → Run workflow，slot 留默认 late（**裸网可达，首选**）；③ Worker 核对链接 `?key=`（workers.dev 需翻墙；点开即显示锚状态，未写会顺带补触发）。
+3. 手机整晚无任何推送 = 哨兵本身故障（比红灯更严重），查 CF Worker 日志与 BARK_KEY 配置。
+4. 探针收尾：午休 12:30 一次（ts应冻结~11:30）+ 盘后 ~18:00 一次（ts应冻结收盘）→ 完成后删 `probe_intraday.py` + `qq-realtime-probe.yml`。
+5. 盘中不手动跑引擎（恒等式用收盘mcap，盘中跑只会跳过或报错）。乐咕当日数据实测 18:00 前已更新（2026-06-11），20:30 首槽时间充裕。
+6. 域名决策存档（2026-06-11）：DNS 保留 DNSPod 不迁 CF——迁移唯一收益（Worker自定义域名）已被 GitHub App 应急路径替代，而域名同时承载 v2ray 节点解析（生命线，不容尾部风险）与 DDNS（客户端绑定 DNSPod API）。
 
 **数据源研究固化（2026-06-11 下午会话）**
 
