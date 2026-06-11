@@ -1,10 +1,14 @@
 name: PE夜间数据引擎
 
+# 定时触发已迁移至 Cloudflare Worker（pe-night-trigger，北京20:30/21:30/22:00三槽自愈+Bark告警）
+# 源码存档：automation/cf_worker_pe_trigger.js。本工作流只保留手动/API触发入口。
 on:
-  schedule:
-    - cron: "30 12 * * 1-5"   # UTC 12:30 = 北京 20:30（乐咕更新后首试）
-    - cron: "30 14 * * 1-5"   # UTC 14:30 = 北京 22:30（兜底重试）
-  workflow_dispatch:           # 手机GitHub App可随时手动触发
+  workflow_dispatch:           # CF Worker dispatch / 手机GitHub App手动触发
+    inputs:
+      slot:
+        description: "触发槽位：early=温和重试（乐咕未更新则等下一槽），late=未取到数据报错。CF Worker自动传入"
+        required: false
+        default: "late"
 
 permissions:
   contents: write   # 提交验证日志副本 automation/validation-log.json
@@ -25,14 +29,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: automation/requirements.txt
-      - run: pip install -r automation/requirements.txt
+      - run: pip install akshare pandas
       - name: 抓取并写入Gist
         env:
           PE_GIST_ID: ${{ secrets.PE_GIST_ID }}
           PE_GIST_TOKEN: ${{ secrets.PE_GIST_TOKEN }}
-          RUN_SLOT: ${{ github.event.schedule == '30 12 * * 1-5' && 'early' || github.event_name == 'schedule' && 'late' || 'manual' }}
+          RUN_SLOT: ${{ inputs.slot }}
         run: python automation/pe_nightly.py
       - name: 提交验证日志副本
         run: |
