@@ -29,7 +29,7 @@
 | --- | --- |
 | `pe_nightly.py` | Actions夜间跑：抓乐咕全量PE → 排序数组+昨收锚+腾讯收盘总市值 → 写Gist `fm_pe_engine.json`；自动追加"恒等式预测 vs 官方"逐日验证日志。`RUN_SLOT=early`时乐咕未更新温和退出，其余值报错 |
 | `probe_intraday.py` | 临时探针：盘中采样腾讯/东财指数级PE与总市值字段，验证是否实时（结论敲定后连同workflow删除） |
-| `cf_worker_pe_trigger.js` | **定时触发器（部署在 Cloudflare Worker `pe-night-trigger`，此处为源码存档）**：北京20:30首试/21:30兜底/22:00哨兵三槽，每槽先查 validation-log 日期再决定是否 dispatch（幂等）；哨兵每晚必推 Bark 🟢锚已写+最新errPp / 🔴未写+最后补触发；dispatch 传 slot 参数（前两槽early/哨兵和手动late）。⚠️ CF cron 星期字段1=周日，须用 MON-FRI 缩写 |
+| `cf_worker_pe_trigger.js` | **定时触发器（部署在 Cloudflare Worker `pe-night-trigger`，此处为源码存档）**：北京20:30首试/21:30兜底/22:00哨兵三槽，每槽先查 validation-log 日期再决定是否 dispatch（幂等）；哨兵每晚必推 Bark 🟢锚已写+最新errPp / 🔴未写+最后补触发；推送均带 `badge=1`（主屏幕红点）+ `icon`（Bark App历史列表图标）；dispatch 传 slot 参数（前两槽early/哨兵和手动late）。⚠️ CF cron 星期字段1=周日，须用 MON-FRI 缩写 |
 | `../.github/workflows/pe-night-engine.yml` | 仅 workflow_dispatch（**GH 自带 cron 已删**：实测延迟3h+，2026-06-11 迁移至 CF Worker）；slot 输入参数见上 |
 | `../.github/workflows/qq-realtime-probe.yml` | 北京10:02/14:02采样 → 提交到 `probe-log.md`（探针收尾后删除） |
 
@@ -43,8 +43,11 @@
 
 ## 验证期检查点
 
-- `fm_pe_engine.json` 的 `log[]`：每晚自动记录 `errPp`（恒等式预测百分位 − 官方百分位）。
-  连续2周 |errPp| 中位数 <0.15pp 且无 >0.5pp 离群 → 恒等式口径成立。
+- `fm_pe_engine.json` 的 `log[]`：每晚自动记录（字段定义于2026-06-13会话敲定，errPp语义以此为准）：
+  - `errPp`（**核心KPI·链路一致性**）= 引擎当晚产出的官方百分位 − 本地脚本同日值（`pctLocal`，经大亨晚间录入的fm_pe.json锚回传，次日运行时完成核对）。**期望恒为0**；非0即旁路链路损伤（akshare取数不全/版本漂移/数据修订），需排查。两周恒0 → 旁路链路合格。
+  - `fcstPp` = 盘中预报残差（恒等式收盘预报pctPred − 官方），侧写盘中读数质量，仅观察不作KPI。
+  - `pctCur`/`errCurPp` = **现行手工体系**(4字段插值)收盘读数及其误差，两周后与旁路做系统对比。守卫：手工锚priceAnchor必须等于昨收才记录；若20:30前已录当晚新锚，该日缺失（宁缺勿污染）。
+  - `pePredPx` = β=1裸模型对照（≠现行体系完整读数）。
 - 看板"旁路"行的"与现行差"：盘中观察两套读数分歧，尤其大波动日。
 - `probe-log.md`：腾讯/东财字段盘中实时性判定（决定主路用指数级字段还是成分股聚合）。
 
@@ -89,6 +92,11 @@
 **标签语义提示**
 
 - 看板"实时·总市值"标签仅表示腾讯 mcap 字段>0 被取到，**不证明**数据新鲜度（字段停滞也会显示）。新鲜度证据=旁路PE盘中变动+上述实测，已闭环。
+
+**Bark推送视觉增强（2026-06-12 实测固化）**
+
+- 🟢/🔴 推送均加 `&badge=1&icon=https://cdn.jsdelivr.net/gh/srbaby/fund-monitor@main/favicon.png`（图标即看板favicon，jsdelivr镜像国内可达，raw.githubusercontent.com会被墙）。`badge=1`是固定值非真未读计数，主屏幕App图标常驻红点，看完手动清。
+- **iOS限制实测**：`icon` 参数**不会**改变系统通知横幅左上角图标（系统级限制，第三方App无法覆盖），只影响Bark App内历史列表的图标；`image` 参数加大图附件，需长按/下拉展开通知才可见。三者全部验证通过（图标缓存命中后即生效）。
 
 ## 已知边界
 
