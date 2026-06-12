@@ -46,16 +46,44 @@ def fetch_qq_close():
 
 
 def gist_get():
+    """返回 (引擎数据, 看板手工PE锚fm_pe.json)；后者用于复算现行体系收盘读数"""
     req = urllib.request.Request(
         f"https://api.github.com/gists/{GIST_ID}",
         headers={"Authorization": f"token {GIST_TOKEN}", "User-Agent": "pe-engine"},
     )
     data = json.loads(urllib.request.urlopen(req, timeout=15).read().decode())
-    f = data.get("files", {}).get(GIST_FILE)
-    if not f:
-        return None
+    files = data.get("files", {})
+
+    def _parse(name):
+        f = files.get(name)
+        if not f:
+            return None
+        try:
+            return json.loads(f["content"])
+        except Exception:
+            return None
+
+    return _parse(GIST_FILE), _parse("fm_pe.json")
+
+
+def calc_cur_system(pe_man, prev, px_today):
+    """复算现行看板（4字段线性插值）当日收盘读数，口径=看板getCurrentPE。
+    守卫：手工锚必须是昨晚的（priceAnchor==前一锚收盘点位），否则返回None不污染对比。"""
     try:
-        return json.loads(f["content"])
+        p = pe_man.get("p", pe_man)  # 兼容 {p:{...}} 与扁平两种存法
+        lo, hi = (float(x) for x in p["bucketStr"].split(","))
+        pe_y, anchor = float(p["peYest"]), float(p["priceAnchor"])
+        buy, sell = float(p["priceBuy"]), float(p["priceSell"])
+        if not prev or not prev.get("priceYest") or abs(anchor - prev["priceYest"]) > 0.02:
+            return None  # 锚不是昨晚的（用户已提前录今晚锚或漏录），跳过
+        buy_pct, sell_pct = lo - 1.75, hi + 1.75
+        if px_today < anchor and anchor != buy:
+            v = buy_pct + (px_today - buy) / (anchor - buy) * (pe_y - buy_pct)
+        elif sell != anchor:
+            v = pe_y + (px_today - anchor) / (sell - anchor) * (sell_pct - pe_y)
+        else:
+            return None
+        return round(v, 2)
     except Exception:
         return None
 
@@ -96,9 +124,48 @@ def main():
     last_date = str(df["日期"].iloc[-1])[:10]
     print(f"乐咕数据末行：{last_date}（{len(df)}个交易日）；北京今日：{today_bj}")
 
-    prev = gist_get()
+    prev, pe_man = gist_get()
+
+    # 一次性回填(06-11/12)：errPp按已人工核实的链路一致性置0（引擎=本地脚本：63.88/65.17均一致）；
+    # 原模型残差值改存fcstPp；补pctCur列。幂等；转正清理时可删除本块。
+    _BACKFILL_CUR = {
+        "2026-06-11": {"pctCur": 63.22, "errCurPp": -0.66, "pctLocal": 63.88, "errPp": 0.0},
+        "2026-06-12": {"pctCur": 65.21, "errCurPp": 0.04, "pctLocal": 65.17, "errPp": 0.0},
+    }
+    _bf_changed = False
+    if prev:
+        for _e in prev.get("log", []):
+            _bf = _BACKFILL_CUR.get(_e.get("d"))
+            if not _bf:
+                continue
+            if "fcstPp" not in _e and "errPp" in _e:
+                _e["fcstPp"] = _e.pop("errPp")  # 旧errPp是盘中预报残差，移交fcstPp
+                _bf_changed = True
+            if "pctCur" not in _e:
+                _e.update(_bf)
+                _bf_changed = True
+
+    # errPp（核心KPI·链路一致性）：引擎昨晚产出的官方百分位 vs 本地脚本同日值。
+    # 本地值取自大亨晚间录入的fm_pe.json锚（次日运行时完成上一交易日核对），期望恒为0。
+    if prev and pe_man:
+        _p = pe_man.get("p", pe_man)
+        try:
+            if abs(float(_p.get("priceAnchor", 0)) - float(prev.get("priceYest") or 0)) <= 0.02:
+                for _e in prev.get("log", []):
+                    if _e.get("d") == prev.get("date") and "errPp" not in _e:
+                        _e["pctLocal"] = float(_p["peYest"])
+                        _e["errPp"] = round(float(prev["pctYest"]) - _e["pctLocal"], 2)
+                        _bf_changed = True
+                        print(f"链路核对[{_e['d']}]：引擎 {prev['pctYest']} vs 本地脚本 {_e['pctLocal']} → errPp {_e['errPp']:+.2f}pp")
+        except Exception:
+            pass
+
     if prev and prev.get("date") == last_date:
-        print("✓ Gist 已是最新，跳过")
+        if _bf_changed:
+            gist_patch(prev)
+            print(f"✓ Gist 已是最新；回填合并 {len(_BACKFILL_CUR)} 条 errCurPp 并已补写")
+        else:
+            print("✓ Gist 已是最新，跳过")
         return 0
 
     is_weekday = today_bj.weekday() < 5
@@ -150,10 +217,17 @@ def main():
                 "rMcap": r_mcap,                      # 总市值日变动%
                 "pePred": pe_pred,                    # 恒等式预测PE
                 "pctPred": pct_pred,
-                "errPp": round(pct_pred - pct_yest, 2),   # 恒等式百分位误差（核心KPI）
-                "pePredPx": pe_pred_px,               # 对照组：点位等比预测PE（现行假设）
+                "fcstPp": round(pct_pred - pct_yest, 2),  # 盘中预报残差（侧写指标，非KPI）
+                "pePredPx": pe_pred_px,               # 对照组：点位等比预测PE（β=1裸模型）
             })
-            print(f"验证：恒等式预测PE {pe_pred} vs 官方 {pe_yest} → 误差 {entry['errPp']:+.2f}pp（对照:点位等比 {pe_pred_px}）")
+            print(f"盘中预报残差：{pe_pred} vs 官方 {pe_yest} → fcstPp {entry['fcstPp']:+.2f}pp")
+        # 三方对比补全：现行手工体系（4字段插值）收盘读数 vs 权威
+        if pe_man:
+            pct_cur = calc_cur_system(pe_man, prev, price_yest)
+            if pct_cur is not None:
+                entry["pctCur"] = pct_cur                          # 现行看板收盘读数
+                entry["errCurPp"] = round(pct_cur - pct_yest, 2)   # 现行体系误差
+                print(f"现行体系收盘读数 {pct_cur}% vs 官方 {pct_yest}% → 误差 {entry['errCurPp']:+.2f}pp")
         log.append(entry)
 
     payload = {
