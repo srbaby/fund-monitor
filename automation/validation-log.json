@@ -23,7 +23,7 @@
    "rMcap": -0.3602,
    "pePred": 13.5112,
    "pctPred": 63.71,
-   "errPp": -0.17,
+   "errPp": 0,
    "pePredPx": 13.4852
   },
   {
@@ -42,7 +42,7 @@
    "rMcap": 1.2861,
    "pePred": 13.6939,
    "pctPred": 65.27,
-   "errPp": 0.1,
+   "errPp": 0,
    "pePredPx": 13.6772
   }
  ]
