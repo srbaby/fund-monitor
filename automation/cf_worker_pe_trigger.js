@@ -1,5 +1,5 @@
 // Cloudflare Worker：自愈式触发 fund-monitor 的 PE夜间数据引擎（pe-night-engine.yml）
-// v2：新增 23:30 哨兵槽 + Bark 死信告警（只在异常时推送，平时静默）
+// v2：新增 22:00 哨兵槽 + Bark 死信告警（哨兵每晚必推绿/红灯，其余槽异常时才推）
 //
 // 槽位设计（哨兵设在 22:00，留 2 小时人工应急窗口至 24:00 跨午夜红线）：
 //   20:30 首试   → 锚未写则 dispatch（静默）
@@ -108,15 +108,18 @@ async function run(env, source, isSentinel) {
 
 // Bark 推送（iOS）。BARK_KEY 未配置时静默跳过。
 // urgent=true：时效性通知+响铃（红灯）；false：普通通知（绿灯）
+// badge=1 给主屏幕App图标加红点（固定值，看完手动清，不是真未读计数）；
+// icon 仅影响Bark App内历史列表的图标（系统通知横幅图标是iOS限制，第三方App改不了）。
 async function barkPush(env, title, body, urgent) {
   if (!env.BARK_KEY) {
     console.log("BARK_KEY未配置，告警仅记日志：" + title);
     return;
   }
   const params = urgent ? "level=timeSensitive&sound=alarm" : "level=active";
+  const icon = "https://cdn.jsdelivr.net/gh/srbaby/fund-monitor@main/favicon.png";
   try {
     const r = await fetch(
-      `https://api.day.app/${env.BARK_KEY}/${encodeURIComponent(title)}/${encodeURIComponent(body)}?${params}&group=PE引擎`
+      `https://api.day.app/${env.BARK_KEY}/${encodeURIComponent(title)}/${encodeURIComponent(body)}?${params}&group=PE引擎&badge=1&icon=${encodeURIComponent(icon)}`
     );
     console.log(`bark推送 -> ${r.status}`);
   } catch (e) {
