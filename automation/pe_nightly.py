@@ -168,8 +168,11 @@ def main():
             print("✓ Gist 已是最新，跳过")
         return 0
 
+    # 跨午夜容错：凌晨8点前执行视为前一晚槽位延迟（含手动补触发），前一交易日数据仍有效
+    yest_bj = today_bj - timedelta(days=1)
+    data_current = last_date == str(today_bj) or (datetime.now(BJT).hour < 8 and last_date == str(yest_bj))
     is_weekday = today_bj.weekday() < 5
-    if is_weekday and last_date != str(today_bj):
+    if is_weekday and not data_current:
         if SLOT == "early":
             print("⚠ 乐咕尚未更新当日数据，等待晚间槽位重试")
             return 0
