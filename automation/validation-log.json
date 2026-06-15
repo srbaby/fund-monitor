@@ -1,11 +1,11 @@
 {
- "v": "2026-06-12 20:30:44",
- "date": "2026-06-12",
- "peYest": 13.68,
- "pctYest": 65.17,
- "priceYest": 4777.32,
- "mcapYest": 549584.73,
- "n": 5145,
+ "v": "2026-06-15 20:30:39",
+ "date": "2026-06-15",
+ "peYest": 14.06,
+ "pctYest": 70.64,
+ "priceYest": 4891.71,
+ "mcapYest": 571160.32,
+ "n": 5146,
  "log": [
   {
    "d": "2026-06-11",
@@ -23,8 +23,12 @@
    "rMcap": -0.3602,
    "pePred": 13.5112,
    "pctPred": 63.71,
-   "errPp": 0,
-   "pePredPx": 13.4852
+   "pePredPx": 13.4852,
+   "fcstPp": -0.17,
+   "pctCur": 63.22,
+   "errCurPp": -0.66,
+   "pctLocal": 63.88,
+   "errPp": 0.0
   },
   {
    "d": "2026-06-12",
@@ -42,8 +46,31 @@
    "rMcap": 1.2861,
    "pePred": 13.6939,
    "pctPred": 65.27,
-   "errPp": 0,
-   "pePredPx": 13.6772
+   "pePredPx": 13.6772,
+   "fcstPp": 0.1,
+   "pctCur": 65.21,
+   "errCurPp": 0.04,
+   "pctLocal": 65.17,
+   "errPp": 0.0
+  },
+  {
+   "d": "2026-06-15",
+   "px": 4891.71,
+   "rPx": 2.3944,
+   "rPe": 2.7778,
+   "betaD": 1.16,
+   "peOff": 14.06,
+   "pctOff": 70.64,
+   "mcap": 571160.32,
+   "peQQ": 14.79,
+   "slot": "early",
+   "runAt": "20:30:39",
+   "delayMin": 0.7,
+   "rMcap": 3.9258,
+   "pePred": 14.217,
+   "pctPred": 72.13,
+   "fcstPp": 1.49,
+   "pePredPx": 14.0076
   }
  ]
 }
