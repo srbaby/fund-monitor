@@ -145,30 +145,178 @@ async function fetchSingleFund(code) {
 }
 
 let _idxCounter = 0;
+let _indicesPromise = null;
+let _qqScriptQueue = Promise.resolve();
 
-function fetchIndices() {
+function _numberOrNaN(value) {
+  if (value == null || value === "") return NaN;
+  return Number(value);
+}
+
+function _isValidIndices(map) {
+  return INDICES.every(({ id }) => {
+    const d = map?.[id];
+    return (
+      d?.f12 === id &&
+      Number.isFinite(d.f2) &&
+      d.f2 > 0 &&
+      Number.isFinite(d.f3)
+    );
+  });
+}
+
+function _latestQuoteAt(map) {
+  const values = Object.values(map)
+    .map((d) => d.quoteAt || d.f124)
+    .filter(Boolean);
+  values.sort();
+  return values.length ? values[values.length - 1] : null;
+}
+
+function _fetchPrimaryIndices() {
   return new Promise((resolve) => {
     const cb = "_idx_" + Date.now() + "_" + _idxCounter++;
-    const fin = injectScript(
-      `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f12,f14&secids=1.000300,1.000510,1.000905,1.000832,1.000012,116.HSI,124.HSI,100.HSI&cb=${cb}&_=${Date.now()}`,
-      5000,
-      () => {
-        delete window[cb];
-        resolve();
-      },
+    const s = document.createElement("script");
+    let done = false;
+    const finish = (map) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      s.remove();
+      delete window[cb];
+      resolve(map);
+    };
+    const timer = setTimeout(
+      () => finish(null),
+      SYS_CONFIG.FETCH_INDEX_TIMEOUT,
     );
 
-    window[cb] = function (data) {
-      fin();
-      const diff = data?.data?.diff;
-      if (!diff) return;
-      const map = {};
-      diff.forEach((d) => {
-        map[d.f12] = d;
-      });
-      setIndices(map);
+    window[cb] = (data) => {
+      try {
+        const map = {};
+        (data?.data?.diff || []).forEach((raw) => {
+          const id = raw.f12 === "HSI" ? "HSI" : String(raw.f12 || "");
+          map[id] = {
+            ...raw,
+            f2: _numberOrNaN(raw.f2),
+            f3: _numberOrNaN(raw.f3),
+            f12: id,
+            quoteAt: raw.f124 || null,
+          };
+        });
+        finish(_isValidIndices(map) ? map : null);
+      } catch (e) {
+        finish(null);
+      }
+    };
+    s.onerror = () => finish(null);
+    s.src = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f12,f14,f124&secids=1.000300,1.000510,1.000905,1.000832,1.000012,116.HSI,124.HSI,100.HSI&cb=${cb}&_=${Date.now()}`;
+    document.head.appendChild(s);
+  });
+}
+
+function _loadQQQuotes(query, variableNames) {
+  const task = _qqScriptQueue.then(
+    () =>
+      new Promise((resolve) => {
+        const s = document.createElement("script");
+        s.charset = "GBK";
+        let done = false;
+        const finish = (result) => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          s.remove();
+          variableNames.forEach((name) => {
+            window[name] = undefined;
+          });
+          resolve(result);
+        };
+        const timer = setTimeout(
+          () => finish(null),
+          SYS_CONFIG.FETCH_INDEX_TIMEOUT,
+        );
+
+        variableNames.forEach((name) => {
+          window[name] = undefined;
+        });
+        s.onload = () => {
+          const result = {};
+          variableNames.forEach((name) => {
+            result[name] = window[name];
+          });
+          finish(result);
+        };
+        s.onerror = () => finish(null);
+        s.src = `https://qt.gtimg.cn/q=${query}&r=${Date.now()}`;
+        document.head.appendChild(s);
+      }),
+  );
+  _qqScriptQueue = task.catch(() => null);
+  return task;
+}
+
+async function _fetchFallbackIndices() {
+  const variableMap = {
+    "000300": "v_sh000300",
+    "000510": "v_sh000510",
+    "000905": "v_sh000905",
+    "000832": "v_sh000832",
+    "000012": "v_sh000012",
+    HSI: "v_hkHSI",
+  };
+  const rawMap = await _loadQQQuotes(
+    "sh000300,sh000510,sh000905,sh000832,sh000012,hkHSI",
+    Object.values(variableMap),
+  );
+  if (!rawMap) return null;
+
+  const map = {};
+  Object.entries(variableMap).forEach(([id, variableName]) => {
+    const raw = rawMap[variableName];
+    if (typeof raw !== "string") return;
+    const f = raw.split("~");
+    map[id] = {
+      f2: _numberOrNaN(f[3]),
+      f3: _numberOrNaN(f[32]),
+      f12: id,
+      f14: f[1] || INDICES.find((idx) => idx.id === id)?.lbl || id,
+      f124: f[30] || null,
+      quoteAt: f[30] || null,
     };
   });
+  return _isValidIndices(map) ? map : null;
+}
+
+function fetchIndices() {
+  if (_indicesPromise) return _indicesPromise;
+  _indicesPromise = (async () => {
+    const primary = await _fetchPrimaryIndices();
+    if (primary) {
+      setIndices(primary, {
+        mode: "live",
+        source: "primary",
+        receivedAt: Date.now(),
+        quoteAt: _latestQuoteAt(primary),
+      });
+      return;
+    }
+
+    const fallback = await _fetchFallbackIndices();
+    if (fallback) {
+      setIndices(fallback, {
+        mode: "live",
+        source: "fallback",
+        receivedAt: Date.now(),
+        quoteAt: _latestQuoteAt(fallback),
+      });
+      return;
+    }
+    setIndicesUnavailable();
+  })().finally(() => {
+    _indicesPromise = null;
+  });
+  return _indicesPromise;
 }
 
 // 腾讯指数快照：取沪深300实时总市值/PE_TTM（旁路PE引擎数据源）
@@ -177,34 +325,25 @@ let _qqBusy = false;
 function fetchQQIndex() {
   if (_qqBusy) return;
   _qqBusy = true;
-  const s = document.createElement("script");
-  s.charset = "GBK";
-  let done = false;
-  const fin = () => {
-    if (done) return;
-    done = true;
-    s.remove();
-    _qqBusy = false;
-    try {
-      const raw = window.v_sh000300;
-      if (typeof raw === "string") {
-        const f = raw.split("~");
-        const d = {
-          price: parseFloat(f[3]),
-          ts: f[30] || "",
-          pe: parseFloat(f[39]),
-          mcap: parseFloat(f[45]),
-        };
-        if (d.price > 0) setQQIndex(d);
-      }
-    } catch (e) {}
-    window.v_sh000300 = undefined;
-  };
-  s.onload = fin;
-  s.onerror = fin;
-  setTimeout(fin, 5000);
-  s.src = `https://qt.gtimg.cn/q=sh000300&r=${Date.now()}`;
-  document.head.appendChild(s);
+  _loadQQQuotes("sh000300", ["v_sh000300"])
+    .then((quotes) => {
+      try {
+        const raw = quotes?.v_sh000300;
+        if (typeof raw === "string") {
+          const f = raw.split("~");
+          const d = {
+            price: parseFloat(f[3]),
+            ts: f[30] || "",
+            pe: parseFloat(f[39]),
+            mcap: parseFloat(f[45]),
+          };
+          if (d.price > 0) setQQIndex(d);
+        }
+      } catch (e) {}
+    })
+    .finally(() => {
+      _qqBusy = false;
+    });
 }
 
 function getNavByCode(code) {

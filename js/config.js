@@ -24,6 +24,7 @@ const SYS_CONFIG = {
   FETCH_EST_TIMEOUT: 3000, // 估算净值请求超时（ms）
   FETCH_OFF_TIMEOUT: 1500, // 官方净值单次请求超时（ms）
   FETCH_OFF_DRAIN_DELAY: 0, // 官方净值串行队列间隔（ms）
+  FETCH_INDEX_TIMEOUT: 5000, // 指数行情动态脚本请求超时（ms）
 };
 
 // ---- 市场常量 ----

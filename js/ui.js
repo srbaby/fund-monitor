@@ -473,19 +473,59 @@ function calcFlash(results) {
   return fl;
 }
 
-function renderIndices(map) {
-  if (!map || Object.keys(map).length === 0) return;
-  document.getElementById("idxBar").innerHTML = INDICES.map((idx) => {
-    const d = map[idx.id];
-    if (!d || !d.f2)
-      return `<div class="idx-cell"><div class="idx-lbl">${idx.lbl}</div><div class="idx-row"><div class="idx-chg flat num">—</div></div></div>`;
+function _formatIndexTime(quoteAt, receivedAt) {
+  let date = null;
+  if (typeof quoteAt === "number" && Number.isFinite(quoteAt)) {
+    date = new Date(quoteAt < 1e12 ? quoteAt * 1000 : quoteAt);
+  } else if (typeof quoteAt === "string" && /^\d{14}$/.test(quoteAt)) {
+    date = new Date(
+      Number(quoteAt.slice(0, 4)),
+      Number(quoteAt.slice(4, 6)) - 1,
+      Number(quoteAt.slice(6, 8)),
+      Number(quoteAt.slice(8, 10)),
+      Number(quoteAt.slice(10, 12)),
+      Number(quoteAt.slice(12, 14)),
+    );
+  }
+  if (!date || isNaN(date.getTime())) {
+    date = receivedAt ? new Date(receivedAt) : null;
+  }
+  return date && !isNaN(date.getTime())
+    ? date.toLocaleTimeString("zh-CN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })
+    : "";
+}
+
+function renderIndices(map, meta) {
+  const bar = _getEl("idxBar");
+  const dataMap = map || {};
+  const mode = meta?.mode || "empty";
+  bar.classList.toggle("is-stale", mode === "stale");
+  if (meta?.source === "fallback") {
+    bar.dataset.status = "备用行情";
+  } else if (mode === "stale") {
+    const time = _formatIndexTime(meta.quoteAt, meta.receivedAt);
+    bar.dataset.status = `行情暂断${time ? ` · 显示 ${time} 数据` : ""}`;
+  } else if (mode === "empty") {
+    bar.dataset.status = "行情暂不可用";
+  } else {
+    bar.dataset.status = "";
+  }
+
+  bar.innerHTML = INDICES.map((idx) => {
+    const d = dataMap[idx.id];
+    if (!d || !Number.isFinite(d.f2))
+      return `<div class="idx-cell"><div class="idx-lbl">${idx.lbl}</div><div class="idx-row"><div class="idx-chg flat num">—</div><div class="idx-price num">—</div></div></div>`;
     const price = typeof d.f2 === "number" ? d.f2.toFixed(2) : String(d.f2);
     const pct = d.f3 ?? 0,
       cls = pct > 0 ? "up" : pct < 0 ? "down" : "flat",
       sign = pct > 0 ? "+" : "";
     const old = idxPrev[idx.id];
     const flash =
-      old && old !== price
+      mode === "live" && old && old !== price
         ? parseFloat(price) > parseFloat(old)
           ? "flash-up"
           : "flash-down"
@@ -764,7 +804,7 @@ function renderTodayProfit(results, holdings, activeProds, mktState, todayStr) {
 
 // 1. 仅指数更新时触发 (每10秒)
 function UI_updateIndices() {
-  renderIndices(getIndices());
+  renderIndices(getIndices(), getIndicesMeta());
   updatePeBar();
 }
 

@@ -15,6 +15,7 @@ observeState("LOCAL_CONFIG", () => {
   UI_updateLocalConfig();
 });
 
+UI_updateIndices();
 updateClock();
 setInterval(updateClock, 1000);
 

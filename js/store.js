@@ -7,8 +7,15 @@
 let funds = [];
 let _lastResults = [];
 let _indicesMap = {};
+let _indicesMeta = {
+  mode: "empty",
+  source: null,
+  receivedAt: null,
+  quoteAt: null,
+};
 let _prioritySellCode = null;
 let _cloudStatus = { count: 0, ok: false }; // 已填字段数 / 填了的是否全部验证通过
+const _INDICES_SNAPSHOT_KEY = "fm_indices_snapshot_v1";
 
 function getPrioritySellCode() {
   return _prioritySellCode;
@@ -80,8 +87,61 @@ function setLastResults(res) {
 function getIndices() {
   return _indicesMap;
 }
-function setIndices(map) {
+function getIndicesMeta() {
+  return _indicesMeta;
+}
+function _loadIndicesSnapshot() {
+  try {
+    const snapshot = safeParse(
+      localStorage.getItem(_INDICES_SNAPSHOT_KEY),
+      null,
+    );
+    if (!snapshot?.map || Object.keys(snapshot.map).length === 0) return null;
+    return snapshot;
+  } catch (e) {
+    return null;
+  }
+}
+function _saveIndicesSnapshot(snapshot) {
+  try {
+    localStorage.setItem(_INDICES_SNAPSHOT_KEY, JSON.stringify(snapshot));
+  } catch (e) {}
+}
+function setIndices(map, meta = {}) {
   _indicesMap = map;
+  _indicesMeta = {
+    mode: meta.mode || "live",
+    source: meta.source || null,
+    receivedAt: meta.receivedAt || Date.now(),
+    quoteAt: meta.quoteAt || null,
+  };
+  if (_indicesMeta.mode === "live") {
+    _saveIndicesSnapshot({ map: _indicesMap, ..._indicesMeta });
+  }
+  dispatchUpdate("INDICES");
+}
+function setIndicesUnavailable() {
+  const snapshot = _loadIndicesSnapshot();
+  const cachedMap =
+    snapshot?.map ||
+    (Object.keys(_indicesMap).length > 0 ? _indicesMap : null);
+  if (cachedMap) {
+    _indicesMap = cachedMap;
+    _indicesMeta = {
+      mode: "stale",
+      source: "cache",
+      receivedAt: snapshot?.receivedAt || _indicesMeta.receivedAt || null,
+      quoteAt: snapshot?.quoteAt || _indicesMeta.quoteAt || null,
+    };
+  } else {
+    _indicesMap = {};
+    _indicesMeta = {
+      mode: "empty",
+      source: null,
+      receivedAt: null,
+      quoteAt: null,
+    };
+  }
   dispatchUpdate("INDICES");
 }
 
