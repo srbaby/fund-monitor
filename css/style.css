@@ -175,6 +175,31 @@ body {
     grid-template-columns: repeat(3, 1fr);
     gap: 1px;
 }
+.idx-bar[data-status]:not([data-status=""])::before {
+    content: attr(data-status);
+    grid-column: 1 / -1;
+    background: var(--bg2);
+    color: var(--t3);
+    font-family: var(--f-zh);
+    font-size: 9px;
+    font-weight: 400;
+    line-height: 1.2;
+    padding: 4px 8px;
+    text-align: right;
+    pointer-events: none;
+}
+.idx-bar.is-stale .idx-cell {
+    filter: grayscale(1);
+}
+.idx-bar.is-stale .idx-chg,
+.idx-bar.is-stale .idx-price,
+.idx-bar.is-stale .idx-lbl {
+    color: var(--t3);
+}
+.idx-bar.is-stale .idx-cell::after {
+    background: var(--flat);
+    opacity: 0.35;
+}
 .idx-cell {
     background: var(--bg2);
     padding: 10px 8px;
