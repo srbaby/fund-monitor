@@ -1,3 +1,11 @@
 {
-  "status": "waiting_first_capture"
+  "v": "2026-06-22 17:26:50",
+  "date": "2026-06-22",
+  "sampleAt": "17:26:50",
+  "quoteAt": "16:14:06",
+  "anchorDate": "2026-06-18",
+  "mcap": 580291.35,
+  "bypassPe": 14.2026,
+  "bypassPct": 72.05,
+  "status": "captured"
 }
