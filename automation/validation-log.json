@@ -1,6 +1,6 @@
 {
-  "v": "2026-06-22 20:30:29",
-  "date": "2026-06-22",
+  "v": "2026-06-23 20:30:29",
+  "date": "2026-06-23",
   "metric": "diffPp = 15:15 bypassPct - officialPct",
   "log": [
     {
@@ -11,6 +11,16 @@
       "officialPe": 14.19,
       "officialPct": 71.98,
       "diffPp": 0.07,
+      "status": "complete"
+    },
+    {
+      "date": "2026-06-23",
+      "sampleAt": "15:15:03",
+      "bypassPe": 13.9015,
+      "bypassPct": 68.47,
+      "officialPe": 13.93,
+      "officialPct": 68.94,
+      "diffPp": -0.47,
       "status": "complete"
     }
   ]
