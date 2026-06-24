@@ -845,6 +845,21 @@ main {
     transition: left 0.3s;
     z-index: 1;
 }
+.pe-track-popup {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg2);
+    border: 1px solid var(--bd2);
+    border-radius: 8px;
+    padding: 6px 12px;
+    white-space: nowrap;
+    font-size: 12px;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    pointer-events: none;
+}
 .pe-input-btn {
     font-size: 11px;
     color: var(--t3);
