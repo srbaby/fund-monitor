@@ -98,16 +98,11 @@ function delFund(code) {
   refreshData();
 }
 
-// ---- PE 定锚操作 ----
+// ---- 定档操作 ----
 function openPeModal() {
   const peData = loadPe() || {};
   document.getElementById("peModalBucket").value =
     peData.bucketStr || DEFAULT_BUCKET;
-  document.getElementById("peModalInputPct").value = peData.peYest || "";
-  document.getElementById("peModalPriceAnchor").value =
-    peData.priceAnchor || "";
-  document.getElementById("peModalPriceBuy").value = peData.priceBuy || "";
-  document.getElementById("peModalPriceSell").value = peData.priceSell || "";
   document.getElementById("peModal").style.display = "flex";
 }
 
@@ -117,29 +112,9 @@ function closePeModal() {
 
 function confirmPe() {
   const bucketStr = document.getElementById("peModalBucket").value;
-  const peYest = parseFloat(document.getElementById("peModalInputPct").value);
-  const priceAnchor = parseFloat(
-    document.getElementById("peModalPriceAnchor").value,
-  );
-  const priceBuy = parseFloat(document.getElementById("peModalPriceBuy").value);
-  const priceSell = parseFloat(
-    document.getElementById("peModalPriceSell").value,
-  );
-
-  if (
-    isNaN(peYest) ||
-    isNaN(priceAnchor) ||
-    isNaN(priceBuy) ||
-    isNaN(priceSell)
-  )
-    return alert(
-      "请填写完整的【PE百分位】、【收盘点位】、【增权指数】与【降权指数】！",
-    );
-
-  savePe({ bucketStr, peYest, priceAnchor, priceBuy, priceSell });
-
+  const peData = loadPe() || {};
+  savePe({ ...peData, bucketStr });
   syncCloud("push_pe_now");
-  alert("✅ 定锚已更新，云端同步已在后台触发");
   closePeModal();
 }
 
@@ -152,8 +127,7 @@ function liveUpdateHoldingPlan() {
 
   const activeProds = getActiveProducts();
   const peData = loadPe();
-  const rt300Price = getIndices()[SYS_CONFIG.IDX_PE]?.f2 ?? null;
-  const currentPE = getCurrentPE(peData, rt300Price);
+  const currentPE = getCurrentPE(peData, null, getEnginePE(loadPeEngine(), getQQIndex()));
   const targetEqNeutral = getDynamicTarget("neutral", peData?.bucketStr);
 
   // 叠加当前表单未保存的内容
@@ -208,8 +182,7 @@ function openHoldingDrawer() {
     shortNameMap = loadShortNames();
   const activeProds = getActiveProducts();
   const peData = loadPe();
-  const rt300Price = getIndices()[SYS_CONFIG.IDX_PE]?.f2 ?? null;
-  const currentPE = getCurrentPE(peData, rt300Price);
+  const currentPE = getCurrentPE(peData, null, getEnginePE(loadPeEngine(), getQQIndex()));
   const targetEqNeutral = getDynamicTarget("neutral", peData?.bucketStr);
 
   // 在 interact 层完成权益计算，传给 UI 工厂
