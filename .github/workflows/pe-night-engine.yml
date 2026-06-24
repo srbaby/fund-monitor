@@ -1,17 +1,19 @@
 name: PE夜间数据引擎
 
-# 定时触发已迁移至 Cloudflare Worker（pe-night-trigger，北京20:30/21:30/22:00三槽自愈+Bark告警）
-# 源码存档：automation/cf_worker_pe_trigger.js。本工作流只保留手动/API触发入口。
+# 定时触发已全面迁移至 Cloudflare Worker 内网服务绑定通道（Master-Scheduler ➔ pe-night-trigger）
+# 本工作流支持：CF Worker 自动远程唤醒 / 手机 GitHub App 手动触发
 on:
-  workflow_dispatch:           # CF Worker dispatch / 手机GitHub App手动触发
+  workflow_dispatch:           # 手动触发入口
     inputs:
       slot:
-        description: "触发槽位：early=温和重试（乐咕未更新则等下一槽），late=未取到数据报错。CF Worker自动传入"
+        description: "触发槽位：early=温和重试，late=未取到数据报错"
         required: false
         default: "late"
+  repository_dispatch:         # ✨ 新增：对接新版 CF Worker 的内网穿透安全触发
+    types: [snapshot, night, sentinel]
 
 permissions:
-  contents: write   # 提交验证日志副本 automation/validation-log.json
+  contents: write   # 允许提交验证日志副本 automation/validation-log.json
 
 concurrency:
   group: pe-night-engine
@@ -26,16 +28,24 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      
+      - name: 设置 Python 环境并启用缓存
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install akshare pandas
+          cache: 'pip' # ✨ 新增：开启 pip 依赖缓存，第二次运行起速度直接对折
+
+      - name: 安装 Python 依赖库
+        run: pip install akshare pandas
+
       - name: 抓取并写入Gist
         env:
           PE_GIST_ID: ${{ secrets.PE_GIST_ID }}
           PE_GIST_TOKEN: ${{ secrets.PE_GIST_TOKEN }}
-          RUN_SLOT: ${{ inputs.slot }}
+          # ✨ 智能槽位映射：手动时用 inputs.slot；Worker 触发时自动将 night 映射为 early，sentinel 映射为 late
+          RUN_SLOT: ${{ inputs.slot || (github.event.action == 'sentinel' && 'late') || (github.event.action == 'night' && 'early') || github.event.action }}
         run: python automation/pe_nightly.py
+
       - name: 提交验证日志副本
         run: |
           git config user.name "pe-engine-bot"
