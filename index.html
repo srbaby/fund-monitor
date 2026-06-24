@@ -105,7 +105,7 @@
                     ↻ 刷新
                 </button>
                 <button class="pe-input-btn" onclick="openPeModal()">
-                    定锚
+                    定档
                 </button>
                 <button
                     class="pe-input-btn"
@@ -117,7 +117,7 @@
             </div>
 
             <div class="pe-bar-bottom">
-                <div class="pe-track" id="peTrack" title="高精度二次抛物线追踪">
+                <div class="pe-track" id="peTrack">
                     <div
                         class="pe-track-lo"
                         id="peTrackLo"
@@ -133,6 +133,7 @@
                         id="peTrackMarker"
                         style="display: none"
                     ></div>
+                    <div class="pe-track-popup" id="peTrackPopup" style="display:none"></div>
                 </div>
                 <div
                     id="peEquityInfo"
@@ -297,162 +298,30 @@
         <div class="pe-modal" id="peModal" style="display: none">
             <div class="pe-modal-mask" onclick="closePeModal()"></div>
             <div class="pe-modal-box">
-                <div class="pe-modal-title">PE 定锚</div>
+                <div class="pe-modal-title">定档</div>
                 <div class="pe-modal-sub">
-                    以修正后指数点位为坐标轴，盘中实时线性追踪
+                    选择当前 PE 百分位所在档位
                 </div>
 
                 <div style="display: flex; flex-direction: column; gap: 12px">
-                    <!-- 第1行：档位独占整行 -->
-                    <div>
-                        <div
-                            style="
-                                font-size: 11px;
-                                color: var(--t3);
-                                margin-bottom: 4px;
-                            "
-                        >
-                            1. 当前所处档位
-                        </div>
-                        <select
-                            class="pe-modal-select"
-                            id="peModalBucket"
-                            style="height: 42px; width: 100%"
-                        >
-                            <option value="80,100">80% 以上 (极度泡沫)</option>
-                            <option value="75,80">75% - 80% (疯狂期)</option>
-                            <option value="70,75">70% - 75% (平稳撤军)</option>
-                            <option value="65,70" selected>
-                                65% - 70% (高位警戒)
-                            </option>
-                            <option value="60,65">60% - 65% (常态偏高)</option>
-                            <option value="55,60">
-                                55% - 60% (印钞带上沿)
-                            </option>
-                            <option value="50,55">50% - 55% (物理重心)</option>
-                            <option value="45,50">45% - 50% (吸筹带)</option>
-                            <option value="40,45">40% - 45% (深水激活)</option>
-                            <option value="35,40">35% - 40% (活塞预警)</option>
-                            <option value="30,35">30% - 35% (破窗I)</option>
-                            <option value="0,30">30% 以下 (破窗II)</option>
-                        </select>
-                    </div>
-
-                    <!-- 第2行：PE百分位 + 收盘点位 -->
-                    <div style="display: flex; gap: 10px">
-                        <div style="flex: 1">
-                            <div
-                                style="
-                                    font-size: 11px;
-                                    color: var(--t3);
-                                    margin-bottom: 4px;
-                                "
-                            >
-                                2. PE 百分位 (%)
-                            </div>
-                            <input
-                                class="pe-modal-input num"
-                                id="peModalInputPct"
-                                type="number"
-                                step="0.01"
-                                style="font-size: 18px; padding: 8px"
-                                placeholder="70.86"
-                            />
-                        </div>
-                        <div style="flex: 1">
-                            <div
-                                style="
-                                    font-size: 11px;
-                                    color: var(--t3);
-                                    margin-bottom: 4px;
-                                "
-                            >
-                                收盘点位
-                            </div>
-                            <input
-                                class="pe-modal-input num"
-                                id="peModalPriceAnchor"
-                                type="number"
-                                step="0.01"
-                                style="font-size: 18px; padding: 8px"
-                                placeholder="4914.60"
-                            />
-                        </div>
-                    </div>
-
-                    <!-- 第3行：增权指数 + 降权指数 -->
-                    <div style="display: flex; gap: 10px">
-                        <div
-                            style="
-                                flex: 1;
-                                background: var(--buy-bg);
-                                border: 1px solid var(--buy-bd);
-                                padding: 8px 10px;
-                                border-radius: 10px;
-                            "
-                        >
-                            <div
-                                style="
-                                    font-size: 11px;
-                                    color: var(--buy);
-                                    margin-bottom: 2px;
-                                    font-weight: 600;
-                                "
-                            >
-                                📉 增权指数
-                            </div>
-                            <input
-                                class="pe-modal-input num"
-                                id="peModalPriceBuy"
-                                type="number"
-                                style="
-                                    font-size: 18px;
-                                    padding: 4px 6px;
-                                    width: 100%;
-                                    border: none;
-                                    background: transparent;
-                                    color: var(--t1);
-                                    margin-bottom: 0;
-                                "
-                                placeholder="4762"
-                            />
-                        </div>
-                        <div
-                            style="
-                                flex: 1;
-                                background: var(--sell-bg);
-                                border: 1px solid var(--sell-bd);
-                                padding: 8px 10px;
-                                border-radius: 10px;
-                            "
-                        >
-                            <div
-                                style="
-                                    font-size: 11px;
-                                    color: var(--sell);
-                                    margin-bottom: 2px;
-                                    font-weight: 600;
-                                "
-                            >
-                                📈 降权指数
-                            </div>
-                            <input
-                                class="pe-modal-input num"
-                                id="peModalPriceSell"
-                                type="number"
-                                style="
-                                    font-size: 18px;
-                                    padding: 4px 6px;
-                                    width: 100%;
-                                    border: none;
-                                    background: transparent;
-                                    color: var(--t1);
-                                    margin-bottom: 0;
-                                "
-                                placeholder="5024"
-                            />
-                        </div>
-                    </div>
+                    <select
+                        class="pe-modal-select"
+                        id="peModalBucket"
+                        style="height: 42px; width: 100%"
+                    >
+                        <option value="80,100">80% 以上 (极度泡沫)</option>
+                        <option value="75,80">75% - 80% (疯狂期)</option>
+                        <option value="70,75">70% - 75% (平稳撤军)</option>
+                        <option value="65,70" selected>65% - 70% (高位警戒)</option>
+                        <option value="60,65">60% - 65% (常态偏高)</option>
+                        <option value="55,60">55% - 60% (印钞带上沿)</option>
+                        <option value="50,55">50% - 55% (物理重心)</option>
+                        <option value="45,50">45% - 50% (吸筹带)</option>
+                        <option value="40,45">40% - 45% (深水激活)</option>
+                        <option value="35,40">35% - 40% (活塞预警)</option>
+                        <option value="30,35">30% - 35% (破窗I)</option>
+                        <option value="0,30">30% 以下 (破窗II)</option>
+                    </select>
                 </div>
 
                 <div class="pe-modal-btns">
@@ -460,7 +329,7 @@
                         取消
                     </button>
                     <button class="pe-modal-confirm" onclick="confirmPe()">
-                        确认定锚
+                        确认
                     </button>
                 </div>
             </div>
