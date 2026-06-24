@@ -15,6 +15,7 @@ const prevData = {},
   idxPrev = {};
 const _peDOM = {};
 let _peDOMReady = false;
+let _popupBound = false;
 // 缓存高频访问的静态 DOM 节点
 const _el = {};
 function _getEl(id) {
@@ -319,7 +320,7 @@ function UI_renderHoldingDrawerBody(
     _count === 0 ? "var(--t3)" : _cs.ok ? "var(--dn)" : "var(--sell)";
   const cfgBd =
     _count === 0 ? "var(--bd2)" : _cs.ok ? "var(--dn-bd)" : "var(--sell-bd)";
-  const cfgLabel = `⚙ 配置 (${_count}/3)`;
+  const cfgLabel = `⚙ 配置 (${_count}/2)`;
   // 拉取按钮：未配置禁用+灰，已配置中性色（不用绿）
   const pullDisabled = _canPull ? "" : "disabled";
   const pullCol = _canPull ? "var(--t2)" : "var(--t3)";
@@ -535,26 +536,17 @@ function renderIndices(map, meta) {
   }).join("");
 }
 
-// 旁路PE引擎读数（并行验证期：与现行读数同屏观察偏差；v=null 表示现行无锚仅展示旁路）
-function _renderEngineBar(v) {
+// 旁路1.0文字行（总市值路，独立于bar条的2.0主路径）
+// eng1=1.0结果, eng=2.0结果；均由 updatePeBar 注入
+function _renderEngineBar(eng1, eng) {
   if (!_peDOM.engineBar) return;
-  const eng = getEnginePE(loadPeEngine(), getQQIndex());
-  if (!eng) {
+  if (!eng1) {
     _peDOM.engineBar.style.display = "none";
     return;
   }
-  const modeTxt =
-    eng.mode === "mcap"
-      ? "实时·总市值"
-      : eng.mode === "price"
-        ? "实时·点位等比(降级)"
-        : "昨收";
-  let diffHtml = "";
-  if (v != null) {
-    const dv = eng.pct - v;
-    diffHtml = ` <span style="color:var(--t3)">· 与现行差</span> <span class="num" style="color:${Math.abs(dv) >= 1 ? "var(--warn)" : "var(--t2)"}">${dv > 0 ? "+" : ""}${dv.toFixed(2)}pp</span>`;
-  }
-  _peDOM.engineBar.innerHTML = `<span style="color:var(--t3)">旁路</span> <span class="num" style="color:var(--t1);font-weight:600">${eng.pct.toFixed(2)}%</span> <span class="num" style="color:var(--t2)">PE ${eng.pe.toFixed(2)}</span> <span style="color:var(--t3)">${modeTxt} · 锚${eng.date.slice(5)}</span>${diffHtml}`;
+  const diff = eng ? eng1.pct - eng.pct : null;
+  const diffStr = diff != null ? ` · 与现行差 ${diff >= 0 ? "+" : ""}${diff.toFixed(2)}pp` : "";
+  _peDOM.engineBar.innerHTML = `<span style="color:var(--t3)">旁路</span> <b class="num" style="color:var(--t2)">${eng1.pct.toFixed(2)}%</b> <span style="color:var(--t3)">PE ${eng1.pe.toFixed(2)} 实时·总市值 · 锚${eng1.date.slice(5)}${diffStr}</span>`;
   _peDOM.engineBar.style.display = "block";
 }
 
@@ -571,8 +563,11 @@ function updatePeBar() {
   }
 
   const peData = loadPe();
-  const rt300Price = getIndices()[SYS_CONFIG.IDX_PE]?.f2 ?? null;
-  const currentPE = getCurrentPE(peData, rt300Price);
+  const qqIdx = getQQIndex();
+  const engineData = loadPeEngine();
+  const eng = getEnginePE(engineData, qqIdx);   // 2.0 price路，bar条主路径
+  const eng1 = getEnginePE1(engineData, qqIdx); // 1.0 mcap路，文字行
+  const currentPE = getCurrentPE(peData, null, eng);
 
   if (!currentPE) {
     _peDOM.display.textContent = "--.--%";
@@ -582,7 +577,7 @@ function updatePeBar() {
     [_peDOM.marker, _peDOM.loEl, _peDOM.hiEl, _peDOM.eqDiv].forEach((el) => {
       if (el) el.style.display = "none";
     });
-    _renderEngineBar(null); // 旁路引擎独立于手工锚，无锚时仍可显示
+    _renderEngineBar(eng1, eng);
     return;
   }
 
@@ -632,7 +627,45 @@ function updatePeBar() {
     } else _peDOM.eqDiv.style.display = "none";
   }
 
-  _renderEngineBar(v);
+  _renderEngineBar(eng1, eng);
+
+  // 更新 bar 条浮层：买卖边界对应的沪深300点位
+  const peTrackEl = document.getElementById("peTrack");
+  const popup = document.getElementById("peTrackPopup");
+  if (peTrackEl && popup) {
+    const bp = getBoundaryPrices(engineData, bounds.buyPct, bounds.sellPct);
+    if (bp) {
+      const fmt = (n) => n.toLocaleString("zh-CN");
+      popup.innerHTML =
+        `<span style="color:var(--buy);font-weight:600">买 ${fmt(bp.buyPrice)}</span>` +
+        `<span style="color:var(--bd2);margin:0 6px">|</span>` +
+        `<span style="color:var(--sell);font-weight:600">卖 ${fmt(bp.sellPrice)}</span>`;
+      peTrackEl.dataset.hasPopup = "1";
+    } else {
+      peTrackEl.dataset.hasPopup = "";
+    }
+    if (!_popupBound) {
+      _popupBound = true;
+      // 点击/tap：显示浮层
+      peTrackEl.addEventListener("click", (e) => {
+        if (!peTrackEl.dataset.hasPopup) return;
+        e.stopPropagation();
+        popup.style.display = popup.style.display === "none" ? "block" : "none";
+      });
+      // 桌面：离开 bar 区域自动关闭
+      peTrackEl.addEventListener("mouseleave", () => {
+        popup.style.display = "none";
+      });
+      // 桌面：悬停自动显示
+      peTrackEl.addEventListener("mouseenter", () => {
+        if (peTrackEl.dataset.hasPopup) popup.style.display = "block";
+      });
+      // 点击外部关闭
+      document.addEventListener("click", () => {
+        popup.style.display = "none";
+      });
+    }
+  }
 
   if (v <= bounds.buyPct) {
     _peDOM.display.className = "pe-value pe-danger-dn";
