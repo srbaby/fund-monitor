@@ -113,7 +113,7 @@ function closePeModal() {
 function confirmPe() {
   const bucketStr = document.getElementById("peModalBucket").value;
   const peData = loadPe() || {};
-  savePe({ ...peData, bucketStr });
+  savePe({ bucketStr });
   syncCloud("push_pe_now");
   closePeModal();
 }
