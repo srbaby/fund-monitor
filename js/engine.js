@@ -30,47 +30,24 @@ function isEquityWrongDir(peVal, diff) {
   );
 }
 
-function getCurrentPE(peData, currentIdxPrice) {
+// engineResult: getEnginePE() 的返回值，由调用方注入（依赖注入，engine 层不读 store）
+// 优先用旁路引擎实时百分位；引擎不可用时回落到昨收官方百分位
+function getCurrentPE(peData, _currentIdxPrice, engineResult) {
   if (!peData || !peData.bucketStr) return null;
 
   const [loStr, hiStr] = peData.bucketStr.split(",");
   const buyPct = parseFloat(loStr) - SYS_CONFIG.BUFFER_ZONE;
   const sellPct = parseFloat(hiStr) + SYS_CONFIG.BUFFER_ZONE;
 
-  let v = peData.peYest,
-    isDynamic = false;
-
-  if (
-    currentIdxPrice &&
-    peData.priceAnchor &&
-    peData.priceBuy &&
-    peData.priceSell
-  ) {
-    const x = currentIdxPrice;
-    const { priceBuy, priceAnchor, priceSell } = peData;
-
-    if (x < priceAnchor && priceAnchor !== priceBuy) {
-      // 线性外推：低于 priceBuy 时继续走，不在 buyPct 处硬截
-      v =
-        buyPct +
-        ((x - priceBuy) / (priceAnchor - priceBuy)) * (peData.peYest - buyPct);
-    } else if (priceSell !== priceAnchor) {
-      // 线性外推：高于 priceSell 时继续走，不在 sellPct 处硬截
-      v =
-        peData.peYest +
-        ((x - priceAnchor) / (priceSell - priceAnchor)) *
-          (sellPct - peData.peYest);
-    }
-    isDynamic = true;
-  }
-
+  const isDynamic = !!(engineResult && engineResult.mode !== "close");
+  const v = engineResult ? engineResult.pct : peData.peYest;
   return { value: v, isDynamic, rawData: peData, bounds: { buyPct, sellPct } };
 }
 
-// 旁路PE引擎（并行验证方案）：
-//   实时PE = 昨夜官方PE × (腾讯实时总市值 / 昨收总市值)   ← 乐咕口径恒等式（∑总市值/∑滚动净利润，盈利盘中不变）
+// 旁路2.0（点位路）：bar条主路径
+//   bypass2 (mode=price)：实时PE = 昨夜官方PE × (腾讯实时点位 / 昨收官方点位)   ← 天然含除权/调仓修正
 //   百分位 = 全量历史排序数组二分查找（精确ECDF，与 hs300_daily 的 (pe<=x)/n 口径一致）
-//   mode: mcap=总市值恒等式 / price=点位等比降级 / close=无实时数据回落昨收
+//   无实时点位时回落昨收（mode=close）
 function getEnginePE(engineData, qqIdx) {
   if (
     !engineData ||
@@ -81,10 +58,7 @@ function getEnginePE(engineData, qqIdx) {
     return null;
   let pe = engineData.peYest,
     mode = "close";
-  if (qqIdx && qqIdx.mcap > 0 && engineData.mcapYest > 0) {
-    pe = engineData.peYest * (qqIdx.mcap / engineData.mcapYest);
-    mode = "mcap";
-  } else if (qqIdx && qqIdx.price > 0 && engineData.priceYest > 0) {
+  if (qqIdx && qqIdx.price > 0 && engineData.priceYest > 0) {
     pe = engineData.peYest * (qqIdx.price / engineData.priceYest);
     mode = "price";
   }
@@ -101,6 +75,44 @@ function getEnginePE(engineData, qqIdx) {
     pct: (lo / a.length) * 100,
     mode,
     date: engineData.date || "",
+  };
+}
+
+// 旁路1.0（总市值路）：专用于下方文字行展示，不参与bar条PE计算
+function getEnginePE1(engineData, qqIdx) {
+  if (
+    !engineData ||
+    !Array.isArray(engineData.peSorted) ||
+    !engineData.peSorted.length ||
+    engineData.peYest == null
+  )
+    return null;
+  if (!(qqIdx && qqIdx.mcap > 0 && engineData.mcapYest > 0)) return null;
+  const pe = engineData.peYest * (qqIdx.mcap / engineData.mcapYest);
+  const a = engineData.peSorted;
+  let lo = 0, hi = a.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (a[mid] <= pe) lo = mid + 1;
+    else hi = mid;
+  }
+  return { pe, pct: (lo / a.length) * 100, mode: "mcap", date: engineData.date || "" };
+}
+
+// 根据 PE 百分位反查对应的沪深300点位（用于 tooltip 显示买卖边界点位）
+// buyPct/sellPct 均为 0–100 的百分位值
+function getBoundaryPrices(engineData, buyPct, sellPct) {
+  if (!engineData || !Array.isArray(engineData.peSorted) ||
+      !engineData.peSorted.length || !engineData.peYest || !engineData.priceYest)
+    return null;
+  const a = engineData.peSorted, n = a.length;
+  const peAtPct = (pct) => a[Math.min(Math.floor(pct / 100 * n), n - 1)];
+  const buyPe = peAtPct(buyPct);
+  const sellPe = peAtPct(sellPct);
+  const ratio = engineData.priceYest / engineData.peYest;
+  return {
+    buyPrice: Math.round(buyPe * ratio),
+    sellPrice: Math.round(sellPe * ratio),
   };
 }
 
