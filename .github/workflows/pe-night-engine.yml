@@ -44,15 +44,17 @@ jobs:
         env:
           PE_GIST_ID: ${{ secrets.PE_GIST_ID }}
           PE_GIST_TOKEN: ${{ secrets.PE_GIST_TOKEN }}
-          # ✨ 智能槽位映射：手动时用 inputs.slot；Worker 触发时自动将 night 映射为 early，sentinel 映射为 late
-          RUN_SLOT: ${{ inputs.slot || (github.event.action == 'sentinel' && 'late') || (github.event.action == 'night' && 'early') || github.event.action }}
+          # RUN_ACTION: snapshot=16:00快照 / night|sentinel=夜间配对
+          RUN_ACTION: ${{ github.event.action == 'snapshot' && 'snapshot' || 'night' }}
+          # RUN_SLOT: 夜间配对槽位（snapshot 分支忽略此变量）
+          RUN_SLOT: ${{ inputs.slot || (github.event.action == 'sentinel' && 'late') || (github.event.action == 'night' && 'early') || 'late' }}
         run: python automation/pe_nightly.py
 
-      - name: 提交验证日志副本
+      - name: 提交快照或验证日志
         run: |
           git config user.name "pe-engine-bot"
           git config user.email "actions@github.com"
-          git add automation/validation-log.json
-          git diff --cached --quiet || git commit -m "engine: 验证日志 $(TZ=Asia/Shanghai date '+%m-%d')"
+          git add automation/pe-snapshot.json automation/validation-log.json
+          git diff --cached --quiet || git commit -m "engine: ${{ github.event.action == 'snapshot' && '16:00双路快照' || '验证日志' }} $(TZ=Asia/Shanghai date '+%m-%d %H:%M')"
           git pull --rebase origin main
           git push
