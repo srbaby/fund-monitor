@@ -1,11 +1,14 @@
 {
-  "v": "2026-06-24 17:35:37",
-  "date": "2026-06-24",
-  "sampleAt": "17:35:37",
-  "quoteAt": "16:14:07",
-  "anchorDate": "2026-06-23",
-  "mcap": 568268.01,
-  "bypassPe": 13.9244,
-  "bypassPct": 68.76,
+  "date": "2026-06-25",
+  "sampleAt": "16:00:59",
+  "anchorDate": "2026-06-24",
+  "mcap": 573795.02,
+  "bypass1Pe": 14.0352,
+  "bypass1Pct": 70.3,
+  "priceQQ": 5020.1,
+  "bypass2Pe": 14.1168,
+  "bypass2Pct": 71.23,
+  "bypassPe": 14.0352,
+  "bypassPct": 70.3,
   "status": "captured"
 }
