@@ -536,19 +536,6 @@ function renderIndices(map, meta) {
   }).join("");
 }
 
-// 旁路1.0文字行（总市值路，独立于bar条的2.0主路径）
-// eng1=1.0结果, eng=2.0结果；均由 updatePeBar 注入
-function _renderEngineBar(eng1, eng) {
-  if (!_peDOM.engineBar) return;
-  if (!eng1) {
-    _peDOM.engineBar.style.display = "none";
-    return;
-  }
-  const diff = eng ? eng1.pct - eng.pct : null;
-  const diffStr = diff != null ? ` · 与现行差 ${diff >= 0 ? "+" : ""}${diff.toFixed(2)}pp` : "";
-  _peDOM.engineBar.innerHTML = `<span style="color:var(--t3)">旁路</span> <b class="num" style="color:var(--t2)">${eng1.pct.toFixed(2)}%</b> <span style="color:var(--t3)">PE ${eng1.pe.toFixed(2)} 实时·总市值 · 锚${eng1.date.slice(5)}${diffStr}</span>`;
-  _peDOM.engineBar.style.display = "block";
-}
 
 function updatePeBar() {
   if (!_peDOMReady) {
@@ -558,7 +545,6 @@ function updatePeBar() {
     _peDOM.eqDiv = document.getElementById("peEquityInfo");
     _peDOM.loEl = document.getElementById("peTrackLo");
     _peDOM.hiEl = document.getElementById("peTrackHi");
-    _peDOM.engineBar = document.getElementById("peEngineBar");
     _peDOMReady = true;
   }
 
@@ -566,7 +552,7 @@ function updatePeBar() {
   const qqIdx = getQQIndex();
   const engineData = loadPeEngine();
   const eng = getEnginePE(engineData, qqIdx);   // 2.0 price路，bar条主路径
-  const eng1 = getEnginePE1(engineData, qqIdx); // 1.0 mcap路，文字行
+  const eng1 = getEnginePE1(engineData, qqIdx); // 1.0 mcap路，主PE旁路展示
   const currentPE = getCurrentPE(peData, null, eng);
 
   if (!currentPE) {
@@ -577,12 +563,14 @@ function updatePeBar() {
     [_peDOM.marker, _peDOM.loEl, _peDOM.hiEl, _peDOM.eqDiv].forEach((el) => {
       if (el) el.style.display = "none";
     });
-    _renderEngineBar(eng1, eng);
     return;
   }
 
   const { value: v, isDynamic, bounds } = currentPE;
-  _peDOM.display.innerHTML = `<span class="num">${v.toFixed(2)}%</span>${isDynamic ? `<span style="font-size:10px;color:var(--accent);font-weight:600;margin-left:4px;vertical-align:top">实时</span>` : ""}`;
+  const bypass1Html = eng1
+    ? `<span class="num" style="font-size:10px;color:var(--t3);font-weight:600;margin-left:4px;vertical-align:top">${eng1.pct.toFixed(2)}%</span>`
+    : "";
+  _peDOM.display.innerHTML = `<span class="num">${v.toFixed(2)}%</span>${isDynamic ? bypass1Html : ""}`;
 
   const span = (bounds.sellPct - bounds.buyPct) * 2;
   const peMin = (bounds.buyPct + bounds.sellPct) / 2 - span / 2;
@@ -626,8 +614,6 @@ function updatePeBar() {
       _peDOM.eqDiv.style.display = "flex";
     } else _peDOM.eqDiv.style.display = "none";
   }
-
-  _renderEngineBar(eng1, eng);
 
   // 更新 bar 条浮层：买卖边界对应的沪深300点位
   const peTrackEl = document.getElementById("peTrack");
@@ -913,3 +899,5 @@ function cycleMiniMode() {
   document.getElementById("cycleBtn").textContent = miniLabels[miniMode];
   UI_updateFunds();
 }
+
+
