@@ -78,7 +78,7 @@ function getEnginePE(engineData, qqIdx) {
   };
 }
 
-// 旁路1.0（总市值路）：专用于下方文字行展示，不参与bar条PE计算
+// 旁路1.0（总市值路）：专用于主 PE 旁路展示，不参与bar条PE计算
 function getEnginePE1(engineData, qqIdx) {
   if (
     !engineData ||
@@ -349,3 +349,4 @@ function calcTodayProfit(
     isWaitingForOpen,
   };
 }
+
