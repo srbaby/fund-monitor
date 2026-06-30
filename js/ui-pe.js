@@ -79,9 +79,9 @@ function updatePeBar() {
   const peData = loadPe();
   const qqIdx = getQQIndex();
   const engineData = loadPeEngine();
-  const eng = getEnginePE(engineData, qqIdx);   // 2.0 price路，bar条主路径
-  const eng1 = getEnginePE1(engineData, qqIdx); // 1.0 mcap路，主PE旁路展示
-  const currentPE = getCurrentPE(peData, null, eng);
+  const eng = getEnginePE(engineData, qqIdx);   // 2.0 price路，旁路参考展示
+  const eng1 = getEnginePE1(engineData, qqIdx); // 1.0 mcap路，PE主路径
+  const currentPE = getCurrentPE(peData, null, eng1);
 
   if (!currentPE) {
     _peDOM.display.textContent = "--.--%";
@@ -95,10 +95,10 @@ function updatePeBar() {
   }
 
   const { value: v, isDynamic, bounds } = currentPE;
-  const bypass1Html = eng1
-    ? `<span class="num" style="font-size:10px;color:var(--t3);font-weight:600;margin-left:4px;vertical-align:top">${eng1.pct.toFixed(2)}%</span>`
+  const bypass2Html = eng && eng.mode !== "close"
+    ? `<span class="num" style="font-size:10px;color:var(--t3);font-weight:600;margin-left:4px;vertical-align:top">${eng.pct.toFixed(2)}%</span>`
     : "";
-  _peDOM.display.innerHTML = `<span class="num">${v.toFixed(2)}%</span>${isDynamic ? bypass1Html : ""}`;
+  _peDOM.display.innerHTML = `<span class="num">${v.toFixed(2)}%</span>${isDynamic ? bypass2Html : ""}`;
 
   const span = (bounds.sellPct - bounds.buyPct) * 2;
   const peMin = (bounds.buyPct + bounds.sellPct) / 2 - span / 2;
@@ -215,3 +215,4 @@ function UI_updateIndices() {
 }
 
 // 2. 本地配置(定锚/持仓)更新时触发 (手动触发)
+
