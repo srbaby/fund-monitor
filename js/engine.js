@@ -44,7 +44,7 @@ function getCurrentPE(peData, _currentIdxPrice, engineResult) {
   return { value: v, isDynamic, rawData: peData, bounds: { buyPct, sellPct } };
 }
 
-// 旁路2.0（点位路）：bar条主路径
+// 旁路2.0（点位路）：旁路参考展示（小字显示于主PE旁）
 //   bypass2 (mode=price)：实时PE = 昨夜官方PE × (腾讯实时点位 / 昨收官方点位)   ← 天然含除权/调仓修正
 //   百分位 = 全量历史排序数组二分查找（精确ECDF，与 hs300_daily 的 (pe<=x)/n 口径一致）
 //   无实时点位时回落昨收（mode=close）
@@ -78,7 +78,9 @@ function getEnginePE(engineData, qqIdx) {
   };
 }
 
-// 旁路1.0（总市值路）：专用于主 PE 旁路展示，不参与bar条PE计算
+// 旁路1.0（总市值路）：PE 主路径（大号 PE / bar / 触发状态 / 权益判断）
+//   bypass1 (mode=mcap)：实时PE = 昨夜官方PE × (腾讯实时总市值 / 昨收总市值)
+//   无实时总市值时回落昨收（mode=close），与 getEnginePE 回落逻辑保持一致
 function getEnginePE1(engineData, qqIdx) {
   if (
     !engineData ||
@@ -87,8 +89,11 @@ function getEnginePE1(engineData, qqIdx) {
     engineData.peYest == null
   )
     return null;
-  if (!(qqIdx && qqIdx.mcap > 0 && engineData.mcapYest > 0)) return null;
-  const pe = engineData.peYest * (qqIdx.mcap / engineData.mcapYest);
+  let pe = engineData.peYest, mode = "close";
+  if (qqIdx && qqIdx.mcap > 0 && engineData.mcapYest > 0) {
+    pe = engineData.peYest * (qqIdx.mcap / engineData.mcapYest);
+    mode = "mcap";
+  }
   const a = engineData.peSorted;
   let lo = 0, hi = a.length;
   while (lo < hi) {
@@ -96,7 +101,7 @@ function getEnginePE1(engineData, qqIdx) {
     if (a[mid] <= pe) lo = mid + 1;
     else hi = mid;
   }
-  return { pe, pct: (lo / a.length) * 100, mode: "mcap", date: engineData.date || "" };
+  return { pe, pct: (lo / a.length) * 100, mode, date: engineData.date || "" };
 }
 
 // 根据 PE 百分位反查对应的沪深300点位（用于 tooltip 显示买卖边界点位）
