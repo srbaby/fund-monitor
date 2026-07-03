@@ -11,7 +11,7 @@
             name="apple-mobile-web-app-status-bar-style"
             content="black-translucent"
         />
-        <meta name="apple-mobile-web-app-title" content="基金看板" />
+        <meta name="apple-mobile-web-app-title" content="Fund-Monitor" />
         <meta
             name="theme-color"
             content="#0a0e14"
@@ -23,7 +23,7 @@
             media="(prefers-color-scheme: light)"
         />
 
-        <title>Jany基金看板</title>
+        <title>Fund-Monitor</title>
 
         <link rel="icon" href="favicon.png" />
         <link rel="apple-touch-icon" href="favicon.png" />
@@ -45,7 +45,7 @@
                     "
                 />
                 <div>
-                    <div class="hd-title">Jany基金看板</div>
+                    <div class="hd-title">Fund-Monitor</div>
                     <div class="hd-sub">
                         <span class="mkt-dot" id="mktDot"></span>
                         <span id="mktLabel">检测中</span>
@@ -133,7 +133,11 @@
                         id="peTrackMarker"
                         style="display: none"
                     ></div>
-                    <div class="pe-track-popup" id="peTrackPopup" style="display:none"></div>
+                    <div
+                        class="pe-track-popup"
+                        id="peTrackPopup"
+                        style="display: none"
+                    ></div>
                 </div>
                 <div
                     id="peEquityInfo"
@@ -149,7 +153,6 @@
                     "
                 ></div>
             </div>
-
         </div>
 
         <main>
@@ -296,9 +299,7 @@
             <div class="pe-modal-mask" onclick="closePeModal()"></div>
             <div class="pe-modal-box">
                 <div class="pe-modal-title">定档</div>
-                <div class="pe-modal-sub">
-                    选择当前 PE 百分位所在档位
-                </div>
+                <div class="pe-modal-sub">选择当前 PE 百分位所在档位</div>
 
                 <div style="display: flex; flex-direction: column; gap: 12px">
                     <select
@@ -309,7 +310,9 @@
                         <option value="80,100">80% 以上 (极度泡沫)</option>
                         <option value="75,80">75% - 80% (疯狂期)</option>
                         <option value="70,75">70% - 75% (平稳撤军)</option>
-                        <option value="65,70" selected>65% - 70% (高位警戒)</option>
+                        <option value="65,70" selected>
+                            65% - 70% (高位警戒)
+                        </option>
                         <option value="60,65">60% - 65% (常态偏高)</option>
                         <option value="55,60">55% - 60% (印钞带上沿)</option>
                         <option value="50,55">50% - 55% (物理重心)</option>
@@ -378,4 +381,3 @@
         <script src="js/main.js"></script>
     </body>
 </html>
-
