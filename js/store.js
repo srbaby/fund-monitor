@@ -54,6 +54,30 @@ function safeParse(str, fallback) {
   }
 }
 
+// iOS Safari 无痕/隐私浏览或存储受限时，localStorage.getItem/setItem 会抛 SecurityError。
+// 裸调用会在初始化早期(updatePeBar 首读)抛异常，中断整条 init 链 → 整页卡在“系统初始化中”。
+// 全部 localStorage 读写走以下安全外壳：抛错时降级为内存态(读返回 null、写静默失败)，看板照常运行、只是不落盘。
+function _lsGet(k) {
+  try {
+    return window.localStorage.getItem(k);
+  } catch (e) {
+    return null;
+  }
+}
+function _lsSet(k, v) {
+  try {
+    window.localStorage.setItem(k, v);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+function _lsRemove(k) {
+  try {
+    window.localStorage.removeItem(k);
+  } catch (e) {}
+}
+
 // ---- 核心获取业务产品 ----
 function getActiveProducts() {
   const equityMap = loadHoldingsEquity();
@@ -93,7 +117,7 @@ function getIndicesMeta() {
 function _loadIndicesSnapshot() {
   try {
     const snapshot = safeParse(
-      localStorage.getItem(_INDICES_SNAPSHOT_KEY),
+      _lsGet(_INDICES_SNAPSHOT_KEY),
       null,
     );
     if (!snapshot?.map || Object.keys(snapshot.map).length === 0) return null;
@@ -104,7 +128,7 @@ function _loadIndicesSnapshot() {
 }
 function _saveIndicesSnapshot(snapshot) {
   try {
-    localStorage.setItem(_INDICES_SNAPSHOT_KEY, JSON.stringify(snapshot));
+    _lsSet(_INDICES_SNAPSHOT_KEY, JSON.stringify(snapshot));
   } catch (e) {}
 }
 function setIndices(map, meta = {}) {
@@ -146,22 +170,22 @@ function setIndicesUnavailable() {
 }
 
 function loadFunds() {
-  const c = localStorage.getItem(STORE_CODES);
+  const c = _lsGet(STORE_CODES);
   funds = c ? safeParse(c, [...DEFAULT_CODES]) : [...DEFAULT_CODES];
 }
 function saveFunds(newFunds) {
   if (newFunds) funds = newFunds;
-  localStorage.setItem(STORE_CODES, JSON.stringify(funds));
+  _lsSet(STORE_CODES, JSON.stringify(funds));
   bumpConfigVer();
   fmLog("saveFunds", { funds });
   dispatchUpdate("FUNDS");
 }
 
 function loadPe() {
-  return safeParse(localStorage.getItem(STORE_PE), null);
+  return safeParse(_lsGet(STORE_PE), null);
 }
 function savePe(dataObj) {
-  localStorage.setItem(STORE_PE, JSON.stringify(dataObj));
+  _lsSet(STORE_PE, JSON.stringify(dataObj));
   fmLog("savePe", dataObj);
   dispatchUpdate("LOCAL_CONFIG");
 }
@@ -179,20 +203,20 @@ function setQQIndex(d) {
 let _peEngine; // undefined=未读, null=无数据
 function loadPeEngine() {
   if (_peEngine === undefined)
-    _peEngine = safeParse(localStorage.getItem(STORE_PE_ENGINE), null);
+    _peEngine = safeParse(_lsGet(STORE_PE_ENGINE), null);
   return _peEngine;
 }
 function setPeEngine(data) {
   if (!data || !Array.isArray(data.peSorted) || !data.peSorted.length) return;
   _peEngine = data;
-  localStorage.setItem(STORE_PE_ENGINE, JSON.stringify(data));
+  _lsSet(STORE_PE_ENGINE, JSON.stringify(data));
   dispatchUpdate("INDICES");
 }
 
 let _holdingsCache = null;
 function _loadRaw() {
   if (_holdingsCache) return _holdingsCache;
-  const raw = safeParse(localStorage.getItem(STORE_HOLDINGS), null);
+  const raw = safeParse(_lsGet(STORE_HOLDINGS), null);
   if (!raw) return null;
   if (typeof raw === "object" && !raw.shares && !raw.equity)
     _holdingsCache = { shares: raw, equity: {}, shortNames: {} };
@@ -212,7 +236,7 @@ function loadShortNames() {
 
 function saveHoldingsData(shares, equity, shortNames) {
   _holdingsCache = null;
-  localStorage.setItem(
+  _lsSet(
     STORE_HOLDINGS,
     JSON.stringify({ shares, equity, shortNames }),
   );
@@ -222,27 +246,27 @@ function saveHoldingsData(shares, equity, shortNames) {
 }
 
 function loadSellPlan() {
-  return safeParse(localStorage.getItem(STORE_SELL_PLAN), {});
+  return safeParse(_lsGet(STORE_SELL_PLAN), {});
 }
 function saveSellPlan(plan) {
-  localStorage.setItem(STORE_SELL_PLAN, JSON.stringify(plan));
+  _lsSet(STORE_SELL_PLAN, JSON.stringify(plan));
   fmLog("saveSellPlan", plan);
 }
 
 // ---- Gist 云同步配置 ----
 function loadGistConfig() {
   return {
-    id: localStorage.getItem(STORE_GIST_ID) || "",
-    token: localStorage.getItem(STORE_GIST_TOKEN) || "",
+    id: _lsGet(STORE_GIST_ID) || "",
+    token: _lsGet(STORE_GIST_TOKEN) || "",
   };
 }
 function saveGistConfig(id, token) {
-  localStorage.setItem(STORE_GIST_ID, id);
-  localStorage.setItem(STORE_GIST_TOKEN, token);
+  _lsSet(STORE_GIST_ID, id);
+  _lsSet(STORE_GIST_TOKEN, token);
 }
 function clearGistConfig() {
-  localStorage.removeItem(STORE_GIST_ID);
-  localStorage.removeItem(STORE_GIST_TOKEN);
+  _lsRemove(STORE_GIST_ID);
+  _lsRemove(STORE_GIST_TOKEN);
 }
 function isCloudConfigured() {
   const { id, token } = loadGistConfig();
@@ -250,29 +274,29 @@ function isCloudConfigured() {
 }
 
 function loadPrioritySell() {
-  return localStorage.getItem(STORE_PRIORITY_SELL);
+  return _lsGet(STORE_PRIORITY_SELL);
 }
 function savePrioritySell(code) {
-  localStorage.setItem(STORE_PRIORITY_SELL, code);
+  _lsSet(STORE_PRIORITY_SELL, code);
   bumpConfigVer();
   fmLog("savePrioritySell", { code });
   dispatchUpdate("LOCAL_CONFIG");
 }
 function clearPrioritySell() {
-  localStorage.removeItem(STORE_PRIORITY_SELL);
+  _lsRemove(STORE_PRIORITY_SELL);
   bumpConfigVer();
   fmLog("clearPrioritySell", null);
   dispatchUpdate("LOCAL_CONFIG");
 }
 
 function loadConfigVer() {
-  return localStorage.getItem(STORE_CONFIG_VER) || "";
+  return _lsGet(STORE_CONFIG_VER) || "";
 }
 function bumpConfigVer() {
   const d = new Date();
   const p = (n) => String(n).padStart(2, "0");
   const v = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-  localStorage.setItem(STORE_CONFIG_VER, v);
+  _lsSet(STORE_CONFIG_VER, v);
   return v;
 }
 
@@ -280,7 +304,7 @@ function bumpConfigVer() {
 function importPeSnapshot(p) {
   if (!p) return false;
   if (JSON.stringify(loadPe()) === JSON.stringify(p)) return false;
-  localStorage.setItem(STORE_PE, JSON.stringify(p));
+  _lsSet(STORE_PE, JSON.stringify(p));
   fmLog("importPeSnapshot", p);
   dispatchUpdate("LOCAL_CONFIG");
   return true;
@@ -293,16 +317,16 @@ function importSnapshot(data) {
     if (remoteV <= loadConfigVer()) return false;
     if (Array.isArray(data.f)) {
       funds = data.f;
-      localStorage.setItem(STORE_CODES, JSON.stringify(funds));
+      _lsSet(STORE_CODES, JSON.stringify(funds));
     }
     if (data.h) {
       _holdingsCache = null;
-      localStorage.setItem(STORE_HOLDINGS, JSON.stringify(data.h));
+      _lsSet(STORE_HOLDINGS, JSON.stringify(data.h));
     }
-    if (data.s) localStorage.setItem(STORE_SELL_PLAN, JSON.stringify(data.s));
-    if (data.pr) localStorage.setItem(STORE_PRIORITY_SELL, data.pr);
-    else localStorage.removeItem(STORE_PRIORITY_SELL);
-    localStorage.setItem(STORE_CONFIG_VER, remoteV);
+    if (data.s) _lsSet(STORE_SELL_PLAN, JSON.stringify(data.s));
+    if (data.pr) _lsSet(STORE_PRIORITY_SELL, data.pr);
+    else _lsRemove(STORE_PRIORITY_SELL);
+    _lsSet(STORE_CONFIG_VER, remoteV);
     fmLog("importSnapshot", {
       v: remoteV,
       f: data.f,
