@@ -83,10 +83,12 @@ function updatePeBar() {
   const eng1 = getEnginePE1(engineData, qqIdx); // 1.0 mcap路，PE主路径
   const currentPE = getCurrentPE(peData, null, eng1);
 
-  if (!currentPE) {
+  // 已定档但引擎数据未就绪(新开端/夜锚未拉到)时 value 为非有限值，
+  // 直接落入“未就绪”分支，避免下方 v.toFixed 抛错致定档保存“没反应”
+  if (!currentPE || !Number.isFinite(currentPE.value)) {
     _peDOM.display.textContent = "--.--%";
     _peDOM.display.className = "pe-value pe-normal";
-    _peDOM.status.textContent = "未输入PE";
+    _peDOM.status.textContent = peData?.bucketStr ? "等待数据" : "未定档";
     _peDOM.status.className = "pe-status normal";
     [_peDOM.marker, _peDOM.loEl, _peDOM.hiEl, _peDOM.eqDiv].forEach((el) => {
       if (el) el.style.display = "none";
