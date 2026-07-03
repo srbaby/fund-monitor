@@ -29,7 +29,12 @@
         <link rel="apple-touch-icon" href="favicon.png" />
         <link rel="stylesheet" href="css/style.css" />
 
-        <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+        <!-- defer：CDN 慢/被墙时不阻塞首屏渲染（否则整页卡在“系统初始化中”）；
+             Sortable 仅在 refreshData 拉数后异步用到，defer 执行时机足够早 -->
+        <script
+            defer
+            src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"
+        ></script>
     </head>
     <body>
         <header class="header">
