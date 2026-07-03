@@ -56,6 +56,27 @@
     --f-zh:
         -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue",
         "Microsoft YaHei", sans-serif;
+
+    /* ═══ 立体质感系统：阴影分级 + 玻璃高光边 + 表面微光（只加光影深度，不改色调/布局） ═══ */
+    --inset-hl: inset 0 1px 0 rgba(255, 255, 255, 0.05); /* 顶部一道玻璃高光边 */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-md:
+        0 4px 16px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.22);
+    --shadow-card:
+        var(--inset-hl), 0 1px 2px rgba(0, 0, 0, 0.25),
+        0 6px 20px rgba(0, 0, 0, 0.22);
+    --shadow-pop: var(--inset-hl), 0 16px 48px rgba(0, 0, 0, 0.5);
+    --shadow-drawer: var(--inset-hl), 0 -12px 48px rgba(0, 0, 0, 0.45);
+    /* 主按钮发光（用主题蓝，语义不变） */
+    --shadow-glow:
+        0 4px 14px rgba(59, 130, 246, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    /* 卡片表面顶部微光渐变（叠在 bg2 上营造隆起感，非改色） */
+    --card-sheen: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.025),
+        rgba(255, 255, 255, 0) 42%
+    );
 }
 
 /* ════════ 全局基础 ════════ */
@@ -80,6 +101,8 @@ body {
     font-size: 14px;
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
 }
 
 .up {
@@ -93,6 +116,8 @@ body {
 }
 .num {
     font-family: var(--f-num) !important; /* ✅ 新增：防御级优先级，反杀所有劫持插件 */
+    font-variant-numeric: tabular-nums; /* 等宽数字：数值跳动时列对齐不抖动 */
+    font-feature-settings: "tnum" 1;
 }
 
 /* ════════ Header ════════ */
@@ -105,6 +130,8 @@ body {
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-bottom: 1px solid var(--bd);
+    /* 顶栏是配角：仅一道极轻的分隔投影，不做隆起，主视觉留给下方指数 */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -119,6 +146,7 @@ body {
 .hd-title {
     font-size: 16px;
     font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 .hd-sub {
     font-size: 11px;
@@ -159,6 +187,7 @@ body {
     font-size: 20px;
     font-weight: 600;
     line-height: 1;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 .hd-date {
     font-size: 10px;
@@ -201,10 +230,11 @@ body {
     opacity: 0.35;
 }
 .idx-cell {
-    background: var(--bg2);
+    background: var(--card-sheen), var(--bg2);
     padding: 10px 8px;
     overflow: hidden;
     position: relative;
+    box-shadow: var(--inset-hl);
 }
 .idx-cell::after {
     content: "";
@@ -214,6 +244,7 @@ body {
     right: 0;
     height: 2px;
     opacity: 0;
+    transition: opacity 0.3s ease;
 }
 .idx-cell.up::after {
     background: var(--up);
@@ -313,6 +344,10 @@ body {
     font-family: var(--f-zh);
     cursor: pointer;
     white-space: nowrap;
+    transition:
+        background 0.15s ease,
+        color 0.15s ease,
+        border-color 0.15s ease;
 }
 .chb-btn:active {
     background: var(--bg3);
@@ -355,6 +390,13 @@ body.collapsed-mode main {
     border-radius: 10px;
     padding: 0 12px;
     gap: 8px;
+    transition:
+        border-color 0.15s ease,
+        box-shadow 0.15s ease;
+}
+.search-wrap:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--buy-dim);
 }
 .search-wrap input {
     flex: 1;
@@ -388,14 +430,18 @@ body.collapsed-mode main {
     cursor: pointer;
     white-space: nowrap;
     flex-shrink: 0;
-    transition: opacity 0.15s;
+    transition:
+        opacity 0.15s,
+        transform 0.12s ease;
 }
 .tbtn:active {
     opacity: 0.7;
+    transform: translateY(1px);
 }
 .tbtn-p {
     background: var(--accent);
     color: #fff;
+    box-shadow: var(--shadow-glow);
 }
 
 /* ════════ 基金卡片 (移动端) ════════ */
@@ -409,12 +455,27 @@ main {
     gap: 10px;
 }
 .fund-card {
-    background: var(--bg2);
+    background: var(--card-sheen), var(--bg2);
     border: 1px solid var(--bd);
     border-radius: 12px;
     overflow: hidden;
     position: relative;
     width: 100%;
+    box-shadow: var(--shadow-card);
+    transition:
+        box-shadow 0.2s ease,
+        transform 0.2s ease;
+}
+.fund-card:active {
+    transform: translateY(1px);
+}
+@media (hover: hover) {
+    .fund-card:hover {
+        transform: translateY(-1px);
+        box-shadow:
+            0 2px 4px rgba(0, 0, 0, 0.16), 0 10px 28px rgba(0, 0, 0, 0.14),
+            inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
 }
 .fund-card::before {
     content: "";
@@ -424,6 +485,7 @@ main {
     bottom: 0;
     width: 3px;
     background: var(--flat);
+    transition: background 0.3s ease; /* 涨跌翻转时左侧色条平滑换色 */
 }
 .fund-card.up-card::before {
     background: var(--up);
@@ -481,6 +543,10 @@ main {
     border-radius: 6px;
     padding: 4px 10px;
     cursor: pointer;
+    transition:
+        background 0.15s ease,
+        color 0.15s ease,
+        border-color 0.15s ease;
 }
 .del-btn:active {
     color: var(--up);
@@ -725,12 +791,15 @@ main {
 
 /* ════════ PE 栏 ════════ */
 .pe-bar {
-    background: var(--bg2);
+    background: var(--card-sheen), var(--bg2);
     border-bottom: 1px solid var(--bd);
     padding: 8px 16px;
     display: flex;
     flex-direction: column;
     gap: 6px;
+    box-shadow: var(--inset-hl), 0 2px 12px rgba(0, 0, 0, 0.16);
+    position: relative;
+    z-index: 1;
 }
 .pe-bar-top {
     display: flex;
@@ -759,6 +828,7 @@ main {
     font-size: 20px;
     font-weight: 600;
     line-height: 1;
+    transition: color 0.3s ease;
 }
 .pe-value.pe-danger-up {
     color: var(--sell);
@@ -775,6 +845,10 @@ main {
     border-radius: 6px;
     font-weight: 500;
     white-space: nowrap;
+    transition:
+        background 0.3s ease,
+        color 0.3s ease,
+        border-color 0.3s ease;
 }
 .pe-status.triggered-buy {
     background: var(--buy-bg);
@@ -870,6 +944,10 @@ main {
     cursor: pointer;
     white-space: nowrap;
     flex-shrink: 0;
+    transition:
+        background 0.15s ease,
+        color 0.15s ease,
+        border-color 0.15s ease;
 }
 .pe-input-btn:active {
     background: var(--bg3);
@@ -902,7 +980,7 @@ main {
     left: 0;
     right: 0;
     z-index: 501;
-    background: var(--bg2);
+    background: var(--card-sheen), var(--bg2);
     border-radius: 16px 16px 0 0;
     border-top: 1px solid var(--bd2);
     max-height: 90vh;
@@ -910,6 +988,7 @@ main {
     flex-direction: column;
     transform: translateY(100%);
     transition: transform 0.3s cubic-bezier(0.32, 0, 0.67, 0);
+    box-shadow: var(--shadow-drawer);
 }
 .drawer.open {
     transform: translateY(0);
@@ -969,6 +1048,13 @@ main {
     font-weight: 600;
     cursor: pointer;
     font-family: var(--f-zh);
+    transition:
+        transform 0.12s ease,
+        filter 0.12s ease;
+}
+.drawer-footer-btn:active {
+    transform: translateY(1px);
+    filter: brightness(0.93);
 }
 .drawer-footer-btn--cancel {
     flex: 1;
@@ -979,6 +1065,7 @@ main {
 }
 .drawer-footer-btn--primary {
     flex: 2;
+    box-shadow: var(--shadow-glow);
 }
 
 .dr-lbl {
@@ -1023,6 +1110,18 @@ main {
     width: 100%;
     max-width: 320px;
     border: 1px solid var(--bd2);
+    box-shadow: var(--shadow-pop);
+    animation: modalPop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes modalPop {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 .pe-modal-title {
     font-size: 15px;
@@ -1051,9 +1150,16 @@ main {
     appearance: none;
     cursor: pointer;
 }
+.pe-modal-input,
+.pe-modal-select {
+    transition:
+        border-color 0.15s ease,
+        box-shadow 0.15s ease;
+}
 .pe-modal-input:focus,
 .pe-modal-select:focus {
     border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--buy-dim);
 }
 .pe-modal-btns {
     display: flex;
@@ -1084,6 +1190,18 @@ main {
     font-family: var(--f-zh);
     cursor: pointer;
     outline: none;
+    box-shadow: var(--shadow-glow);
+}
+.pe-modal-confirm,
+.pe-modal-cancel {
+    transition:
+        transform 0.12s ease,
+        filter 0.12s ease;
+}
+.pe-modal-confirm:active,
+.pe-modal-cancel:active {
+    transform: translateY(1px);
+    filter: brightness(0.94);
 }
 
 .stale-text {
@@ -1115,6 +1233,7 @@ main {
     font-weight: 600;
     font-family: var(--f-zh);
     cursor: pointer;
+    box-shadow: var(--shadow-glow);
 }
 .modal-btn-cancel {
     flex: 1;
@@ -1148,6 +1267,7 @@ main {
     padding: 4px 8px;
     display: inline-flex;
     align-items: center;
+    box-shadow: var(--inset-hl);
 }
 .dr-tag.buy {
     color: var(--buy);
@@ -1164,6 +1284,7 @@ main {
     border-radius: 10px;
     border: 1px solid var(--bd);
     overflow: hidden;
+    box-shadow: var(--inset-hl), var(--shadow-sm);
 }
 .dr-pad {
     padding: 10px 14px;
@@ -1233,6 +1354,7 @@ main {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    box-shadow: var(--inset-hl), var(--shadow-sm);
 }
 .dr-plan-box.sell {
     border-color: rgba(240, 68, 68, 0.3);
@@ -1284,6 +1406,21 @@ main {
         --sell-bd: rgba(217, 119, 6, 0.25);
         --sell-dim: rgba(217, 119, 6, 0.15);
         --warn: #ef4444;
+        /* 浅色模式立体：阴影更轻，白色高光更亮（白底上做顶部玻璃光泽） */
+        --inset-hl: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+        --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.1);
+        --shadow-card: var(--inset-hl), 0 1px 2px rgba(0, 0, 0, 0.06),
+            0 6px 18px rgba(0, 0, 0, 0.08);
+        --shadow-pop: var(--inset-hl), 0 16px 48px rgba(0, 0, 0, 0.18);
+        --shadow-drawer: var(--inset-hl), 0 -10px 40px rgba(0, 0, 0, 0.12);
+        --shadow-glow: 0 4px 14px rgba(37, 99, 235, 0.25),
+            inset 0 1px 0 rgba(255, 255, 255, 0.5);
+        --card-sheen: linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.5),
+            rgba(255, 255, 255, 0) 42%
+        );
     }
     .header,
     .card-header-bar {
@@ -1355,5 +1492,33 @@ main {
     }
     main {
         padding-bottom: calc(var(--sab) + 68px);
+    }
+}
+
+/* ════════ 质感打磨 · 全局细节 ════════ */
+::selection {
+    background: var(--buy-dim);
+    color: var(--t1);
+}
+/* 细腻滚动条（WebKit 覆盖式，不占布局） */
+.drawer-body::-webkit-scrollbar {
+    width: 6px;
+}
+.drawer-body::-webkit-scrollbar-thumb {
+    background: var(--bd2);
+    border-radius: 3px;
+}
+.drawer-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+/* 尊重系统"减弱动态效果"：位移/缩放类动效退化为瞬时，避免眩晕 */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
     }
 }
