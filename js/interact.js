@@ -30,6 +30,7 @@ function toggleRefreshBtn(isFetching) {
 let _isFetchingData = false;
 
 function rebuildSortable() {
+  if (typeof Sortable === "undefined") return; // CDN 未就绪/加载失败时静默降级，不拖累看板可用性
   if (cardSortable) cardSortable.destroy();
   if (tblSortable) tblSortable.destroy();
   const onEnd = (evt) => {
