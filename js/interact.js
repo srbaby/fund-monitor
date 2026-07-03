@@ -452,7 +452,7 @@ async function syncCloud(mode = "pull") {
       const payload = {
         v: loadConfigVer(),
         f: funds,
-        h: safeParse(localStorage.getItem(STORE_HOLDINGS), {}),
+        h: safeParse(_lsGet(STORE_HOLDINGS), {}),
         s: loadSellPlan(),
         pr: loadPrioritySell() || null,
       };
