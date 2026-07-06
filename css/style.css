@@ -475,7 +475,10 @@ main {
 .card-view {
     display: flex;
     flex-direction: column;
-    gap: 11px;
+    gap: 8px;
+    touch-action: pan-y;
+    -webkit-user-select: none;
+    user-select: none;
 }
 .fund-card {
     background: var(--card-sheen), var(--bg2);
@@ -488,8 +491,11 @@ main {
     transition:
         box-shadow 0.2s ease,
         transform 0.2s ease;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
 }
-.fund-card:active {
+.fund-card:active:not(.sortable-chosen):not(.sortable-fallback) {
     transform: translateY(1px);
 }
 @media (hover: hover) {
@@ -554,7 +560,10 @@ main {
     padding: 4px 7px;
     line-height: 1;
     touch-action: none;
+    -webkit-user-select: none;
     user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-user-drag: none;
     flex-shrink: 0;
     border-radius: 8px;
     transition:
@@ -709,6 +718,7 @@ main {
 }
 .sortable-drag {
     opacity: 0.18;
+    transition: none !important;
 }
 .sortable-fallback {
     opacity: 0.96 !important;
@@ -719,6 +729,10 @@ main {
     overflow: hidden;
     pointer-events: none;
     z-index: 900 !important;
+    transition: none !important;
+    will-change: transform;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
 }
 
 @keyframes flashUp {
