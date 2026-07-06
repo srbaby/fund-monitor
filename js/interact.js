@@ -46,6 +46,12 @@ function rebuildSortable() {
     handle: ".drag-handle",
     animation: 200,
     ghostClass: "sortable-ghost",
+    chosenClass: "sortable-chosen",
+    dragClass: "sortable-drag",
+    forceFallback: true,
+    fallbackOnBody: true,
+    fallbackClass: "sortable-fallback",
+    fallbackTolerance: 4,
     onEnd,
   });
   tblSortable = Sortable.create(document.getElementById("fundTbody"), {
