@@ -51,7 +51,9 @@ function rebuildSortable() {
     forceFallback: true,
     fallbackOnBody: true,
     fallbackClass: "sortable-fallback",
-    fallbackTolerance: 4,
+    fallbackTolerance: 1,
+    touchStartThreshold: 3,
+    supportPointer: false,
     onEnd,
   });
   tblSortable = Sortable.create(document.getElementById("fundTbody"), {
