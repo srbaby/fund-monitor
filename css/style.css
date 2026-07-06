@@ -375,13 +375,13 @@ body {
 /* ════════ 工具栏 ════════ */
 .toolbar {
     background: var(--card-sheen), var(--bg2);
-    border-top: 1px solid var(--bd2);
+    border-top: 1px solid var(--bd);
     padding: 10px 12px;
     display: flex;
     align-items: center;
     gap: 8px;
     overflow: hidden;
-    box-shadow: var(--inset-hl), 0 -8px 28px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--inset-hl);
 }
 body.collapsed-mode .toolbar {
     position: fixed;
