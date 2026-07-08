@@ -1,0 +1,23 @@
+# macOS / cloud-drive noise
+.DS_Store
+**/.DS_Store
+
+# Python runtime artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local environments and secrets
+.venv/
+venv/
+.env
+.env.*
+
+# Legacy cloud mirror of .github/
+github/
+
+# Local project guidance and deployment snapshots
+CLAUDE.md
+automation/cf_worker_pe_trigger.js
+automation/pe-snapshot.json
+automation/validation-log.json
