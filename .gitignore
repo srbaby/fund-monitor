@@ -19,5 +19,3 @@ github/
 # Local project guidance and deployment snapshots
 CLAUDE.md
 automation/cf_worker_pe_trigger.js
-automation/pe-snapshot.json
-automation/validation-log.json
