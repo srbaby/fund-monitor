@@ -1,6 +1,6 @@
 {
-  "v": "2026-07-10 22:01:02",
-  "date": "2026-07-10",
+  "v": "2026-07-13 20:31:08",
+  "date": "2026-07-13",
   "metric": "diffPp1=bypass1(mcap路)百分位-官方 | diffPp2=bypass2(price路)百分位-官方",
   "log": [
     {
@@ -190,6 +190,19 @@
       "diffPp2": -0.99,
       "officialPe": 13.63,
       "officialPct": 64.48,
+      "status": "complete"
+    },
+    {
+      "date": "2026-07-13",
+      "sampleAt": "16:01:07",
+      "bypass1Pe": 13.4781,
+      "bypass1Pct": 62.99,
+      "diffPp1": -0.8,
+      "bypass2Pe": 13.3865,
+      "bypass2Pct": 61.83,
+      "diffPp2": -1.96,
+      "officialPe": 13.54,
+      "officialPct": 63.79,
       "status": "complete"
     }
   ]
