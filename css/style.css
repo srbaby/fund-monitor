@@ -628,6 +628,17 @@ main {
     color: var(--t3);
     font-weight: 500;
 }
+.off-fallback-tag {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 500;
+    color: var(--t3);
+    border: 1px solid var(--bd);
+    border-radius: 3px;
+    padding: 0 3px;
+    margin-left: 4px;
+    vertical-align: middle;
+}
 .dh-pct {
     font-size: 26px;
     font-weight: 600;

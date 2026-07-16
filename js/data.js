@@ -66,8 +66,12 @@ function fetchOff(code) {
     offQ.push({
       code,
       resolve: (val) => {
-        if (val) offCache[code] = { ts: Date.now(), data: val };
-        resolve(val);
+        const finish = (result) => {
+          if (result) offCache[code] = { ts: Date.now(), data: result };
+          resolve(result);
+        };
+        if (val) finish(val);
+        else _fetchOffFallback(code).then(finish);
       },
     });
     drainOff();
@@ -110,6 +114,7 @@ function drainOff() {
               nav: Number(tds[1]).toFixed(4),
               pct: pct != null ? pct.toFixed(2) : null,
               date: tds[0],
+              source: "primary",
             });
           }
         }
@@ -125,9 +130,41 @@ function drainOff() {
   document.head.appendChild(s);
 }
 
+// 官方净值备用源：腾讯基金快照（本质是估算值，非交易所/监管确认的一手数据，
+// UI 需据 offSource==="fallback" 明确标注"备用估算"，不能冒充官方净值）
+function _fetchOffFallback(code) {
+  const key = `v_jj${code}`;
+  return _loadQQQuotes(`jj${code}`, [key]).then((quotes) => {
+    try {
+      const raw = quotes?.[key];
+      if (typeof raw !== "string") return null;
+      const f = raw.split("~");
+      const nav = _numberOrNaN(f[5]);
+      const date = f[8] || null;
+      if (!Number.isFinite(nav) || nav <= 0 || !date) return null;
+      return { nav: nav.toFixed(4), pct: null, date, source: "fallback" };
+    } catch (e) {
+      return null;
+    }
+  });
+}
+
 async function fetchSingleFund(code) {
   const [est, off] = await Promise.all([fetchEst(code), fetchOff(code)]);
   if (!est && !off) return { code, error: true };
+  const baseNav = est?.dwjz ? parseFloat(est.dwjz) : null;
+  let offPct = off?.pct != null ? parseFloat(off.pct) : null;
+  // 备用源没有涨跌幅字段，沿用估算涨跌幅同款算法：(备用净值-昨日已确认净值)/昨日已确认净值
+  if (
+    offPct == null &&
+    off?.source === "fallback" &&
+    off?.nav != null &&
+    baseNav > 0
+  ) {
+    offPct = parseFloat(
+      (((parseFloat(off.nav) - baseNav) / baseNav) * 100).toFixed(2),
+    );
+  }
   return {
     code,
     error: false,
@@ -136,10 +173,11 @@ async function fetchSingleFund(code) {
       est?.gszzl != null && est.gszzl !== "" ? parseFloat(est.gszzl) : null,
     estVal: est?.gsz || null,
     estTime: est?.gztime || null,
-    offPct: off?.pct != null ? parseFloat(off.pct) : null,
+    offPct,
     offVal: off?.nav || est?.dwjz || null,
     offDate: off?.date || est?.jzrq || null,
-    baseNav: est?.dwjz ? parseFloat(est.dwjz) : null,
+    offSource: off?.source || null,
+    baseNav,
     baseDate: est?.jzrq || null,
   };
 }
