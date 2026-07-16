@@ -16,9 +16,5 @@ venv/
 # Legacy cloud mirror of .github/
 github/
 
-# Local project guidance and deployment snapshots
-CLAUDE.md
-automation/cf_worker_pe_trigger.js
-
 # WorkBuddy project data
 .workbuddy/
