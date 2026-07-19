@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseFundGz, parseTencentEstimates } from "../src/parsers.mjs";
+import { parseEastmoneyIndices, parseFundGz, parseTencentEstimates } from "../src/parsers.mjs";
 import { handleRequest, resetGatewayCache } from "../src/router.mjs";
 
 const CODES = ["003949", "160622"];
@@ -39,6 +39,20 @@ test("Tencent estimate parser never uses field 5 official NAV", () => {
   const parsed = parseTencentEstimates(qqEstimates(["003949"]), ["003949"]);
   assert.equal(parsed[0].estimateNav, 1.2);
   assert.notEqual(parsed[0].estimateNav, 9.9999);
+});
+
+test("Eastmoney HSI mirror responses collapse to one canonical HSI record", () => {
+  const payload = eastmoneyIndices();
+  payload.data.diff.push({
+    f12: "HSI",
+    f14: "恒生指数镜像",
+    f2: 24563,
+    f3: -1.7,
+    f124: "20260719103000",
+  });
+  const parsed = parseEastmoneyIndices(payload);
+  assert.equal(parsed.length, 6);
+  assert.equal(parsed.filter((item) => item.code === "HSI").length, 1);
 });
 
 test("indices discard an incomplete primary group and use the complete Tencent group", async () => {

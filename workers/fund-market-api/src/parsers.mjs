@@ -66,6 +66,8 @@ function normalizeIndex(raw, expectedCode) {
 
 export function parseEastmoneyIndices(payload) {
   if (!Array.isArray(payload?.data?.diff)) return null;
+  // Several HSI secids are queried for resilience. Keying by canonical code
+  // deliberately collapses any multiple valid HSI responses to one record.
   const byCode = new Map(
     payload.data.diff
       .map((item) => [item?.f12 === "HSI" ? "HSI" : String(item?.f12 ?? ""), item])
