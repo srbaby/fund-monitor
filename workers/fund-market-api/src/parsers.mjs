@@ -128,7 +128,19 @@ export function parseFundGz(text, requestedCode) {
     ) {
       return null;
     }
-    return { code, name: raw?.name || null, estimateNav, estimatePct, estimateAt };
+    // baseNav/baseDate are the previous confirmed NAV. calcTodayProfit prefers
+    // them over re-deriving yesterday's NAV from a rounded percentage, so they
+    // ride along with the estimate while belonging to neither chain. Optional:
+    // the caller already falls back when they are missing.
+    return {
+      code,
+      name: raw?.name || null,
+      estimateNav,
+      estimatePct,
+      estimateAt,
+      baseNav: finiteNumber(raw?.dwjz),
+      baseDate: formatQuoteAt(raw?.jzrq),
+    };
   } catch {
     return null;
   }
@@ -146,7 +158,15 @@ export function parseTencentEstimates(text, codes) {
     const estimatePct = finiteNumber(fields[3]);
     const estimateAt = formatQuoteAt(fields[4]);
     if (estimateNav == null || estimateNav <= 0 || estimatePct == null || !estimateAt) return null;
-    return { code, name: fields[1] || null, estimateNav, estimatePct, estimateAt };
+    return {
+      code,
+      name: fields[1] || null,
+      estimateNav,
+      estimatePct,
+      estimateAt,
+      baseNav: finiteNumber(fields[5]),
+      baseDate: formatQuoteAt(fields[8]),
+    };
   });
   return data.every(Boolean) ? data : null;
 }
