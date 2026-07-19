@@ -390,7 +390,7 @@ interact 层和 ui 层**禁止直接调用 `localStorage`**，所有读写通过
 
 **市场数据网关（2026-07-19 二阶段）**：浏览器只请求 `API_BASE`（`https://fund-api.bailuzun.com`）下的三个端点，
 不再直连东方财富、天天基金、腾讯任何域名，JSONP 机制已整体删除。三条链的主备选择、整组完整性校验、GBK 解码
-全部在 Cloudflare Pages Functions 内完成（`workers/fund-market-api/`，详见 `MARKET_DATA_GATEWAY_PLAN.md`）。
+全部在 Cloudflare Pages Functions 内完成（`workers/fund-market-api/`，部署与接口契约见该目录 README）。
 
 - 前端只消费网关返回的 `status`（`primary`/`backup`/`unavailable`），**不自行判定主备**。
 - 任一组请求失败或 `ok:false`，整组降级为不可用，**禁止把半组数据交给渲染层**。

@@ -311,10 +311,13 @@ function calcTodayProfit(
 
     const estD = f.estTime ? f.estTime.slice(0, 10) : "";
     const offD = f.offDate ? f.offDate.slice(0, 10) : "";
+    // 第三项与 getNavByCode、持仓抽屉 profitMap 同口径：没有估算时（估算整组
+    // 不可用）就用官方，否则这只会取到 null → NaN → 被整只跳过，导致今日涨跌
+    // 归零而抽屉里照常有收益。前两项是市场状态短路，engine 独有。
     const isOfficialUpdated =
       mktState === "WEEKEND" ||
       mktState === "BEFORE_PRE" ||
-      (estD && offD && offD >= estD);
+      !!(f.offVal && (!estD || offD >= estD));
 
     if (!isOfficialUpdated) allUpdated = false;
 

@@ -250,6 +250,9 @@ function loadSellPlan() {
 }
 function saveSellPlan(plan) {
   _lsSet(STORE_SELL_PLAN, JSON.stringify(plan));
+  // s 属版本化配置。目前唯一调用点紧跟在会自增的 saveHoldingsData 之后，
+  // 但版本自增不该依赖兄弟调用——单独调用本函数时同样必须收敛。
+  bumpConfigVer();
   fmLog("saveSellPlan", plan);
 }
 
