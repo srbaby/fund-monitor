@@ -1,4 +1,5 @@
 import {
+  ANCHOR_INDEX,
   INDEX_DEFINITIONS,
   parseEastmoneyIndices,
   parseFundGz,
@@ -36,7 +37,18 @@ async function fetchTencentText(fetcher, query) {
   return new TextDecoder("gbk").decode(buffer);
 }
 
+// The HS300 bypass PE engine anchors on realtime market cap, so an index group
+// without it would silently freeze the PE bar at yesterday's close. Only
+// Tencent serves pe/marketCap; the Eastmoney mirrors return points only.
 export async function fetchPrimaryIndices(fetcher) {
+  const data = parseTencentIndices(
+    await fetchTencentText(fetcher, INDEX_DEFINITIONS.map((item) => item.qq).join(",")),
+  );
+  const anchor = data?.find((item) => item.code === ANCHOR_INDEX);
+  return anchor?.pe > 0 && anchor?.marketCap > 0 ? data : null;
+}
+
+export async function fetchBackupIndices(fetcher) {
   const secids = [
     ...INDEX_DEFINITIONS.filter((item) => item.code !== "HSI").map((item) => item.secid),
     // Eastmoney's HSI market identifier varies by route; accept whichever
@@ -60,15 +72,11 @@ export async function fetchPrimaryIndices(fetcher) {
       const data = parseEastmoneyIndices(await response.json());
       if (data) return data;
     } catch {
-      // Keep the complete Eastmoney primary group intact by trying its mirrors
-      // before allowing the router to select Tencent as the backup group.
+      // Keep the complete Eastmoney backup group intact by trying its mirrors
+      // before the router reports the whole index group as unavailable.
     }
   }
   return null;
-}
-
-export async function fetchBackupIndices(fetcher) {
-  return parseTencentIndices(await fetchTencentText(fetcher, INDEX_DEFINITIONS.map((item) => item.qq).join(",")));
 }
 
 export async function fetchPrimaryEstimates(fetcher, codes) {

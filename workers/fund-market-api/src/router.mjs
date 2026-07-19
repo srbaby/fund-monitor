@@ -13,8 +13,8 @@ const cache = new Map();
 
 const SOURCE = {
   indices: {
-    primary: ["eastmoney", "东方财富指数主线路"],
-    backup: ["tencent", "腾讯指数"],
+    primary: ["tencent", "腾讯指数"],
+    backup: ["eastmoney", "东方财富指数（缺PE与总市值）"],
     unavailable: [null, "不可用 · 顶部指数"],
   },
   estimate: {

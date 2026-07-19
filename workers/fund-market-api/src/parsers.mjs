@@ -9,6 +9,9 @@ export const INDEX_DEFINITIONS = [
 
 const INDEX_CODES = new Set(INDEX_DEFINITIONS.map((item) => item.code));
 
+// Mirrors SYS_CONFIG.IDX_PE: the index whose realtime PE anchors the board.
+export const ANCHOR_INDEX = "000300";
+
 function finiteNumber(value) {
   if (value == null || value === "") return null;
   const number = Number(value);

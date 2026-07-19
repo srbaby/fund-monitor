@@ -79,7 +79,24 @@ jobs:
             fi
             echo "::warning::Tencent estimate backup UNVERIFIED. Rerun with market_session=open during a trading session before treating acceptance as complete."
           }
+          # The 1.0 bypass path anchors the PE bar on HS300 realtime market cap.
+          # A group without it still passes a code-completeness check while
+          # freezing the bar, so assert the anchor fields explicitly.
+          verify_anchor() {
+            local output
+            echo "Checking HS300 PE anchor fields"
+            if ! output="$(request "$BASE_URL/v1/indices?force=primary")"; then
+              echo "Request failed"
+              failures=1
+              return
+            fi
+            echo "$output" | jq -c '.data[] | select(.code == "000300") | {price, pe, marketCap}'
+            if ! echo "$output" | jq -e '.data[] | select(.code == "000300") | (.pe > 0 and .marketCap > 0)' >/dev/null; then
+              failures=1
+            fi
+          }
           verify "/v1/indices?force=primary" primary 6
+          verify_anchor
           verify "/v1/indices?force=backup" backup 6
           verify "/v1/funds/estimate?codes=$FUND_CODES&force=primary" primary 6
           if [ "$MARKET_SESSION" = open ]; then

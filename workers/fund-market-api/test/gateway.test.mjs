@@ -21,6 +21,20 @@ function eastmoneyIndices(omit = false) {
 // Real Tencent fund shape, captured live: ten fields where [2..4] carry the
 // intraday estimate and [5..8] the official NAV block. Outside a trading
 // session Tencent zeroes the estimate and leaves its timestamp empty.
+function qqIndices({ anchorPe = "13.98", anchorMcap = "536149.80" } = {}) {
+  return ["sh000300", "sh000510", "sh000905", "sh000832", "sh000012", "hkHSI"].map((code, index) => {
+    const fields = Array(46).fill("");
+    const isAnchor = code === "sh000300";
+    fields[1] = `指数${code}`;
+    fields[3] = String(1000 + index);
+    fields[30] = "20260719103000";
+    fields[32] = "0.5";
+    fields[39] = isAnchor ? anchorPe : "10";
+    fields[45] = isAnchor ? anchorMcap : "1000";
+    return `v_${code}="${fields.join("~")}";`;
+  }).join("\n");
+}
+
 function qqEstimates(codes, { session = "open" } = {}) {
   return codes.map((code, index) => {
     const fields = [code, `基金${code}`, "0.0000", "0.0000", "", "9.9999", "1.4152", "0.0081", "2026-07-17", ""];
@@ -63,22 +77,32 @@ test("Eastmoney HSI mirror responses collapse to one canonical HSI record", () =
   assert.equal(parsed.filter((item) => item.code === "HSI").length, 1);
 });
 
-test("indices discard an incomplete primary group and use the complete Tencent group", async () => {
+test("the Tencent primary group carries the HS300 PE anchor fields", async () => {
+  resetGatewayCache();
+  const fetcher = async (url) =>
+    url.includes("qt.gtimg.cn") ? textResponse(qqIndices()) : Promise.reject(new Error("backup must not run"));
+  const result = await handleRequest(new Request("https://api.example/v1/indices"), {}, null, { fetch: fetcher });
+  const body = await result.json();
+  assert.equal(body.status, "primary");
+  assert.equal(body.source, "tencent");
+  const anchor = body.data.find((item) => item.code === "000300");
+  assert.equal(anchor.pe, 13.98);
+  assert.equal(anchor.marketCap, 536149.8);
+});
+
+// Without realtime market cap the 1.0 bypass path silently freezes the PE bar
+// at yesterday's close, so a Tencent group missing it is not a usable primary.
+test("indices fall back to Eastmoney when Tencent drops the HS300 market cap", async () => {
   resetGatewayCache();
   const fetcher = async (url) => {
-    if (url.includes("eastmoney.com/api/qt/ulist")) return jsonResponse(eastmoneyIndices(true));
-    if (url.includes("qt.gtimg.cn")) {
-      const text = ["sh000300", "sh000510", "sh000905", "sh000832", "sh000012", "hkHSI"].map((code, index) => {
-        const fields = Array(46).fill(""); fields[1] = `指数${code}`; fields[3] = String(1000 + index); fields[30] = "20260719103000"; fields[32] = "0.5"; return `v_${code}="${fields.join("~")}";`;
-      }).join("\n");
-      return textResponse(text);
-    }
+    if (url.includes("qt.gtimg.cn")) return textResponse(qqIndices({ anchorMcap: "0" }));
+    if (url.includes("eastmoney.com/api/qt/ulist")) return jsonResponse(eastmoneyIndices());
     throw new Error(`unexpected ${url}`);
   };
   const result = await handleRequest(new Request("https://api.example/v1/indices"), {}, null, { fetch: fetcher });
   const body = await result.json();
   assert.equal(body.status, "backup");
-  assert.equal(body.source, "tencent");
+  assert.equal(body.source, "eastmoney");
   assert.equal(body.data.length, 6);
 });
 
@@ -102,7 +126,7 @@ test("forced diagnostics require the configured token", async () => {
   resetGatewayCache();
   const denied = await handleRequest(new Request("https://api.example/v1/indices?force=primary"), { DIAGNOSTIC_TOKEN: "secret" });
   assert.equal(denied.status, 403);
-  const fetcher = async (url) => url.includes("eastmoney.com/api/qt/ulist") ? jsonResponse(eastmoneyIndices()) : Promise.reject(new Error("backup must not run"));
+  const fetcher = async (url) => url.includes("qt.gtimg.cn") ? textResponse(qqIndices()) : Promise.reject(new Error("backup must not run"));
   const allowed = await handleRequest(new Request("https://api.example/v1/indices?force=primary", { headers: { "x-diagnostic-token": "secret" } }), { DIAGNOSTIC_TOKEN: "secret" }, null, { fetch: fetcher });
   assert.equal((await allowed.json()).status, "primary");
 });
