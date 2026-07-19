@@ -10,10 +10,10 @@ on:
         required: false
         default: "late"
   repository_dispatch:         # ✨ 对接新版 CF Worker 的内网穿透安全触发
-    types: [snapshot, night, sentinel]
+    types: [night, sentinel]
 
 permissions:
-  contents: write   # 允许提交验证日志副本 automation/validation-log.json
+  contents: read   # 验证层已拆除，本工作流只写 Gist，不再回提交仓库文件
 
 concurrency:
   group: pe-night-engine
@@ -44,17 +44,6 @@ jobs:
         env:
           PE_GIST_ID: ${{ secrets.PE_GIST_ID }}
           PE_GIST_TOKEN: ${{ secrets.PE_GIST_TOKEN }}
-          # RUN_ACTION: snapshot=16:00快照 / night|sentinel=夜间配对
-          RUN_ACTION: ${{ github.event.action == 'snapshot' && 'snapshot' || 'night' }}
-          # RUN_SLOT: 夜间配对槽位（snapshot 分支忽略此变量）
+          # RUN_SLOT: 夜间取数槽位，early 允许温和重试，late 未取到即报错
           RUN_SLOT: ${{ inputs.slot || (github.event.action == 'sentinel' && 'late') || (github.event.action == 'night' && 'early') || 'late' }}
         run: python automation/pe_nightly.py
-
-      - name: 提交快照或验证日志
-        run: |
-          git config user.name "pe-engine-bot"
-          git config user.email "actions@github.com"
-          git add automation/pe-snapshot.json automation/validation-log.json
-          git diff --cached --quiet || git commit -m "engine: ${{ github.event.action == 'snapshot' && '16:00双路快照' || '验证日志' }} $(TZ=Asia/Shanghai date '+%m-%d %H:%M')"
-          git pull --rebase origin main
-          git push

@@ -19,26 +19,9 @@ export default {
     const timeStr = bjTime.toTimeString().split(" ")[0];
 
     // 3. 核心业务路由控制
-    if (action === "snapshot") {
-      // =========================================================
-      // 【16:00 旁路快照】直接触发；当天 captured 幂等由 Python 保证
-      // =========================================================
-      const ghRes = await triggerGitHubDispatch(env, "snapshot", {
-        date: today,
-        triggeredAt: timeStr,
-      });
-
-      if (ghRes.success) {
-        return new Response(
-          `[Success] [pe-snapshot] 成功唤醒 GitHub Actions -> 204 OK`,
-          { status: 200 },
-        );
-      } else {
-        return new Response(`[Fail] 唤醒 GitHub 失败: ${ghRes.text}`, {
-          status: ghRes.status,
-        });
-      }
-    } else if (action === "night" || action === "sentinel") {
+    // snapshot（16:00 旁路快照）随双路验证层于 2026-07-19 一并拆除，
+    // Master-Scheduler 侧的 16:00 那一跳应同步取消。
+    if (action === "night" || action === "sentinel") {
       // =========================================================
       // 【20:30 / 21:30 / 22:00 任务】无需去重，每次都直接穿透触发
       // =========================================================

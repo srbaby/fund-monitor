@@ -308,21 +308,42 @@ syncCloud("pull")
 
 engine 内计算出的中间变量若不出现在 return、也不用于后续计算，**必须删除，不允许死变量**。
 
-## 2.7 夜间 PE 双路验证引擎（automation/，独立于前端看板）
+## 2.7 夜间 PE 数据引擎（automation/，独立于前端看板）
 
-**定位：旁路校验，不是数据源。** 这套系统只用来验证「实时插值出的 PE」准不准，**不写入、不影响** 2.5 节 `fm_pe.json`（看板真正读取的 PE 定锚）——两者是完全不同的 Gist 文件，AI 不应把它当成看板 PE 的上游。
+**定位：旁路锚的数据源，不是看板 PE 定锚。** 它写的是 `fm_pe_engine.json`，与 2.5 节 `fm_pe.json`
+（你每晚手录的定锚）是**完全不同的 Gist 文件**，AI 不要混为一谈。
 
 ```
 automation/pe_nightly.py（GitHub Actions 跑，非本地）
-    ├─ RUN_ACTION=snapshot（16:00）：固化当日旁路快照（1.0总市值路 + 2.0点位路）→ 提交 automation/pe-snapshot.json
-    └─ RUN_ACTION=night/sentinel（夜间）：抓乐咕沪深300滚动PE，与官方口径配对
-        → 写 Gist fm_pe_engine.json（供看板 js/interact.js 的 pullPeEngine() 旁路拉取，30分钟节流、失败静默）
-        → 追加 automation/validation-log.json（diffPp1/diffPp2 = 旁路百分位-官方百分位，人工复核用）
+    └─ 夜间：抓乐咕沪深300滚动PE
+        → 写 Gist fm_pe_engine.json（js/interact.js 的 pullPeEngine() 拉取，30分钟节流、失败静默）
 ```
 
-- **触发方式**：`.github/workflows/pe-night-engine.yml` 已不用 cron，改由外部 Cloudflare Worker（Master-Scheduler）通过 `repository_dispatch`（`snapshot`/`night`/`sentinel` 三种 type）唤醒，`workflow_dispatch` 仅作手动/手机兜底入口。
-- **`automation/cf_worker_pe_trigger.js`**：Cloudflare Worker 侧的触发器脚本。实际密钥（`CRON_TOKEN`/`GH_TOKEN`/`GH_REPO`）全部通过 `env.*` 绑定注入，代码本身不含明文密钥，2026-07-16 起已改为公开仓库正式追踪（历史沿革见 4.5）。
-- **诊断信号**：`validation-log.json` 某天 `status` 若为 `"missing_snapshot"`（而非 `"complete"`），代表当天 16:00 快照那一跳没跑成功，纯粹是校验数据缺失，**不代表看板当天官方PE或基金净值有问题**，两者互不影响，不要联想到一起排查。
+**前端只消费 5 个字段**：`date` / `peYest` / `priceYest` / `mcapYest` / `peSorted`。
+`mcapYest` 是 1.0 总市值路的锚，`priceYest` 是 2.0 点位路的锚，`peSorted` 供百分位二分查找。
+payload 里的 `pctYest`/`peQQYest`/`priceQQYest`/`n` 前端不读，是抓取副产品，留着便于肉眼看 Gist。
+
+- **触发方式**：`.github/workflows/pe-night-engine.yml` 不用 cron，由外部 Cloudflare Worker
+  （Master-Scheduler）通过 `repository_dispatch`（`night`/`sentinel` 两种 type）唤醒；
+  `night`→`RUN_SLOT=early`（乐咕没更新则温和退出等下一槽），`sentinel`→`late`（仍没有则报错）。
+  `workflow_dispatch` 仅作手动/手机兜底入口。本工作流**只写 Gist、不回提交仓库文件**（`contents: read`）。
+- **`automation/cf_worker_pe_trigger.js`**：Worker 侧触发器。密钥全走 `env.*` 绑定，代码不含明文（沿革见 4.5）。
+
+### 双路验证层已拆除（2026-07-19）
+
+原有 16:00 快照 + 夜间与官方配对 + `validation-log.json` 的整套比对，其唯一目的是回答「1.0 和 2.0 哪个准」。
+15 个可比对交易日（06-25 ～ 07-17）的结论已经足够确定：
+
+| | 1.0 总市值路 | 2.0 点位路 |
+| --- | --- | --- |
+| 平均绝对误差 | 0.41pp | 1.31pp |
+| 最大绝对误差 | 0.86pp | 3.69pp |
+| 误差 >1pp 天数 | 0 / 15 | 6 / 15 |
+| 逐日更接近官方 | 14 / 15 | 1 / 15 |
+
+故 `pe-snapshot.json`、`validation-log.json`、`RUN_ACTION=snapshot` 分支、Worker 的 `snapshot` 路由
+一并删除，Master-Scheduler 侧 16:00 那一跳应同步取消。**2.0 保留在看板上**：成分调整日总市值会跳变，
+那种日子点位路反而是有效参照。若日后要重建验证，从 git 历史取回即可，不要在引擎里留半套。
 
 ---
 
