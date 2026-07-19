@@ -18,14 +18,17 @@ function eastmoneyIndices(omit = false) {
   return { data: { diff: codes.filter((code) => !omit || code !== "000905").map((code, index) => ({ f12: code, f14: `指数${code}`, f2: 1000 + index, f3: 1.2, f124: "20260719103000", f115: 12.3, f116: 456 })) } };
 }
 
-function qqEstimates(codes) {
+// Real Tencent fund shape, captured live: ten fields where [2..4] carry the
+// intraday estimate and [5..8] the official NAV block. Outside a trading
+// session Tencent zeroes the estimate and leaves its timestamp empty.
+function qqEstimates(codes, { session = "open" } = {}) {
   return codes.map((code, index) => {
-    const fields = Array(46).fill("");
-    fields[1] = `基金${code}`;
-    fields[3] = String(1.2 + index / 10);
-    fields[5] = "9.9999";
-    fields[30] = "20260719103000";
-    fields[32] = "0.88";
+    const fields = [code, `基金${code}`, "0.0000", "0.0000", "", "9.9999", "1.4152", "0.0081", "2026-07-17", ""];
+    if (session === "open") {
+      fields[2] = String(1.2 + index / 10);
+      fields[3] = "0.88";
+      fields[4] = "2026-07-20 10:30";
+    }
     return `v_jj${code}="${fields.join("~")}";`;
   }).join("\n");
 }
@@ -38,7 +41,12 @@ test("fundgz parser requires every intraday estimate field", () => {
 test("Tencent estimate parser never uses field 5 official NAV", () => {
   const parsed = parseTencentEstimates(qqEstimates(["003949"]), ["003949"]);
   assert.equal(parsed[0].estimateNav, 1.2);
+  assert.equal(parsed[0].estimateAt, "2026-07-20 10:30");
   assert.notEqual(parsed[0].estimateNav, 9.9999);
+});
+
+test("Tencent estimates are unavailable outside a trading session", () => {
+  assert.equal(parseTencentEstimates(qqEstimates(["003949"], { session: "closed" }), ["003949"]), null);
 });
 
 test("Eastmoney HSI mirror responses collapse to one canonical HSI record", () => {

@@ -7,11 +7,14 @@ on:
         description: "Pages URL first; custom API URL after its certificate is active"
         required: true
         default: "https://fund-market-api.pages.dev"
-      compare_indices:
-        description: "Only enable during a mainland trading session (around 10:00 CST) to compare Eastmoney and Tencent HS300 points"
+      market_session:
+        description: "Set to open only during a mainland trading session; the Tencent estimate backup and the HS300 point comparison can be verified then and only then"
         required: false
-        type: boolean
-        default: false
+        type: choice
+        options:
+          - closed
+          - open
+        default: closed
 
 permissions:
   contents: read
@@ -24,6 +27,7 @@ jobs:
       BASE_URL: ${{ inputs.base_url }}
       DIAGNOSTIC_TOKEN: ${{ secrets.MARKET_API_DIAGNOSTIC_TOKEN }}
       FUND_CODES: "003949,160622,110027,011554,007466,022435"
+      MARKET_SESSION: ${{ inputs.market_session }}
     steps:
       - name: Check diagnostic secret
         run: test -n "$DIAGNOSTIC_TOKEN"
@@ -57,16 +61,38 @@ jobs:
               failures=1
             fi
           }
+          # Tencent zeroes its fund estimate outside a trading session, so the
+          # backup group is legitimately unavailable then. Assert that shape
+          # rather than a complete group, and never call the leg verified.
+          expect_offsession() {
+            local endpoint="$1"
+            local output
+            echo "Checking $endpoint (off-session)"
+            if ! output="$(request "$BASE_URL$endpoint")"; then
+              echo "Request failed: $endpoint"
+              failures=1
+              return
+            fi
+            echo "$output" | jq -c '{ok, status, source, sourceLabel, count: (.data | length), diagnostic}'
+            if ! echo "$output" | jq -e '.ok == false and .status == "unavailable" and (.data | length == 0)' >/dev/null; then
+              failures=1
+            fi
+            echo "::warning::Tencent estimate backup UNVERIFIED. Rerun with market_session=open during a trading session before treating acceptance as complete."
+          }
           verify "/v1/indices?force=primary" primary 6
           verify "/v1/indices?force=backup" backup 6
           verify "/v1/funds/estimate?codes=$FUND_CODES&force=primary" primary 6
-          verify "/v1/funds/estimate?codes=$FUND_CODES&force=backup" backup 6
+          if [ "$MARKET_SESSION" = open ]; then
+            verify "/v1/funds/estimate?codes=$FUND_CODES&force=backup" backup 6
+          else
+            expect_offsession "/v1/funds/estimate?codes=$FUND_CODES&force=backup"
+          fi
           verify "/v1/funds/official?codes=$FUND_CODES&force=primary" primary 6
           verify "/v1/funds/official?codes=$FUND_CODES&force=backup" backup 6
           test "$failures" = 0
 
       - name: Compare HS300 primary and backup points during trading
-        if: ${{ inputs.compare_indices == 'true' }}
+        if: ${{ inputs.market_session == 'open' }}
         shell: bash
         run: |
           set -euo pipefail

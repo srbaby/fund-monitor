@@ -136,10 +136,12 @@ export function parseTencentEstimates(text, codes) {
   const data = codes.map((code) => {
     const fields = quotes.get(`jj${code}`);
     if (!fields) return null;
-    // [5] is Tencent's official NAV field. It must never be used as an estimate.
-    const estimateNav = finiteNumber(fields[3]);
-    const estimatePct = finiteNumber(fields[32]);
-    const estimateAt = formatQuoteAt(fields[30]);
+    // Fund quotes are ten fields, not the wide stock layout: [2..4] hold the
+    // intraday estimate, [5..8] the official NAV block. [5] is the official
+    // NAV and must never be used as an estimate.
+    const estimateNav = finiteNumber(fields[2]);
+    const estimatePct = finiteNumber(fields[3]);
+    const estimateAt = formatQuoteAt(fields[4]);
     if (estimateNav == null || estimateNav <= 0 || estimatePct == null || !estimateAt) return null;
     return { code, name: fields[1] || null, estimateNav, estimatePct, estimateAt };
   });
