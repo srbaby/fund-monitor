@@ -50,8 +50,21 @@ export async function fetchPrimaryIndices(fetcher) {
     fields: "f2,f3,f12,f14,f124,f115,f116",
     secids: secids.join(","),
   });
-  const response = await fetchWithTimeout(fetcher, `https://push2.eastmoney.com/api/qt/ulist.np/get?${params}`);
-  return parseEastmoneyIndices(await response.json());
+  for (const host of [
+    "push2delay.eastmoney.com",
+    "push2his.eastmoney.com",
+    "push2.eastmoney.com",
+  ]) {
+    try {
+      const response = await fetchWithTimeout(fetcher, `https://${host}/api/qt/ulist.np/get?${params}`);
+      const data = parseEastmoneyIndices(await response.json());
+      if (data) return data;
+    } catch {
+      // Keep the complete Eastmoney primary group intact by trying its mirrors
+      // before allowing the router to select Tencent as the backup group.
+    }
+  }
+  return null;
 }
 
 export async function fetchBackupIndices(fetcher) {

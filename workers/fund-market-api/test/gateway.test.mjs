@@ -44,7 +44,7 @@ test("Tencent estimate parser never uses field 5 official NAV", () => {
 test("indices discard an incomplete primary group and use the complete Tencent group", async () => {
   resetGatewayCache();
   const fetcher = async (url) => {
-    if (url.includes("push2.eastmoney.com")) return jsonResponse(eastmoneyIndices(true));
+    if (url.includes("eastmoney.com/api/qt/ulist")) return jsonResponse(eastmoneyIndices(true));
     if (url.includes("qt.gtimg.cn")) {
       const text = ["sh000300", "sh000510", "sh000905", "sh000832", "sh000012", "hkHSI"].map((code, index) => {
         const fields = Array(46).fill(""); fields[1] = `指数${code}`; fields[3] = String(1000 + index); fields[30] = "20260719103000"; fields[32] = "0.5"; return `v_${code}="${fields.join("~")}";`;
@@ -80,7 +80,7 @@ test("forced diagnostics require the configured token", async () => {
   resetGatewayCache();
   const denied = await handleRequest(new Request("https://api.example/v1/indices?force=primary"), { DIAGNOSTIC_TOKEN: "secret" });
   assert.equal(denied.status, 403);
-  const fetcher = async (url) => url.includes("push2.eastmoney.com") ? jsonResponse(eastmoneyIndices()) : Promise.reject(new Error("backup must not run"));
+  const fetcher = async (url) => url.includes("eastmoney.com/api/qt/ulist") ? jsonResponse(eastmoneyIndices()) : Promise.reject(new Error("backup must not run"));
   const allowed = await handleRequest(new Request("https://api.example/v1/indices?force=primary", { headers: { "x-diagnostic-token": "secret" } }), { DIAGNOSTIC_TOKEN: "secret" }, null, { fetch: fetcher });
   assert.equal((await allowed.json()).status, "primary");
 });
