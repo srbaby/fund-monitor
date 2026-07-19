@@ -10,7 +10,6 @@ let _indicesMap = {};
 let _indicesMeta = {
   mode: "empty",
   source: null,
-  sourceLabel: null,
   receivedAt: null,
   quoteAt: null,
 };
@@ -137,7 +136,6 @@ function setIndices(map, meta = {}) {
   _indicesMeta = {
     mode: meta.mode || "live",
     source: meta.source || null,
-    sourceLabel: meta.sourceLabel || null,
     receivedAt: meta.receivedAt || Date.now(),
     quoteAt: meta.quoteAt || null,
   };
@@ -155,8 +153,7 @@ function setIndicesUnavailable() {
     _indicesMap = cachedMap;
     _indicesMeta = {
       mode: "stale",
-      source: "unavailable",
-      sourceLabel: "不可用 · 顶部指数（显示上次快照）",
+      source: "cache",
       receivedAt: snapshot?.receivedAt || _indicesMeta.receivedAt || null,
       quoteAt: snapshot?.quoteAt || _indicesMeta.quoteAt || null,
     };
@@ -164,8 +161,7 @@ function setIndicesUnavailable() {
     _indicesMap = {};
     _indicesMeta = {
       mode: "empty",
-      source: "unavailable",
-      sourceLabel: "不可用 · 顶部指数",
+      source: null,
       receivedAt: null,
       quoteAt: null,
     };

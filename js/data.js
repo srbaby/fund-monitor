@@ -20,28 +20,22 @@ function _fetchJson(url, timeoutMs) {
     .finally(() => clearTimeout(timer));
 }
 
-function _unavailable(groupName) {
-  return { source: "unavailable", sourceLabel: "不可用 · " + groupName, data: new Map() };
+function _unavailable() {
+  return { source: "unavailable", data: new Map() };
 }
 
 // 取一组网关数据。整组主备判定在网关内完成，前端只消费结果；
 // 请求失败、ok=false 或结构不符一律降级为不可用整组，绝不把半组数据交给渲染层。
-async function _fetchGroup(path, timeoutMs, groupName) {
+async function _fetchGroup(path, timeoutMs) {
   try {
     const payload = await _fetchJson(API_BASE + path, timeoutMs);
-    if (!payload?.ok || !Array.isArray(payload.data)) {
-      // 网关自报不可用时它的文案更具体（含数据组名），优先采用
-      return payload?.sourceLabel
-        ? { source: "unavailable", sourceLabel: payload.sourceLabel, data: new Map() }
-        : _unavailable(groupName);
-    }
+    if (!payload?.ok || !Array.isArray(payload.data)) return _unavailable();
     return {
       source: payload.status,
-      sourceLabel: payload.sourceLabel,
       data: new Map(payload.data.map((item) => [item.code, item])),
     };
   } catch (e) {
-    return _unavailable(groupName);
+    return _unavailable();
   }
 }
 
@@ -70,7 +64,7 @@ function _officialCacheTtl(data) {
 async function fetchOfficialData(codes) {
   const uniqueCodes = _normalizeCodes(codes);
   if (uniqueCodes.length === 0) {
-    return _unavailable("官方净值");
+    return _unavailable();
   }
 
   const cacheKey = uniqueCodes.join(",");
@@ -82,7 +76,6 @@ async function fetchOfficialData(codes) {
   const group = await _fetchGroup(
     "/v1/funds/official?codes=" + uniqueCodes.join(","),
     SYS_CONFIG.FETCH_OFF_TIMEOUT,
-    "官方净值",
   );
   if (group.source === "unavailable") {
     delete officialBatchCache[cacheKey];
@@ -96,12 +89,11 @@ async function fetchOfficialData(codes) {
 function fetchEstimates(codes) {
   const uniqueCodes = _normalizeCodes(codes);
   if (uniqueCodes.length === 0) {
-    return Promise.resolve(_unavailable("盘中估算"));
+    return Promise.resolve(_unavailable());
   }
   return _fetchGroup(
     "/v1/funds/estimate?codes=" + uniqueCodes.join(","),
     SYS_CONFIG.FETCH_EST_TIMEOUT,
-    "盘中估算",
   );
 }
 
@@ -109,12 +101,7 @@ function fetchSingleFund(code, official, estimate) {
   const key = String(code).trim().padStart(6, "0");
   const est = estimate.data.get(key) || null;
   const off = official.data.get(key) || null;
-  const sources = {
-    estSource: estimate.source,
-    estSourceLabel: estimate.sourceLabel,
-    offSource: official.source,
-    offSourceLabel: official.sourceLabel,
-  };
+  const sources = { estSource: estimate.source, offSource: official.source };
   if (!est && !off) return { code, error: true, ...sources };
   return {
     code,
@@ -161,11 +148,7 @@ function _latestQuoteAt(map) {
 }
 
 async function _fetchIndexGroup() {
-  const group = await _fetchGroup(
-    "/v1/indices",
-    SYS_CONFIG.FETCH_INDEX_TIMEOUT,
-    "顶部指数",
-  );
+  const group = await _fetchGroup("/v1/indices", SYS_CONFIG.FETCH_INDEX_TIMEOUT);
   if (group.source === "unavailable") return null;
   const map = {};
   group.data.forEach((item, id) => {
@@ -193,7 +176,6 @@ function fetchIndices() {
     setIndices(result.map, {
       mode: "live",
       source: result.group.source,
-      sourceLabel: result.group.sourceLabel,
       receivedAt: Date.now(),
       quoteAt: _latestQuoteAt(result.map),
     });

@@ -371,9 +371,11 @@ interact 层和 ui 层**禁止直接调用 `localStorage`**，所有读写通过
 不再直连东方财富、天天基金、腾讯任何域名，JSONP 机制已整体删除。三条链的主备选择、整组完整性校验、GBK 解码
 全部在 Cloudflare Pages Functions 内完成（`workers/fund-market-api/`，详见 `MARKET_DATA_GATEWAY_PLAN.md`）。
 
-- 前端只消费网关返回的 `status`（`primary`/`backup`/`unavailable`）与 `sourceLabel`，**不自行判定主备**。
-- 三个数据区各显示一条整组来源（`.src-idx` / `.src-est` / `.src-off`），备用必须带 ⚠、不可用为红色，不按行重复。
+- 前端只消费网关返回的 `status`（`primary`/`backup`/`unavailable`），**不自行判定主备**。
 - 任一组请求失败或 `ok:false`，整组降级为不可用，**禁止把半组数据交给渲染层**。
+- **主线路不出声**：页面寸土寸金，主线路是常态，不占任何版面。只有降级到 `backup` 才提示，且各自就近显示，
+  不新增行、不新增区块：指数走 `idx-bar` 既有的 `data-status` 窄行（9px）显示「备用行情」；基金估算与官方净值
+  在卡片内各挂两个小字（`srcTag()` → `.src-tag`）；PE 在 2.0 旁挂同样两个小字，代表 1.0 锚已失效、bar 退回昨收。
 - **指数组主线路是腾讯，不是东方财富**：PE bar 锚定 `getEnginePE1`（1.0 总市值路），其唯一输入是沪深300
   实时总市值，而东方财富可达镜像 `push2delay` 只给点位（`f115=f116=0`）。网关据此要求主线路必须带
   HS300 的 `pe`/`marketCap`，缺失即整组切备用。UI 显示 ⚠ 备用线路时，即代表 PE bar 已退化为昨收锚定。

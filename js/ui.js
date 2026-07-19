@@ -42,26 +42,9 @@ function getDisplayName(f) {
   return f.name || NAMES[f.code] || f.code;
 }
 
-// 整组来源提示：每个数据区一条，不按行/按卡片重复。
-// 主线路中性、备用琥珀带 ⚠、不可用红色，见 MARKET_DATA_GATEWAY_PLAN.md §5
-function renderSourceLabel(selector, source, sourceLabel) {
-  // source 为空表示尚未请求，与主线路一样不出声，避免开局闪一行占位
-  const tier = SOURCE_TIER[source];
-  const text = !tier || tier.silent ? "" : tier.prefix + (sourceLabel || "");
-  document.querySelectorAll(selector).forEach((el) => {
-    el.textContent = text;
-    el.hidden = !el.textContent;
-    // 只换三态类，绝不整体重写 className：那会把 selector 依赖的
-    // src-idx/src-est/src-off 标记类一并抹掉，标签从此再不刷新
-    Object.values(SOURCE_TIER).forEach((t) => el.classList.remove(t.cls));
-    if (tier) el.classList.add(tier.cls);
-  });
-}
-
-function updateFundSourceLabels(results) {
-  const first = results.find((result) => result.offSourceLabel) || {};
-  renderSourceLabel(".src-est", first.estSource, first.estSourceLabel);
-  renderSourceLabel(".src-off", first.offSource, first.offSourceLabel);
+// 备用线路的两个小字，只在整组降级时出现；主线路不出声
+function srcTag(source) {
+  return source === "backup" ? '<span class="src-tag">备用</span>' : "";
 }
 
 // 判断某基金结果当前应使用官方净值还是估算净值
@@ -236,8 +219,8 @@ function buildCardInnerHtml(f, fl, today, tradingDay) {
     <div class="card-actions"><button class="del-btn" onclick="delFund('${f.code}')">删除</button></div>
   </div>
   <div class="card-data">
-    <div class="data-half"><div class="dh-label">盘中估算</div><div class="dh-pct num ${ep.cls} ${ef}">${ep.txt}</div><div class="dh-meta"><span>净值 <b class="num">${f.estVal || "--"}</b></span><span class="num">${f.estTime ? f.estTime.slice(11, 16) : "--"}</span></div></div>
-    <div class="data-half${isStale ? " stale" : ""}"><div class="dh-label">官方数据</div><div class="dh-pct num ${op.cls} ${of2}">${op.txt}</div><div class="dh-meta"><span>净值 <b class="num">${f.offVal || "--"}</b></span><span class="num">${f.offDate ? f.offDate.slice(5) : "--"}</span></div></div>
+    <div class="data-half"><div class="dh-label">盘中估算${srcTag(f.estSource)}</div><div class="dh-pct num ${ep.cls} ${ef}">${ep.txt}</div><div class="dh-meta"><span>净值 <b class="num">${f.estVal || "--"}</b></span><span class="num">${f.estTime ? f.estTime.slice(11, 16) : "--"}</span></div></div>
+    <div class="data-half${isStale ? " stale" : ""}"><div class="dh-label">官方数据${srcTag(f.offSource)}</div><div class="dh-pct num ${op.cls} ${of2}">${op.txt}</div><div class="dh-meta"><span>净值 <b class="num">${f.offVal || "--"}</b></span><span class="num">${f.offDate ? f.offDate.slice(5) : "--"}</span></div></div>
   </div>`;
 }
 
@@ -378,7 +361,6 @@ function UI_updateLocalConfig() {
 // 3. 基金净值更新、或列表增删时触发 (每60秒 / 手动增删)
 function UI_updateFunds() {
   const results = getLastResults();
-  updateFundSourceLabels(results);
   const fl = calcFlash(results),
     today = todayDateStr(),
     mktState = getMarketState();

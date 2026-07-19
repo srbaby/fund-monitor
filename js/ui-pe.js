@@ -34,7 +34,7 @@ function renderIndices(map, meta) {
   const dataMap = map || {};
   const mode = meta?.mode || "empty";
   bar.classList.toggle("is-stale", mode === "stale");
-  if (meta?.source === "fallback") {
+  if (meta?.source === "backup") {
     bar.dataset.status = "备用行情";
   } else if (mode === "stale") {
     const time = _formatIndexTime(meta.quoteAt, meta.receivedAt);
@@ -97,10 +97,15 @@ function updatePeBar() {
   }
 
   const { value: v, isDynamic, bounds } = currentPE;
+  // 备用指数源不带总市值，1.0 锚失效、bar 退回昨收，必须让用户看见
+  const peBackupHtml =
+    getIndicesMeta()?.source === "backup"
+      ? '<span class="src-tag">备用</span>'
+      : "";
   const bypass2Html = eng && eng.mode !== "close"
     ? `<span class="num" style="font-size:10px;color:var(--t3);font-weight:600;margin-left:4px;vertical-align:top">${eng.pct.toFixed(2)}%</span>`
     : "";
-  _peDOM.display.innerHTML = `<span class="num">${v.toFixed(2)}%</span>${isDynamic ? bypass2Html : ""}`;
+  _peDOM.display.innerHTML = `<span class="num">${v.toFixed(2)}%</span>${isDynamic ? bypass2Html : ""}${peBackupHtml}`;
 
   const span = (bounds.sellPct - bounds.buyPct) * 2;
   const peMin = (bounds.buyPct + bounds.sellPct) / 2 - span / 2;
@@ -212,9 +217,7 @@ function inlinePctHtml(ep, op, stale, ef, of2) {
 }
 
 function UI_updateIndices() {
-  const meta = getIndicesMeta();
-  renderIndices(getIndices(), meta);
-  renderSourceLabel(".src-idx", meta.source, meta.sourceLabel);
+  renderIndices(getIndices(), getIndicesMeta());
   updatePeBar();
 }
 
