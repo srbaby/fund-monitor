@@ -1,0 +1,57 @@
+name: Market API smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Pages URL first; custom API URL after its certificate is active"
+        required: true
+        default: "https://fund-market-api.pages.dev"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BASE_URL: ${{ inputs.base_url }}
+      DIAGNOSTIC_TOKEN: ${{ secrets.MARKET_API_DIAGNOSTIC_TOKEN }}
+      FUND_CODES: "003949,160622,110027,011554,007466,022435"
+    steps:
+      - name: Check diagnostic secret
+        run: test -n "$DIAGNOSTIC_TOKEN"
+
+      - name: Verify complete forced primary and backup groups
+        shell: bash
+        run: |
+          set -euo pipefail
+          request() {
+            curl --fail --silent --show-error --retry 2 \
+              -H "X-Diagnostic-Token: $DIAGNOSTIC_TOKEN" \
+              "$1"
+          }
+          verify() {
+            local endpoint="$1"
+            local expected="$2"
+            local required_codes="$3"
+            local output
+            output="$(request "$BASE_URL$endpoint")"
+            echo "$output" | jq -e --arg expected "$expected" --argjson count "$required_codes" '
+              .ok == true and .status == $expected and (.data | length == $count) and
+              ([.data[] | .code] | unique | length == $count)
+            ' >/dev/null
+          }
+          verify "/v1/indices?force=primary" primary 6
+          verify "/v1/indices?force=backup" backup 6
+          verify "/v1/funds/estimate?codes=$FUND_CODES&force=primary" primary 6
+          verify "/v1/funds/estimate?codes=$FUND_CODES&force=backup" backup 6
+          verify "/v1/funds/official?codes=$FUND_CODES&force=primary" primary 6
+          verify "/v1/funds/official?codes=$FUND_CODES&force=backup" backup 6
+
+      - name: Verify force is denied without diagnostic token
+        shell: bash
+        run: |
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$BASE_URL/v1/indices?force=primary")"
+          test "$status" = "403"
