@@ -8,7 +8,10 @@ import {
   fetchPrimaryOfficial,
 } from "./upstreams.mjs";
 
-const SUCCESS_TTL = { indices: 3_000, estimate: 15_000, official: 60_000 };
+// 看板每 10 秒取一次指数，故 8 秒的 TTL 对它每次都过期、拿到的照样是新数据；
+// 但突发流量下把上游从最多 20 次/分钟压到 7 次/分钟。这三个 TTL 与其说是缓存，
+// 不如说是上游的限流器——bailuzun.com 不在 CF zone 内，没有 WAF 可用。
+const SUCCESS_TTL = { indices: 8_000, estimate: 15_000, official: 60_000 };
 const cache = new Map();
 
 const SOURCE = {
