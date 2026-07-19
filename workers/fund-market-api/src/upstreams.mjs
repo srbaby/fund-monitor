@@ -104,10 +104,11 @@ export async function fetchPrimaryOfficial(fetcher, codes) {
     deviceid: "fund-market-api",
     Fcodes: codes.join(","),
   });
+  // Shares the default budget: a 2s cap aborted this cross-border hop often
+  // enough to flap the whole group down to the historical backup.
   const response = await fetchWithTimeout(
     fetcher,
     `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?${params}`,
-    2_000,
   );
   return parseOfficialPrimary(await response.json(), codes);
 }
