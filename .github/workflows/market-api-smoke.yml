@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       base_url:
-        description: "Pages URL first; custom API URL after its certificate is active"
+        description: "Custom API URL. pages.dev is host-locked and only answers with the diagnostic token"
         required: true
-        default: "https://fund-market-api.pages.dev"
+        default: "https://fund-api.bailuzun.com"
       market_session:
         description: "Set to open only during a mainland trading session; the Tencent estimate backup and the HS300 point comparison can be verified then and only then"
         required: false

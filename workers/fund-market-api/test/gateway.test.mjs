@@ -81,7 +81,7 @@ test("the Tencent primary group carries the HS300 PE anchor fields", async () =>
   resetGatewayCache();
   const fetcher = async (url) =>
     url.includes("qt.gtimg.cn") ? textResponse(qqIndices()) : Promise.reject(new Error("backup must not run"));
-  const result = await handleRequest(new Request("https://api.example/v1/indices"), {}, null, { fetch: fetcher });
+  const result = await handleRequest(new Request("https://fund-api.bailuzun.com/v1/indices"), {}, null, { fetch: fetcher });
   const body = await result.json();
   assert.equal(body.status, "primary");
   assert.equal(body.source, "tencent");
@@ -99,7 +99,7 @@ test("indices fall back to Eastmoney when Tencent drops the HS300 market cap", a
     if (url.includes("eastmoney.com/api/qt/ulist")) return jsonResponse(eastmoneyIndices());
     throw new Error(`unexpected ${url}`);
   };
-  const result = await handleRequest(new Request("https://api.example/v1/indices"), {}, null, { fetch: fetcher });
+  const result = await handleRequest(new Request("https://fund-api.bailuzun.com/v1/indices"), {}, null, { fetch: fetcher });
   const body = await result.json();
   assert.equal(body.status, "backup");
   assert.equal(body.source, "eastmoney");
@@ -116,7 +116,7 @@ test("official data never mixes an incomplete primary group with backup records"
     }
     throw new Error(`unexpected ${url}`);
   };
-  const result = await handleRequest(new Request(`https://api.example/v1/funds/official?codes=${CODES.join(",")}`), {}, null, { fetch: fetcher });
+  const result = await handleRequest(new Request(`https://fund-api.bailuzun.com/v1/funds/official?codes=${CODES.join(",")}`), {}, null, { fetch: fetcher });
   const body = await result.json();
   assert.equal(body.status, "backup");
   assert.deepEqual(body.data.map((item) => item.officialNav), [2.1, 2.2]);
@@ -124,9 +124,46 @@ test("official data never mixes an incomplete primary group with backup records"
 
 test("forced diagnostics require the configured token", async () => {
   resetGatewayCache();
-  const denied = await handleRequest(new Request("https://api.example/v1/indices?force=primary"), { DIAGNOSTIC_TOKEN: "secret" });
+  const denied = await handleRequest(new Request("https://fund-api.bailuzun.com/v1/indices?force=primary"), { DIAGNOSTIC_TOKEN: "secret" });
   assert.equal(denied.status, 403);
   const fetcher = async (url) => url.includes("qt.gtimg.cn") ? textResponse(qqIndices()) : Promise.reject(new Error("backup must not run"));
-  const allowed = await handleRequest(new Request("https://api.example/v1/indices?force=primary", { headers: { "x-diagnostic-token": "secret" } }), { DIAGNOSTIC_TOKEN: "secret" }, null, { fetch: fetcher });
+  const allowed = await handleRequest(new Request("https://fund-api.bailuzun.com/v1/indices?force=primary", { headers: { "x-diagnostic-token": "secret" } }), { DIAGNOSTIC_TOKEN: "secret" }, null, { fetch: fetcher });
   assert.equal((await allowed.json()).status, "primary");
+});
+
+// bailuzun.com 不在 Cloudflare zone 内（权威 DNS 在腾讯），拿不到 WAF 规则，
+// 收口只能在代码里做：对外只认自定义域，pages.dev 与预览地址一律拒绝。
+test("only the custom domain may reach the API anonymously", async () => {
+  resetGatewayCache();
+  const fetcher = async () => { throw new Error("upstream must not be reached"); };
+  for (const host of [
+    "https://fund-market-api.pages.dev/v1/indices",
+    "https://7d5bd3a5.fund-market-api.pages.dev/v1/indices",
+    "https://sqppb.fund-market-api.pages.dev/v1/indices",
+  ]) {
+    const res = await handleRequest(new Request(host), { DIAGNOSTIC_TOKEN: "secret" }, null, { fetch: fetcher });
+    assert.equal(res.status, 403, host);
+    assert.equal((await res.json()).error, "host_not_allowed");
+  }
+});
+
+test("the diagnostic token keeps pages.dev usable as a debug escape hatch", async () => {
+  resetGatewayCache();
+  const fetcher = async (url) =>
+    url.includes("qt.gtimg.cn") ? textResponse(qqIndices()) : Promise.reject(new Error("backup must not run"));
+  const res = await handleRequest(
+    new Request("https://fund-market-api.pages.dev/v1/indices", { headers: { "x-diagnostic-token": "secret" } }),
+    { DIAGNOSTIC_TOKEN: "secret" }, null, { fetch: fetcher },
+  );
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).status, "primary");
+});
+
+test("the custom domain still works with no token at all", async () => {
+  resetGatewayCache();
+  const fetcher = async (url) =>
+    url.includes("qt.gtimg.cn") ? textResponse(qqIndices()) : Promise.reject(new Error("backup must not run"));
+  const res = await handleRequest(new Request("https://fund-api.bailuzun.com/v1/indices"), {}, null, { fetch: fetcher });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).status, "primary");
 });

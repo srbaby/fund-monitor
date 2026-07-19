@@ -47,6 +47,18 @@ function parseCodes(value) {
   return codes.length > 0 && codes.length <= 50 && codes.every((code) => /^\d{6}$/.test(code)) ? codes : null;
 }
 
+// bailuzun.com 的权威 DNS 在腾讯，不是 Cloudflare zone，因此拿不到任何 WAF/速率
+// 限制规则——唯一能收口的地方就是这里。*.pages.dev 与预览部署地址同样能触发上游
+// 请求，却连自定义域那点约束都没有，故对外只认自定义域；带诊断密钥时放行，
+// 给证书或 DNS 出问题时留一条调试退路。
+const ALLOWED_HOST = "fund-api.bailuzun.com";
+
+function hostAllowed(url, request, env) {
+  if (url.hostname === ALLOWED_HOST) return true;
+  const token = request.headers.get("x-diagnostic-token");
+  return !!(env?.DIAGNOSTIC_TOKEN && token === env.DIAGNOSTIC_TOKEN);
+}
+
 function getForce(url, request, env) {
   const force = url.searchParams.get("force");
   if (!force) return null;
@@ -98,6 +110,10 @@ export async function handleRequest(request, env = {}, context, dependencies = {
   if (request.method !== "GET") return response({ ok: false, error: "method_not_allowed" }, 405);
 
   const url = new URL(request.url);
+  if (!hostAllowed(url, request, env)) {
+    return response({ ok: false, error: "host_not_allowed" }, 403);
+  }
+
   const endpoint = {
     "/v1/indices": "indices",
     "/v1/funds/estimate": "estimate",

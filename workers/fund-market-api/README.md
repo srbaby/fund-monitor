@@ -14,13 +14,30 @@ quote host directly. Breaking an endpoint breaks the board.
 
 Add the production environment variable `DIAGNOSTIC_TOKEN` as a random long string. Do not commit it. Add the same value to the repository Actions secret `MARKET_API_DIAGNOSTIC_TOKEN`.
 
-After the first deployment succeeds, add `fund-api.bailuzun.com` under the Pages project's **Custom domains** page. Only then add this Tencent Cloud DNS record:
+`fund-api.bailuzun.com` is registered under the Pages project's **Custom domains** page and resolves through
+this Tencent Cloud DNS record:
 
 ```text
 CNAME  fund-api  fund-market-api.pages.dev  TTL 600
 ```
 
-Do not change the authoritative nameservers, existing DNS records, `fund.bailuzun.com`, or the existing `pe-night-trigger` Worker.
+Do not change the authoritative nameservers, existing DNS records, `fund.bailuzun.com`, or the existing
+`pe-night-trigger` Worker.
+
+## Why the host is locked in code
+
+`bailuzun.com` is served by Tencent Cloud DNS, so it is **not a Cloudflare zone** and no WAF or rate-limiting
+rule can be attached to it — account-level WAF is Enterprise-only and zone rules need a zone. The only place
+left to close the door is the Function itself.
+
+`/v1/*` therefore answers anonymously **only** on `fund-api.bailuzun.com`. `*.pages.dev`, preview deployment
+hostnames and subdomain probes get `403 host_not_allowed`, because they reach the same code and trigger the
+same upstream calls while sitting outside even the custom domain's control. Requests carrying a valid
+`X-Diagnostic-Token` are exempt, which keeps `pages.dev` usable for debugging if the certificate or the CNAME
+ever breaks.
+
+Note this covers the API only. `/` and other static assets are served by Pages before the Function runs, so
+they stay reachable everywhere — harmless, since they make no upstream calls.
 
 ## API contract
 
