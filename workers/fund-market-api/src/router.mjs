@@ -66,18 +66,22 @@ async function selectGroup(kind, force, fetcher, codes) {
     estimate: [() => fetchPrimaryEstimates(fetcher, codes), () => fetchBackupEstimates(fetcher, codes)],
     official: [() => fetchPrimaryOfficial(fetcher, codes), () => fetchBackupOfficial(fetcher, codes)],
   }[kind];
-  const attempt = async (index) => {
+  const diagnostics = [];
+  const attempt = async (index, route) => {
     try {
-      return await loaders[index]();
-    } catch {
+      const data = await loaders[index]();
+      if (!data) diagnostics.push({ route, reason: "incomplete_payload" });
+      return data;
+    } catch (error) {
+      diagnostics.push({ route, reason: error instanceof Error ? error.message : "upstream_error" });
       return null;
     }
   };
-  if (force === "primary") return { status: "primary", data: await attempt(0) };
-  if (force === "backup") return { status: "backup", data: await attempt(1) };
-  const primary = await attempt(0);
-  if (primary) return { status: "primary", data: primary };
-  return { status: "backup", data: await attempt(1) };
+  if (force === "primary") return { status: "primary", data: await attempt(0, "primary"), diagnostics };
+  if (force === "backup") return { status: "backup", data: await attempt(1, "backup"), diagnostics };
+  const primary = await attempt(0, "primary");
+  if (primary) return { status: "primary", data: primary, diagnostics };
+  return { status: "backup", data: await attempt(1, "backup"), diagnostics };
 }
 
 function quoteAtFor(kind, data) {
@@ -115,6 +119,7 @@ export async function handleRequest(request, env = {}, context, dependencies = {
   const selected = await selectGroup(endpoint, force, dependencies.fetch || fetch, codes);
   const status = selected.data ? selected.status : "unavailable";
   const payload = makePayload(endpoint, status, selected.data, selected.data ? quoteAtFor(endpoint, selected.data) : null);
+  if (force) payload.diagnostic = selected.diagnostics;
   if (!force && status !== "unavailable") cache.set(cacheKey, { createdAt: Date.now(), payload });
   return response(payload);
 }
