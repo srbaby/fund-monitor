@@ -15,7 +15,12 @@ async function fetchWithTimeout(fetcher, url, timeoutMs = TIMEOUT_MS) {
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetcher(url, {
-      headers: { Accept: "application/json, text/plain;q=0.9, */*;q=0.8" },
+      headers: {
+        Accept: "application/json, text/plain;q=0.9, */*;q=0.8",
+        "Accept-Language": "zh-CN,zh;q=0.9",
+        Referer: "https://quote.eastmoney.com/",
+        "User-Agent": "Mozilla/5.0 (compatible; fund-market-api/1.0)",
+      },
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
