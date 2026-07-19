@@ -180,9 +180,10 @@ function fetchIndices() {
       quoteAt: _latestQuoteAt(result.map),
     });
     // 旁路PE引擎的 1.0 总市值路与 2.0 点位路，锚定沪深300 实时快照。
-    // 备用线路不带 PE/总市值，此时不写快照，让引擎回落到昨收锚定而不是喂 0 进去。
+    // 备用线路只有点位、没有总市值，仍要写入：2.0 走点位照常可算，
+    // 1.0 由 getEnginePE1 自己的 mcap>0 判据回落昨收，不在这里一刀切掉两路。
     const anchor = result.group.data.get(SYS_CONFIG.IDX_PE);
-    if (anchor?.price > 0 && anchor?.marketCap > 0) {
+    if (anchor?.price > 0) {
       setQQIndex({
         price: anchor.price,
         ts: anchor.quoteAt || "",

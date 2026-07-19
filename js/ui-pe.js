@@ -96,16 +96,17 @@ function updatePeBar() {
     return;
   }
 
-  const { value: v, isDynamic, bounds } = currentPE;
-  // 备用指数源不带总市值，1.0 锚失效、bar 退回昨收，必须让用户看见
-  const peBackupHtml =
-    getIndicesMeta()?.source === "backup"
-      ? '<span class="src-tag">备用</span>'
-      : "";
+  const { value: v, bounds } = currentPE;
+  // 备用指数源不带总市值，1.0 锚失效、bar 退回昨收，在 2.0 数字下方标出
   const bypass2Html = eng && eng.mode !== "close"
-    ? `<span class="num" style="font-size:10px;color:var(--t3);font-weight:600;margin-left:4px;vertical-align:top">${eng.pct.toFixed(2)}%</span>`
+    ? `<span class="pe-bypass2"><span class="num">${eng.pct.toFixed(2)}%</span>${
+        getIndicesMeta()?.source === "backup" ? '<span class="src-tag">备用</span>' : ""
+      }</span>`
     : "";
-  _peDOM.display.innerHTML = `<span class="num">${v.toFixed(2)}%</span>${isDynamic ? bypass2Html : ""}${peBackupHtml}`;
+  // 2.0 只由自己的 mode 决定显示，不再挂在 isDynamic（那取自 1.0）上：
+  // 走备用指数源时 1.0 因缺总市值而失效、主数字冻回昨收，此时点位路算出的
+  // 2.0 恰恰是仅存的实时估计，正是最该露出来的时候。
+  _peDOM.display.innerHTML = `<span class="num">${v.toFixed(2)}%</span>${bypass2Html}`;
 
   const span = (bounds.sellPct - bounds.buyPct) * 2;
   const peMin = (bounds.buyPct + bounds.sellPct) / 2 - span / 2;

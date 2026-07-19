@@ -628,6 +628,22 @@ main {
     color: var(--t3);
     font-weight: 500;
 }
+/* 旁路 2.0 百分位：数字在上，降级时「备用」落在其正下方 */
+.pe-bypass2 {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.15;
+    margin-left: 4px;
+    vertical-align: top;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--t3);
+}
+.pe-bypass2 .src-tag {
+    margin-left: 0;
+}
+
 /* 备用线路的两个小字。主线路不出声，故无对应样式 */
 .src-tag {
     display: inline-block;
