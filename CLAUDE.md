@@ -172,23 +172,34 @@
 fund-monitor/
 ├── index.html
 ├── favicon.png
+├── CNAME                     # fund.bailuzun.com（GitHub Pages）
 ├── css/style.css
-└── js/
-    ├── config.js      # 第1层：静态配置（常量 + 纯工具函数）
-    ├── store.js       # 第2层：全局状态、localStorage、Observer 广播
-    ├── data.js        # 第3层：网络请求与数据标准化
-    ├── engine.js      # 第4层：纯函数计算引擎（依赖注入）
-    ├── ui.js          # 第5层：DOM 渲染、格式化、抽屉 HTML 工厂
-    ├── interact.js    # 第6层：用户事件调度器
-    ├── main.js        # 第7层：启动、定时器、订阅绑定（始终只有十几行）
-    └── logger.js      # 诊断层：破例文件，见 3.7
+├── js/                       # 前端运行时，10 个文件，已满
+│   ├── config.js             # 第1层：静态配置（常量 + 纯工具函数）
+│   ├── store.js             # 第2层：全局状态、localStorage、Observer 广播
+│   ├── data.js              # 第3层：网关请求与数据标准化
+│   ├── engine.js            # 第4层：纯函数计算引擎（依赖注入）
+│   ├── ui.js                # 第5层：DOM 渲染、格式化、卡片/表格
+│   ├── ui-holding.js        # 第5层：持仓抽屉与增降权预案的 HTML 工厂
+│   ├── ui-pe.js             # 第5层：指数栏与 PE bar
+│   ├── interact.js          # 第6层：用户事件调度器
+│   ├── main.js              # 第7层：启动、定时器、订阅绑定
+│   └── logger.js            # 诊断层：破例文件，见 3.7
+├── workers/fund-market-api/  # 市场数据网关（Cloudflare Pages Functions）
+└── automation/               # 夜间 PE 数据引擎（Python + GitHub Actions）
 ```
 
 > **结构备注**：以上为 GitHub 仓库的真实结构（`css/` `js/` 嵌套）。Claude 项目知识库受限只能平铺存放副本，那只是托管形式，不代表真实目录——勿据平铺副本「修正」本结构。
 
-加载顺序：`config → logger → store → data → engine → ui → interact → main`
+加载顺序（即 `index.html` 里 script 标签的顺序）：
+`config → logger → store → data → engine → ui → ui-holding → ui-pe → interact → main`
 
-> **`js/` 十文件上限不含 `automation/`**：`automation/` 是独立的 Python + GitHub Actions 夜间验证层，与前端看板运行时完全解耦，不占十文件配额、不参与上述加载顺序。详见 2.7。
+> **十文件上限只约束 `js/`**，`workers/` 与 `automation/` 不占配额：前者在 Cloudflare 上运行、后者在
+> GitHub Actions 上运行，都与浏览器运行时解耦，不参与上述加载顺序。见 2.6 与 2.8。
+>
+> **ui 层为何是三个文件**：`ui.js` 已接近 400 行，抽屉（`ui-holding`）与 PE 栏（`ui-pe`）各自内聚且
+> 与卡片渲染无交叉调用，故按渲染区域拆分，三者同属第 5 层、互不依赖。**再拆就会突破十文件上限，
+> 届时应先合并而不是新增。**
 
 ## 2.2 分层与职责边界
 
@@ -206,7 +217,9 @@ config → store → data ─┐
 | **store.js**    | 内存变量、localStorage 读写、Observer 广播、快照导入、配置版本号 | DOM 操作、网络请求、业务计算                             |
 | **data.js**     | 网关请求、TTL 缓存、`fetchSingleFund`、`getNavByCode`、云端读写 | DOM 操作、业务计算、localStorage 读写、直连任何第三方行情域名 |
 | **engine.js**   | 纯函数：市场状态、PE 插值、权益计算、增降权推演、今日盈亏。**依赖全部参数传入** | DOM、localStorage、调用 store/data 函数                  |
-| **ui.js**       | DOM 读写、格式化、`UI_update*` 订阅响应、`UI_render*` HTML 工厂（只返回字符串） | 业务计算、localStorage 读写                              |
+| **ui.js**       | DOM 读写、格式化、卡片/表格渲染、`UI_update*` 订阅响应 | 业务计算、localStorage 读写                              |
+| **ui-holding.js** | 持仓抽屉与增降权预案的 `UI_*` HTML 工厂（只返回字符串，DOM 写入交给 interact） | 业务计算、localStorage 读写 |
+| **ui-pe.js**    | 指数栏 `renderIndices`、PE bar `updatePeBar`、`UI_updateIndices` 订阅响应 | 业务计算、localStorage 读写 |
 | **interact.js** | 响应用户事件，协调 store/engine/ui，显式调用 `syncCloud`     | 核心数学公式（委托 engine）、直接操作 localStorage       |
 | **main.js**     | 初始化、定时器、Observer 订阅绑定                            | HTML 拼接、业务逻辑、直接 DOM 操作（事件绑定除外）       |
 
@@ -251,8 +264,8 @@ main setInterval → fetchIndices() → setIndices() → 广播 INDICES → rend
 confirmPe() → savePe() → 广播 LOCAL_CONFIG → syncCloud("push_pe_now")
 
 saveHoldings() / addFund() / delFund() / 拖拽排序 / 标记优先卖出
-    → saveHoldingsData() / saveFunds() / savePrioritySell() / clearPrioritySell()
-        → 内置 bumpConfigVer() 同步自增配置版本并落地
+    → saveHoldingsData() / saveSellPlan() / saveFunds() / savePrioritySell() / clearPrioritySell()
+        → 各自内置 bumpConfigVer() 同步自增配置版本并落地
         → 广播 LOCAL_CONFIG / FUNDS
     → syncCloud("push_config")    // payload 带当前版本号 v
 ```
@@ -302,13 +315,54 @@ syncCloud("pull")
 
 **pull 返回值语义**：表示「拉取是否成功」，非「内容是否变更」。仅两文件都取不到才 `false`；取到任一即刷新并 `true`（即使无变更）。`manualPull`/`openCloudConfig` 据此判定成败提示，`main.js` 据此决定是否本地补刷。
 
-## 2.6 engine 依赖注入
+## 2.6 市场数据网关（workers/，浏览器唯一的数据来源）
+
+浏览器只请求 `API_BASE`（`https://fund-api.bailuzun.com`）下的三个端点，**不再直连东方财富、天天基金、
+腾讯任何域名**，JSONP 机制已整体删除。主备选择、整组完整性校验、GBK 解码全部在 Cloudflare Pages
+Functions 内完成（`workers/fund-market-api/`，部署步骤与接口契约见该目录 README）。
+
+```
+浏览器 ──→ fund-api.bailuzun.com ──┬─→ /v1/indices          主:腾讯      备:东财 push2delay
+（只认这一个域名）                  ├─→ /v1/funds/estimate   主:天天fundgz 备:腾讯 jj{code}
+                                   └─→ /v1/funds/official   主:FundMNFInfo 备:FundMNHisNetList
+```
+
+- **前端不判主备**：只消费网关返回的 `status`（`primary`/`backup`/`unavailable`）。
+- **整组成败**：任一组请求失败或 `ok:false`，整组降级为不可用，**禁止把半组数据交给渲染层**。
+- **指数组主线路是腾讯，不是东方财富**：PE bar 锚定 `getEnginePE1`（1.0 总市值路），唯一输入是沪深300
+  实时总市值，而东财唯一可达镜像 `push2delay` 只给点位（`f115=f116=0`）。网关据此要求主线路必须带
+  HS300 的 `pe`/`marketCap`，缺失即整组切备用。
+- **备用指数源仍要写 `setQQIndex`**：备用只是缺总市值，点位是有的。2.0（点位路）照常可算，1.0 由
+  `getEnginePE1` 自己的 `mcap>0` 判据回落昨收——**不要在 data 层用 `mcap>0` 一刀切掉两路**。
+- **2.0 的显示不挂 `isDynamic`**（那取自 1.0）：走备用时 1.0 失效、主数字冻回昨收，此刻点位路的 2.0
+  是仅存的实时估计，正该露出来。
+- `baseNav`/`baseDate`（昨日已确认净值）随估算组返回，供 `calcTodayProfit` 用；缺失时按涨跌幅反推。
+- **腾讯基金报价是 10 字段，不是股票那套宽表**：`[2..4]` 估算、`[5..8]` 官方净值块。`[5]` 是官方净值，
+  **绝不可当估算用**。曾按股票结构读 `[3]/[30]/[32]`，导致腾讯估算备用在任何时段都解不出来。
+
+**主线路不出声**：页面寸土寸金，主线路是常态，不占任何版面。只有降级到 `backup` 才提示，且各自就近
+显示，不新增行、不新增区块：
+
+| 数据组 | 备用时的提示 |
+| --- | --- |
+| 指数 | `idx-bar` 既有的 `data-status` 窄行（9px）显示「备用行情」 |
+| 估算 / 官方 | 卡片内各挂两个小字（`srcTag()` → `.src-tag`） |
+| PE | 2.0 百分位数字**正下方**挂同样两个小字，代表 1.0 锚失效、bar 已退回昨收 |
+
+官方组三态（`offSource`，一次刷新内只许其一，**禁止逐只混用**）：`primary` 取 `FundMNFInfo`、
+`backup` 取 `FundMNHisNetList`、`unavailable` 时官方字段保持空值，**禁止用盘中估算或腾讯快照冒充官方数据**。
+
+**验收**：`node --test workers/fund-market-api/test/gateway.test.mjs` + 手动触发 `Market API smoke`
+工作流。`market_session=open` 只能在交易日盘中用——非盘中腾讯估算字段为空，那条备用腿验不了，
+工作流会明确标记为 UNVERIFIED 而不是算通过。
+
+## 2.7 engine 依赖注入
 
 所有 engine 函数为纯函数，外部依赖全部参数传入。`SYS_CONFIG`、`PE_EQUITY_TABLE`、`isZZ500Product` 等 config 常量/纯工具函数因无副作用可直接使用。
 
 engine 内计算出的中间变量若不出现在 return、也不用于后续计算，**必须删除，不允许死变量**。
 
-## 2.7 夜间 PE 数据引擎（automation/，独立于前端看板）
+## 2.8 夜间 PE 数据引擎（automation/，独立于前端看板）
 
 **定位：旁路锚的数据源，不是看板 PE 定锚。** 它写的是 `fm_pe_engine.json`，与 2.5 节 `fm_pe.json`
 （你每晚手录的定锚）是**完全不同的 Gist 文件**，AI 不要混为一谈。
@@ -355,13 +409,17 @@ interact 层和 ui 层**禁止直接调用 `localStorage`**，所有读写通过
 
 | 数据类型  | 读                                                           | 写                   | 清                    |
 | --------- | ------------------------------------------------------------ | -------------------- | --------------------- |
-| 基金列表  | `loadFunds()`                                                | `saveFunds()`        | —                     |
+| 基金列表  | `loadFunds()`                                                | `saveFunds()` ⚙      | —                     |
 | PE 定锚   | `loadPe()`                                                   | `savePe()`           | —                     |
-| 持仓数据  | `loadHoldings()` / `loadHoldingsEquity()` / `loadShortNames()` | `saveHoldingsData()` | —                     |
-| 降权预案  | `loadSellPlan()`                                             | `saveSellPlan()`     | —                     |
-| 优先卖出  | `loadPrioritySell()`                                         | `savePrioritySell()` | `clearPrioritySell()` |
+| 持仓数据  | `loadHoldings()` / `loadHoldingsEquity()` / `loadShortNames()` | `saveHoldingsData()` ⚙ | —                   |
+| 降权预案  | `loadSellPlan()`                                             | `saveSellPlan()` ⚙   | —                     |
+| 优先卖出  | `loadPrioritySell()`                                         | `savePrioritySell()` ⚙ | `clearPrioritySell()` ⚙ |
 | 配置版本  | `loadConfigVer()`                                            | `bumpConfigVer()`    | —                     |
 | Gist 配置 | `loadGistConfig()`                                           | `saveGistConfig()`   | `clearGistConfig()`   |
+
+> ⚙ = 该封装内置 `bumpConfigVer()`。**配置内容（f/h/s/pr）的每一个写入封装都必须自己自增版本**，
+> 不许依赖「调用方会顺带调另一个会自增的函数」——`saveSellPlan` 就曾因唯一调用点紧跟在
+> `saveHoldingsData` 之后而漏掉，属于随时会被下一次改动踩响的哑雷，2026-07-19 已补。
 
 **授权例外**
 
@@ -384,33 +442,22 @@ interact 层和 ui 层**禁止直接调用 `localStorage`**，所有读写通过
 
 ## 3.3 engine 净值/档位取值规则
 
-**净值选取 `getNavByCode`**：`offD >= estD` 用官方净值（offVal），否则用估算（estVal）。`getNavByCode`、`calcTodayProfit`、`openHoldingDrawer` 的 profitMap 三处保持同一规则，不允许差异（有意三处一致，非冗余）。所有品种（含纯债）均有盘中估算数据。
+**净值选取**：判据是 `f.offVal && (!estD || offD >= estD)`——有官方、且官方不比估算旧（或压根没有估算）
+就用官方净值，否则用估算。这条判据出现在三处，**必须逐字一致，不允许差异（有意冗余，不是重复代码）**：
+
+| 位置 | 用途 |
+| --- | --- |
+| `data.js` `getNavByCode` | 权益计算、抽屉取净值 |
+| `interact.js` `openHoldingDrawer` 的 profitMap | 抽屉内每只基金的收益 |
+| `engine.js` `calcTodayProfit` | 顶部今日涨跌（**另有 WEEKEND / BEFORE_PRE 两个市场状态短路，engine 独有**） |
+
+⚠️ **`!estD ||` 这半边不能省。** 曾写成 `estD && offD && offD >= estD`，要求先有估算才肯用官方；
+网关的估算是整组成败，一旦整组不可用，所有持仓的 `estVal` 同时为 null，`calcTodayProfit` 便把每只都
+算成 NaN 而整只跳过——顶部今日涨跌归零，抽屉里却照常有收益，两者对不上。2026-07-19 已修正。
+
+所有品种（含纯债）正常情况下都有盘中估算数据。
 
 **官方净值 TTL（`fetchOfficialData`）**：官方数据按基金列表整体缓存；19:30（`SYS_CONFIG.T_OFF_UPDATE`）前 1 小时 / 后 5 分钟 / 已是当日数据或周末 12 小时。避免按基金分别缓存造成主源与备用源混用。
-
-**市场数据网关（2026-07-19 二阶段）**：浏览器只请求 `API_BASE`（`https://fund-api.bailuzun.com`）下的三个端点，
-不再直连东方财富、天天基金、腾讯任何域名，JSONP 机制已整体删除。三条链的主备选择、整组完整性校验、GBK 解码
-全部在 Cloudflare Pages Functions 内完成（`workers/fund-market-api/`，部署与接口契约见该目录 README）。
-
-- 前端只消费网关返回的 `status`（`primary`/`backup`/`unavailable`），**不自行判定主备**。
-- 任一组请求失败或 `ok:false`，整组降级为不可用，**禁止把半组数据交给渲染层**。
-- **主线路不出声**：页面寸土寸金，主线路是常态，不占任何版面。只有降级到 `backup` 才提示，且各自就近显示，
-  不新增行、不新增区块：指数走 `idx-bar` 既有的 `data-status` 窄行（9px）显示「备用行情」；基金估算与官方净值
-  在卡片内各挂两个小字（`srcTag()` → `.src-tag`）；PE 在 2.0 百分位数字**正下方**挂同样两个小字。
-- **备用指数源仍要写 `setQQIndex`**：备用只是缺总市值，点位是有的。2.0（点位路）照常可算，1.0 由
-  `getEnginePE1` 自己的 `mcap>0` 判据回落昨收——不要在 data 层用 `mcap>0` 一刀切掉两路。
-- **2.0 的显示不挂 `isDynamic`**（那取自 1.0）：走备用时 1.0 失效、主数字冻回昨收，此刻点位路的 2.0
-  是仅存的实时估计，正该露出来。
-- **指数组主线路是腾讯，不是东方财富**：PE bar 锚定 `getEnginePE1`（1.0 总市值路），其唯一输入是沪深300
-  实时总市值，而东方财富可达镜像 `push2delay` 只给点位（`f115=f116=0`）。网关据此要求主线路必须带
-  HS300 的 `pe`/`marketCap`，缺失即整组切备用。UI 显示 ⚠ 备用线路时，即代表 PE bar 已退化为昨收锚定。
-- `baseNav`/`baseDate`（昨日已确认净值）随估算组返回，供 `calcTodayProfit` 用；缺失时回落到按涨跌幅反推。
-
-官方组三态（`offSource`，一次刷新内只许其一，禁止逐只混用）：
-
-- `primary`：网关取 `FundMNFInfo`，UI 标记“主线路 · 天天基金移动批量”。
-- `backup`：网关取 `FundMNHisNetList`，UI 标记“⚠ 备用线路 · 天天基金历史净值”。
-- `unavailable`：官方两级接口均失败；官方字段保持空值，禁止用盘中估算或腾讯快照冒充官方数据。
 
 ## 3.4 染色体系
 
@@ -446,7 +493,7 @@ interact 层和 ui 层**禁止直接调用 `localStorage`**，所有读写通过
 - **抽屉 Tab**：`tabStyle` 用 `var(--bg3)`；增权 Tab 用 `var(--buy-bg)`、降权用 `var(--sell-bg)`；卡片体统一 `var(--bg3)`，方向感由数字颜色和边框传达。
 - **护眼模式**：低饱和度护眼调色盘，`<meta name="darkreader-lock" />` 防外部劫持；除 `--up/--dn` 外禁止高亮纯白。
 
-## 3.6 ui.js 关键约定
+## 3.6 ui 三文件关键约定
 
 - **DOM 缓存**：高频静态节点通过 `_getEl(id)`，禁止在渲染循环内直接 `getElementById`。
 - **`_peDOMReady` flag**：控制 `_peDOM` 一次性初始化，禁止用 `!_peDOM.display` 判断（display 为 null 时误判）。
@@ -454,6 +501,11 @@ interact 层和 ui 层**禁止直接调用 `localStorage`**，所有读写通过
 - **`UI_buildSummaryHtml` 签名**：`(currentPE, eqData, currentEqVal, eqCol, targetNeutralNum, inDrawer=false)`，`inDrawer=true` 自动输出抽屉样式。
 - **`UI_buildHoldingPlanHtml` 的 `eqData`**：由 `liveUpdateHoldingPlan` 计算后传入，ui 层禁止自行调 `calcCurrentEquity`。
 - **`renderTodayProfit` 签名**：`(results, holdings, activeProds, mktState, todayStr)`，`holdings` 和 `activeProds` 由调用方传入。
+- **卡片左侧色条**：`renderCards` 用 `getActivePct()` 定 `up-card`/`down-card`。折叠态卡片上只露一个数字，
+  而那个数字由 `miniMode`（0=估算 / 1=官方 / 2=并列）决定，两者口径可能不同——**已知不一致，待定**，
+  改动前先与用户确认，不要自行对齐。
+
+**3.7 的 logger.js 是破例的第 10 个文件**；ui 拆成三个后 `js/` 已满，见 2.1。
 
 ## 3.7 日志诊断系统（logger.js）
 
@@ -495,12 +547,14 @@ interact 层和 ui 层**禁止直接调用 `localStorage`**，所有读写通过
 1. **改一层只动一个文件**：穿透两层须先说明原因并获确认（如版本机制横跨 config 常量 + store 写入 + interact 调度，须整体说明）。
 2. **参数只在 config.js**：业务数字不散落他处。
 3. **funds 改动必须持久化**：改后立即 `saveFunds()`。
-4. **配置版本自增**：配置内容（f/h/s/pr）写入一律经 store 封装（已内置 `bumpConfigVer()`）；新增任何配置写入路径必须同样触发版本自增，否则破坏多端收敛。
+4. **配置版本自增**：配置内容（f/h/s/pr）写入一律经 store 封装，**每个封装自己调 `bumpConfigVer()`**，不许依赖调用方顺带调了别的会自增的函数（`saveSellPlan` 踩过，见 3.1）；新增任何配置写入路径同理，否则破坏多端收敛。
 5. **持仓跟随看板**：`saveHoldings` 从当前看板产品重建 shares/equity/shortNames/plan，移出看板的产品旧条目一并丢弃，不保留看板外历史持仓。
 6. **极端值防御**：持仓为零、PE 未定锚等异常输入返回 `null` 或 `{ error: true }`，不允许 `NaN`/`undefined` 流入渲染层。
 7. **Sortable 生命周期**：`refreshData()` 后先 `destroy()` 旧实例再重建。
 8. **优先卖出持久化**：`openHoldingDrawer` 打开前必须 `setPrioritySellCode(loadPrioritySell())` 同步。
 9. **weight 存储类型**：写入 `saveSellPlan` 前必须 `parseFloat()`，禁止字符串存入。
+10. **前端禁止直连第三方行情**：只走 `API_BASE` 三个端点。要改数据源就改 `workers/fund-market-api/`，别在 `js/` 里加 fetch。
+11. **净值判据三处逐字一致**：`f.offVal && (!estD || offD >= estD)`，见 3.3 的表与那条警告。
 
 ## 4.4 提交检查清单
 
@@ -556,3 +610,6 @@ interact 层和 ui 层**禁止直接调用 `localStorage`**，所有读写通过
 - **枷锁层「不参与日常调节」的硬约束**：降权第三层按比例减仓时，是否触及枷锁层取决于用户填的权重，引擎未硬性排除枷锁层品种。
 - **破窗 SOP（PE<35）资金来源顺序、黑天鹅静默法则**：属人工执行纪律，未入看板。
 - **夜间定锚漂移修正系数**：由外部脚本 `hs300_daily.py` 维护并体现在录入的指数点位中，看板不自行修正。
+- **折叠态卡片数字与左侧色条口径不一**：色条走 `getActivePct()`（有官方跟官方），数字走 `miniMode`，
+  估算与官方反号时会出现红条配绿字（纯债日涨跌常在 ±0.01% 量级，末位差一个单位就翻号）。
+  2026-07-19 已确认 `getActivePct` 逻辑本身正确，如何对齐待用户决定，**不擅自改**。
