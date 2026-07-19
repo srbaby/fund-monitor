@@ -48,7 +48,10 @@ function renderSourceLabel(selector, source, sourceLabel) {
   const tier = SOURCE_TIER[source] || SOURCE_TIER.unavailable;
   document.querySelectorAll(selector).forEach((el) => {
     el.textContent = tier.prefix + (sourceLabel || "未请求");
-    el.className = "fund-source-label " + tier.cls;
+    // 只换三态类，绝不整体重写 className：那会把 selector 依赖的
+    // src-idx/src-est/src-off 标记类一并抹掉，标签从此再不刷新
+    Object.values(SOURCE_TIER).forEach((t) => el.classList.remove(t.cls));
+    el.classList.add(tier.cls);
   });
 }
 
