@@ -32,10 +32,18 @@ async function fetchTencentText(fetcher, query) {
 }
 
 export async function fetchPrimaryIndices(fetcher) {
+  const secids = [
+    ...INDEX_DEFINITIONS.filter((item) => item.code !== "HSI").map((item) => item.secid),
+    // Eastmoney's HSI market identifier varies by route; accept whichever
+    // response resolves to f12 === "HSI", while still requiring all six indices.
+    "116.HSI",
+    "124.HSI",
+    "100.HSI",
+  ];
   const params = new URLSearchParams({
     fltt: "2",
     fields: "f2,f3,f12,f14,f124,f115,f116",
-    secids: INDEX_DEFINITIONS.map((item) => item.secid).join(","),
+    secids: secids.join(","),
   });
   const response = await fetchWithTimeout(fetcher, `https://push2.eastmoney.com/api/qt/ulist.np/get?${params}`);
   return parseEastmoneyIndices(await response.json());
