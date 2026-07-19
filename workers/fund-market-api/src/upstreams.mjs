@@ -74,7 +74,7 @@ export async function fetchBackupIndices(fetcher) {
 export async function fetchPrimaryEstimates(fetcher, codes) {
   const records = await Promise.all(
     codes.map(async (code) => {
-      const response = await fetchWithTimeout(fetcher, `https://fundgz.1234567.com.cn/js/${code}.js`, 3_000);
+      const response = await fetchWithTimeout(fetcher, `https://fundgz.1234567.com.cn/js/${code}.js`, 5_000);
       return parseFundGz(await response.text(), code);
     }),
   );
