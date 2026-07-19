@@ -26,12 +26,12 @@ syncCloud("pull").then((ok) => {
   if (id && token) _verifyCloudConfig(id, token);
 });
 pullPeEngine();
-fetchQQIndex();
+// 指数与旁路PE快照同属一次网关调用，fetchIndices 内部已写入 QQIndex
+fetchIndices();
 
 setInterval(() => {
   if (!document.hidden) {
     fetchIndices();
-    fetchQQIndex();
   }
 }, SYS_CONFIG.REFRESH_IDX);
 setInterval(() => {
@@ -41,7 +41,6 @@ setInterval(() => {
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
     fetchIndices();
-    fetchQQIndex();
     refreshData();
     pullPeEngine();
     const { id, token } = loadGistConfig();

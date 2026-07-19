@@ -42,6 +42,22 @@ function getDisplayName(f) {
   return f.name || NAMES[f.code] || f.code;
 }
 
+// 整组来源提示：每个数据区一条，不按行/按卡片重复。
+// 主线路中性、备用琥珀带 ⚠、不可用红色，见 MARKET_DATA_GATEWAY_PLAN.md §5
+function renderSourceLabel(selector, source, sourceLabel) {
+  const tier = SOURCE_TIER[source] || SOURCE_TIER.unavailable;
+  document.querySelectorAll(selector).forEach((el) => {
+    el.textContent = tier.prefix + (sourceLabel || "未请求");
+    el.className = "fund-source-label " + tier.cls;
+  });
+}
+
+function updateFundSourceLabels(results) {
+  const first = results.find((result) => result.offSourceLabel) || {};
+  renderSourceLabel(".src-est", first.estSource, first.estSourceLabel);
+  renderSourceLabel(".src-off", first.offSource, first.offSourceLabel);
+}
+
 // 判断某基金结果当前应使用官方净值还是估算净值
 function getActivePct(f, today, tradingDay) {
   if (f.error) return null;
@@ -215,7 +231,7 @@ function buildCardInnerHtml(f, fl, today, tradingDay) {
   </div>
   <div class="card-data">
     <div class="data-half"><div class="dh-label">盘中估算</div><div class="dh-pct num ${ep.cls} ${ef}">${ep.txt}</div><div class="dh-meta"><span>净值 <b class="num">${f.estVal || "--"}</b></span><span class="num">${f.estTime ? f.estTime.slice(11, 16) : "--"}</span></div></div>
-    <div class="data-half${isStale ? " stale" : ""}"><div class="dh-label">官方数据${f.offSource === "fallback" ? '<span class="off-fallback-tag">备用估算</span>' : ""}</div><div class="dh-pct num ${op.cls} ${of2}">${op.txt}</div><div class="dh-meta"><span>净值 <b class="num">${f.offVal || "--"}</b></span><span class="num">${f.offDate ? f.offDate.slice(5) : "--"}</span></div></div>
+    <div class="data-half${isStale ? " stale" : ""}"><div class="dh-label">官方数据</div><div class="dh-pct num ${op.cls} ${of2}">${op.txt}</div><div class="dh-meta"><span>净值 <b class="num">${f.offVal || "--"}</b></span><span class="num">${f.offDate ? f.offDate.slice(5) : "--"}</span></div></div>
   </div>`;
 }
 
@@ -266,7 +282,7 @@ function buildTableInnerHtml(f, fl, today, tradingDay) {
 
   return `<td><span class="tbl-drag">⠿</span><div style="display:inline-block;vertical-align:top"><div class="tbl-name">${dName}</div><div class="tbl-code num">${f.code}</div></div></td>
     <td><div class="tbl-pct num ${ep.cls} ${ef}">${ep.txt}</div><div class="tbl-nav">净值 <span class="nv num">${f.estVal || "--"}</span></div><div class="tbl-time num">${f.estTime || "--"}</div></td>
-    <td><div style="${tblStale ? "opacity:0.35;filter:grayscale(1)" : ""}"><div class="tbl-pct num ${op.cls} ${of2}">${op.txt}</div><div class="tbl-nav">净值 <span class="nv num">${f.offVal || "--"}</span>${f.offSource === "fallback" ? '<span class="off-fallback-tag">备用</span>' : ""}</div><div class="tbl-time num">${f.offDate || "--"}</div></div></td>
+    <td><div style="${tblStale ? "opacity:0.35;filter:grayscale(1)" : ""}"><div class="tbl-pct num ${op.cls} ${of2}">${op.txt}</div><div class="tbl-nav">净值 <span class="nv num">${f.offVal || "--"}</span></div><div class="tbl-time num">${f.offDate || "--"}</div></div></td>
     <td><button class="tbl-del" onclick="delFund('${f.code}')">删除</button></td>`;
 }
 
@@ -356,6 +372,7 @@ function UI_updateLocalConfig() {
 // 3. 基金净值更新、或列表增删时触发 (每60秒 / 手动增删)
 function UI_updateFunds() {
   const results = getLastResults();
+  updateFundSourceLabels(results);
   const fl = calcFlash(results),
     today = todayDateStr(),
     mktState = getMarketState();

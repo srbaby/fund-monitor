@@ -212,7 +212,9 @@ function inlinePctHtml(ep, op, stale, ef, of2) {
 }
 
 function UI_updateIndices() {
-  renderIndices(getIndices(), getIndicesMeta());
+  const meta = getIndicesMeta();
+  renderIndices(getIndices(), meta);
+  renderSourceLabel(".src-idx", meta.source, meta.sourceLabel);
   updatePeBar();
 }
 

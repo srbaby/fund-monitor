@@ -64,6 +64,7 @@
         </header>
 
         <div class="idx-bar" id="idxBar"></div>
+        <div class="src-line"><span class="fund-source-label src-idx">--</span></div>
 
         <div class="pe-bar" id="peBar">
             <div class="pe-bar-top">
@@ -177,6 +178,8 @@
                         style="flex: none; padding-right: 8px"
                         >今日涨跌</span
                     >
+                    <span class="fund-source-label src-est">--</span>
+                    <span class="fund-source-label src-off">--</span>
                     <span
                         id="todayProfit"
                         class="num"
@@ -240,8 +243,14 @@
                     <thead>
                         <tr>
                             <th>代码 / 名称</th>
-                            <th>盘中估算</th>
-                            <th>官方数据</th>
+                            <th>
+                                盘中估算
+                                <span class="fund-source-label src-est">--</span>
+                            </th>
+                            <th>
+                                官方数据
+                                <span class="fund-source-label src-off">--</span>
+                            </th>
                             <th>操作</th>
                         </tr>
                     </thead>

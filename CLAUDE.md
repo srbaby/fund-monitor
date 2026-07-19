@@ -204,7 +204,7 @@ config → store → data ─┐
 | --------------- | ------------------------------------------------------------ | -------------------------------------------------------- |
 | **config.js**   | 业务常量、无副作用纯工具函数（`isZZ500Product`）             | 副作用函数、业务数字散落到其他文件                       |
 | **store.js**    | 内存变量、localStorage 读写、Observer 广播、快照导入、配置版本号 | DOM 操作、网络请求、业务计算                             |
-| **data.js**     | JSONP 请求、TTL 缓存、`fetchSingleFund`、`getNavByCode`、云端读写 | DOM 操作（`<script>` 除外）、业务计算、localStorage 读写 |
+| **data.js**     | 网关请求、TTL 缓存、`fetchSingleFund`、`getNavByCode`、云端读写 | DOM 操作、业务计算、localStorage 读写、直连任何第三方行情域名 |
 | **engine.js**   | 纯函数：市场状态、PE 插值、权益计算、增降权推演、今日盈亏。**依赖全部参数传入** | DOM、localStorage、调用 store/data 函数                  |
 | **ui.js**       | DOM 读写、格式化、`UI_update*` 订阅响应、`UI_render*` HTML 工厂（只返回字符串） | 业务计算、localStorage 读写                              |
 | **interact.js** | 响应用户事件，协调 store/engine/ui，显式调用 `syncCloud`     | 核心数学公式（委托 engine）、直接操作 localStorage       |
@@ -231,8 +231,10 @@ config → store → data ─┐
 
 ```
 main setInterval → refreshData()
-    → fetchIndices()              // → 广播 INDICES
-    → fetchSingleFund() × N       // Promise.all 并发
+    → fetchIndices()              // 网关 /v1/indices → 广播 INDICES + setQQIndex
+    → fetchOfficialData()         // 网关 /v1/funds/official，整组
+    → fetchEstimates()            // 网关 /v1/funds/estimate，整组
+    → fetchSingleFund() × N       // 纯合并，无网络请求
     → setLastResults()            // → 广播 FUNDS → UI_updateFunds()
     → Sortable 销毁重建
 ```
@@ -363,13 +365,25 @@ interact 层和 ui 层**禁止直接调用 `localStorage`**，所有读写通过
 
 **净值选取 `getNavByCode`**：`offD >= estD` 用官方净值（offVal），否则用估算（estVal）。`getNavByCode`、`calcTodayProfit`、`openHoldingDrawer` 的 profitMap 三处保持同一规则，不允许差异（有意三处一致，非冗余）。所有品种（含纯债）均有盘中估算数据。
 
-**官方净值 TTL（`fetchOff`）**：19:30（`SYS_CONFIG.T_OFF_UPDATE`）前 1 小时 / 后 5 分钟 / 已是当日数据或周末 12 小时。**有意设计，不是缺陷。**
+**官方净值 TTL（`fetchOfficialData`）**：官方数据按基金列表整体缓存；19:30（`SYS_CONFIG.T_OFF_UPDATE`）前 1 小时 / 后 5 分钟 / 已是当日数据或周末 12 小时。避免按基金分别缓存造成主源与备用源混用。
 
-**官方净值 primary/fallback（2026-07-16 新增）**：`fetchOff` 主源是天天基金 `F10DataApi.aspx`（`drainOff`），当天天基金该接口返回空/超时（曾实测确认过服务端稳定返回空内容，非网络问题）时，自动降级到 `_fetchOffFallback`（复用 `_loadQQQuotes` 打腾讯 `qt.gtimg.cn/q=jj{code}`），与 `js/data.js` 里指数行情既有的 `fetchIndices()` primary/fallback 范式同构。**关键约束**：
+**市场数据网关（2026-07-19 二阶段）**：浏览器只请求 `API_BASE`（`https://fund-api.bailuzun.com`）下的三个端点，
+不再直连东方财富、天天基金、腾讯任何域名，JSONP 机制已整体删除。三条链的主备选择、整组完整性校验、GBK 解码
+全部在 Cloudflare Pages Functions 内完成（`workers/fund-market-api/`，详见 `MARKET_DATA_GATEWAY_PLAN.md`）。
 
-- 备用源本质是估算值（非交易所/监管确认的一手数据），结果对象带 `source:"primary"/"fallback"`，透传到 `fetchSingleFund` 返回值的 `offSource` 字段。UI（`js/ui.js` 卡片与表格视图）据此显示"备用估算/备用"小标签（`.off-fallback-tag`），**不允许静默展示备用数据而不标注**，避免让用户误以为是天天基金一手净值。
-- 备用源没有涨跌幅字段，`fetchSingleFund` 用与估算涨跌幅同款公式补算：`(备用净值-昨日已确认净值est.dwjz)/est.dwjz×100`。
-- 已排查过新浪、支付宝、中国银行、微软MSN/Bing：均无法匿名调用出比天天基金更权威的净值确认接口，腾讯是目前唯一可用备用源，此为已知限制非疏漏。
+- 前端只消费网关返回的 `status`（`primary`/`backup`/`unavailable`）与 `sourceLabel`，**不自行判定主备**。
+- 三个数据区各显示一条整组来源（`.src-idx` / `.src-est` / `.src-off`），备用必须带 ⚠、不可用为红色，不按行重复。
+- 任一组请求失败或 `ok:false`，整组降级为不可用，**禁止把半组数据交给渲染层**。
+- **指数组主线路是腾讯，不是东方财富**：PE bar 锚定 `getEnginePE1`（1.0 总市值路），其唯一输入是沪深300
+  实时总市值，而东方财富可达镜像 `push2delay` 只给点位（`f115=f116=0`）。网关据此要求主线路必须带
+  HS300 的 `pe`/`marketCap`，缺失即整组切备用。UI 显示 ⚠ 备用线路时，即代表 PE bar 已退化为昨收锚定。
+- `baseNav`/`baseDate`（昨日已确认净值）随估算组返回，供 `calcTodayProfit` 用；缺失时回落到按涨跌幅反推。
+
+官方组三态（`offSource`，一次刷新内只许其一，禁止逐只混用）：
+
+- `primary`：网关取 `FundMNFInfo`，UI 标记“主线路 · 天天基金移动批量”。
+- `backup`：网关取 `FundMNHisNetList`，UI 标记“⚠ 备用线路 · 天天基金历史净值”。
+- `unavailable`：官方两级接口均失败；官方字段保持空值，禁止用盘中估算或腾讯快照冒充官方数据。
 
 ## 3.4 染色体系
 

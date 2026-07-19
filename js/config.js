@@ -21,10 +21,20 @@ const SYS_CONFIG = {
   T_AFTERNOON: 780, // 下午开盘（分钟）13:00
   T_CLOSE: 900, // 收盘（分钟）15:00
   T_OFF_UPDATE: 1170, // 官方净值更新时点（分钟）19:30
-  FETCH_EST_TIMEOUT: 3000, // 估算净值请求超时（ms）
-  FETCH_OFF_TIMEOUT: 1500, // 官方净值单次请求超时（ms）
-  FETCH_OFF_DRAIN_DELAY: 0, // 官方净值串行队列间隔（ms）
-  FETCH_INDEX_TIMEOUT: 5000, // 指数行情动态脚本请求超时（ms）
+  // 网关内部主备各 5 秒，故浏览器侧留出足够预算，不要压回旧的 2~3 秒
+  FETCH_EST_TIMEOUT: 12000, // 盘中估算请求超时（ms）
+  FETCH_OFF_TIMEOUT: 12000, // 官方净值请求超时（ms）
+  FETCH_INDEX_TIMEOUT: 12000, // 指数行情请求超时（ms）
+};
+
+// 市场数据网关。浏览器只请求这一个域名，三条数据链的主备切换全在网关内完成。
+const API_BASE = "https://fund-api.bailuzun.com";
+
+// 网关整组来源 → 页面提示。备用必须带 ⚠，不可用为红色，见 MARKET_DATA_GATEWAY_PLAN.md §5
+const SOURCE_TIER = {
+  primary: { cls: "src-primary", prefix: "主线路 · " },
+  backup: { cls: "src-backup", prefix: "⚠ 备用线路 · " },
+  unavailable: { cls: "src-unavailable", prefix: "" },
 };
 
 // ---- 市场常量 ----

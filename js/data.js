@@ -3,188 +3,135 @@
 // 职责：网络请求、数据标准化输出、更新 store 状态
 // ============================================================
 
-window.jsonpResolvers = {};
+const officialBatchCache = {};
 
-window.jsonpgz = function (data) {
-  if (data?.fundcode && window.jsonpResolvers[data.fundcode]) {
-    window.jsonpResolvers[data.fundcode](data);
-    delete window.jsonpResolvers[data.fundcode];
+function _fetchJson(url, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    signal: controller.signal,
+  })
+    .then((response) => {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    })
+    .finally(() => clearTimeout(timer));
+}
+
+const UNAVAILABLE_GROUP = { source: "unavailable", sourceLabel: "不可用" };
+
+// 取一组网关数据。整组主备判定在网关内完成，前端只消费结果；
+// 请求失败、ok=false 或结构不符一律降级为不可用整组，绝不把半组数据交给渲染层。
+async function _fetchGroup(path, timeoutMs) {
+  try {
+    const payload = await _fetchJson(API_BASE + path, timeoutMs);
+    if (!payload?.ok || !Array.isArray(payload.data)) {
+      // 网关自报不可用时它的文案更具体（含数据组名），优先采用
+      return {
+        ...UNAVAILABLE_GROUP,
+        sourceLabel: payload?.sourceLabel || UNAVAILABLE_GROUP.sourceLabel,
+        data: new Map(),
+      };
+    }
+    return {
+      source: payload.status,
+      sourceLabel: payload.sourceLabel,
+      data: new Map(payload.data.map((item) => [item.code, item])),
+    };
+  } catch (e) {
+    return { ...UNAVAILABLE_GROUP, data: new Map() };
   }
-};
-
-function injectScript(url, timeoutMs, onResolve) {
-  let done = false;
-  const s = document.createElement("script");
-  const fin = (val) => {
-    if (!done) {
-      done = true;
-      s.remove();
-      onResolve(val);
-    }
-  };
-  s.src = url;
-  s.onerror = () => fin(null);
-  setTimeout(() => fin(null), timeoutMs);
-  document.head.appendChild(s);
-  return fin;
 }
 
-function fetchEst(code) {
-  return new Promise((resolve) => {
-    const fin = injectScript(
-      `https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`,
-      SYS_CONFIG.FETCH_EST_TIMEOUT,
-      (v) => {
-        delete window.jsonpResolvers[code];
-        resolve(v);
-      },
-    );
-    window.jsonpResolvers[code] = fin;
-  });
+function _normalizeCodes(codes) {
+  return [
+    ...new Set(codes.map((code) => String(code).trim().padStart(6, "0"))),
+  ].filter((code) => /^\d{6}$/.test(code));
 }
 
-const offCache = {};
-const offQ = [];
-let offBusy = false;
+function _officialCacheTtl(data) {
+  const now = new Date();
+  const timeNum = now.getHours() * 60 + now.getMinutes();
+  const day = now.getDay();
+  const dates = [...(data?.values?.() || [])]
+    .map((item) => item?.officialAt)
+    .filter(Boolean);
+  const isTodayData =
+    dates.length > 0 && dates.every((date) => date === todayDateStr());
+  return isTodayData || day === 0 || day === 6
+    ? 12 * 3600000
+    : timeNum >= SYS_CONFIG.T_OFF_UPDATE
+      ? 5 * 60000
+      : 3600000;
+}
 
-function fetchOff(code) {
-  const now = new Date(),
-    timeNum = now.getHours() * 60 + now.getMinutes(),
-    day = now.getDay(),
-    cached = offCache[code];
-  if (cached) {
-    const isTodayData = cached.data?.date === todayDateStr();
-    const ttl =
-      isTodayData || day === 0 || day === 6
-        ? 12 * 3600000
-        : timeNum >= SYS_CONFIG.T_OFF_UPDATE
-          ? 5 * 60000
-          : 3600000;
-    if (now.getTime() - cached.ts < ttl) return Promise.resolve(cached.data);
+async function fetchOfficialData(codes) {
+  const uniqueCodes = _normalizeCodes(codes);
+  if (uniqueCodes.length === 0) {
+    return { ...UNAVAILABLE_GROUP, data: new Map() };
   }
-  return new Promise((resolve) => {
-    offQ.push({
-      code,
-      resolve: (val) => {
-        const finish = (result) => {
-          if (result) offCache[code] = { ts: Date.now(), data: result };
-          resolve(result);
-        };
-        if (val) finish(val);
-        else _fetchOffFallback(code).then(finish);
-      },
-    });
-    drainOff();
-  });
-}
 
-function drainOff() {
-  if (offBusy || !offQ.length) return;
-  offBusy = true;
-  const { code, resolve } = offQ.shift();
-
-  const s = document.createElement("script");
-  let done = false;
-  const fin = (val) => {
-    if (!done) {
-      done = true;
-      s.remove();
-      window.apidata = undefined;
-      offBusy = false;
-      resolve(val);
-      setTimeout(drainOff, SYS_CONFIG.FETCH_OFF_DRAIN_DELAY);
-    }
-  };
-
-  s.onload = () => {
-    try {
-      const html = window.apidata?.content;
-      if (html) {
-        const tr = html.match(/<tbody>\s*<tr>(.*?)<\/tr>/i);
-        if (tr) {
-          const tds = tr[1]
-            .match(/<td[^>]*>(.*?)<\/td>/g)
-            .map((td) => td.replace(/<[^>]+>/g, "").trim());
-          if (tds.length >= 4) {
-            const pct =
-              tds[3] && tds[3] !== "---"
-                ? parseFloat(tds[3].replace("%", ""))
-                : null;
-            return fin({
-              nav: Number(tds[1]).toFixed(4),
-              pct: pct != null ? pct.toFixed(2) : null,
-              date: tds[0],
-              source: "primary",
-            });
-          }
-        }
-      }
-      fin(null);
-    } catch (e) {
-      fin(null);
-    }
-  };
-  s.onerror = () => fin(null);
-  setTimeout(() => fin(null), SYS_CONFIG.FETCH_OFF_TIMEOUT);
-  s.src = `https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz&code=${code}&page=1&per=1&v=${Date.now()}`;
-  document.head.appendChild(s);
-}
-
-// 官方净值备用源：腾讯基金快照（本质是估算值，非交易所/监管确认的一手数据，
-// UI 需据 offSource==="fallback" 明确标注"备用估算"，不能冒充官方净值）
-function _fetchOffFallback(code) {
-  const key = `v_jj${code}`;
-  return _loadQQQuotes(`jj${code}`, [key]).then((quotes) => {
-    try {
-      const raw = quotes?.[key];
-      if (typeof raw !== "string") return null;
-      const f = raw.split("~");
-      const nav = _numberOrNaN(f[5]);
-      const date = f[8] || null;
-      if (!Number.isFinite(nav) || nav <= 0 || !date) return null;
-      return { nav: nav.toFixed(4), pct: null, date, source: "fallback" };
-    } catch (e) {
-      return null;
-    }
-  });
-}
-
-async function fetchSingleFund(code) {
-  const [est, off] = await Promise.all([fetchEst(code), fetchOff(code)]);
-  if (!est && !off) return { code, error: true };
-  const baseNav = est?.dwjz ? parseFloat(est.dwjz) : null;
-  let offPct = off?.pct != null ? parseFloat(off.pct) : null;
-  // 备用源没有涨跌幅字段，沿用估算涨跌幅同款算法：(备用净值-昨日已确认净值)/昨日已确认净值
-  if (
-    offPct == null &&
-    off?.source === "fallback" &&
-    off?.nav != null &&
-    baseNav > 0
-  ) {
-    offPct = parseFloat(
-      (((parseFloat(off.nav) - baseNav) / baseNav) * 100).toFixed(2),
-    );
+  const cacheKey = uniqueCodes.join(",");
+  const cached = officialBatchCache[cacheKey];
+  if (cached && Date.now() - cached.ts < _officialCacheTtl(cached.value.data)) {
+    return cached.value;
   }
+
+  const group = await _fetchGroup(
+    "/v1/funds/official?codes=" + uniqueCodes.join(","),
+    SYS_CONFIG.FETCH_OFF_TIMEOUT,
+  );
+  if (group.source === "unavailable") {
+    delete officialBatchCache[cacheKey];
+    return group;
+  }
+  officialBatchCache[cacheKey] = { ts: Date.now(), value: group };
+  return group;
+}
+
+// 盘中估算不缓存：网关侧已有 15 秒缓存，前端再叠一层只会让估算滞后
+function fetchEstimates(codes) {
+  const uniqueCodes = _normalizeCodes(codes);
+  if (uniqueCodes.length === 0) {
+    return Promise.resolve({ ...UNAVAILABLE_GROUP, data: new Map() });
+  }
+  return _fetchGroup(
+    "/v1/funds/estimate?codes=" + uniqueCodes.join(","),
+    SYS_CONFIG.FETCH_EST_TIMEOUT,
+  );
+}
+
+function fetchSingleFund(code, official, estimate) {
+  const key = String(code).trim().padStart(6, "0");
+  const est = estimate.data.get(key) || null;
+  const off = official.data.get(key) || null;
+  const sources = {
+    estSource: estimate.source,
+    estSourceLabel: estimate.sourceLabel,
+    offSource: official.source,
+    offSourceLabel: official.sourceLabel,
+  };
+  if (!est && !off) return { code, error: true, ...sources };
   return {
     code,
     error: false,
-    name: est?.name || NAMES[code] || `基金 ${code}`,
-    estPct:
-      est?.gszzl != null && est.gszzl !== "" ? parseFloat(est.gszzl) : null,
-    estVal: est?.gsz || null,
-    estTime: est?.gztime || null,
-    offPct,
-    offVal: off?.nav || est?.dwjz || null,
-    offDate: off?.date || est?.jzrq || null,
-    offSource: off?.source || null,
-    baseNav,
-    baseDate: est?.jzrq || null,
+    name: est?.name || NAMES[code] || off?.name || "基金 " + code,
+    estPct: est?.estimatePct ?? null,
+    // 净值统一补足4位小数，否则 1.236 会当作 "1.236" 直接显示
+    estVal: est?.estimateNav != null ? est.estimateNav.toFixed(4) : null,
+    estTime: est?.estimateAt || null,
+    offPct: off?.officialPct ?? null,
+    offVal: off?.officialNav != null ? off.officialNav.toFixed(4) : null,
+    offDate: off?.officialAt || null,
+    ...sources,
+    baseNav: est?.baseNav ?? null,
+    baseDate: est?.baseDate || null,
   };
 }
 
-let _idxCounter = 0;
 let _indicesPromise = null;
-let _qqScriptQueue = Promise.resolve();
 
 function _numberOrNaN(value) {
   if (value == null || value === "") return NaN;
@@ -211,177 +158,54 @@ function _latestQuoteAt(map) {
   return values.length ? values[values.length - 1] : null;
 }
 
-function _fetchPrimaryIndices() {
-  return new Promise((resolve) => {
-    const cb = "_idx_" + Date.now() + "_" + _idxCounter++;
-    const s = document.createElement("script");
-    let done = false;
-    const finish = (map) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      s.remove();
-      delete window[cb];
-      resolve(map);
-    };
-    const timer = setTimeout(
-      () => finish(null),
-      SYS_CONFIG.FETCH_INDEX_TIMEOUT,
-    );
-
-    window[cb] = (data) => {
-      try {
-        const map = {};
-        (data?.data?.diff || []).forEach((raw) => {
-          const id = raw.f12 === "HSI" ? "HSI" : String(raw.f12 || "");
-          map[id] = {
-            ...raw,
-            f2: _numberOrNaN(raw.f2),
-            f3: _numberOrNaN(raw.f3),
-            f12: id,
-            quoteAt: raw.f124 || null,
-          };
-        });
-        finish(_isValidIndices(map) ? map : null);
-      } catch (e) {
-        finish(null);
-      }
-    };
-    s.onerror = () => finish(null);
-    s.src = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f12,f14,f124&secids=1.000300,1.000510,1.000905,1.000832,1.000012,116.HSI,124.HSI,100.HSI&cb=${cb}&_=${Date.now()}`;
-    document.head.appendChild(s);
-  });
-}
-
-function _loadQQQuotes(query, variableNames) {
-  const task = _qqScriptQueue.then(
-    () =>
-      new Promise((resolve) => {
-        const s = document.createElement("script");
-        s.charset = "GBK";
-        let done = false;
-        const finish = (result) => {
-          if (done) return;
-          done = true;
-          clearTimeout(timer);
-          s.remove();
-          variableNames.forEach((name) => {
-            window[name] = undefined;
-          });
-          resolve(result);
-        };
-        const timer = setTimeout(
-          () => finish(null),
-          SYS_CONFIG.FETCH_INDEX_TIMEOUT,
-        );
-
-        variableNames.forEach((name) => {
-          window[name] = undefined;
-        });
-        s.onload = () => {
-          const result = {};
-          variableNames.forEach((name) => {
-            result[name] = window[name];
-          });
-          finish(result);
-        };
-        s.onerror = () => finish(null);
-        s.src = `https://qt.gtimg.cn/q=${query}&r=${Date.now()}`;
-        document.head.appendChild(s);
-      }),
-  );
-  _qqScriptQueue = task.catch(() => null);
-  return task;
-}
-
-async function _fetchFallbackIndices() {
-  const variableMap = {
-    "000300": "v_sh000300",
-    "000510": "v_sh000510",
-    "000905": "v_sh000905",
-    "000832": "v_sh000832",
-    "000012": "v_sh000012",
-    HSI: "v_hkHSI",
-  };
-  const rawMap = await _loadQQQuotes(
-    "sh000300,sh000510,sh000905,sh000832,sh000012,hkHSI",
-    Object.values(variableMap),
-  );
-  if (!rawMap) return null;
-
+async function _fetchIndexGroup() {
+  const group = await _fetchGroup("/v1/indices", SYS_CONFIG.FETCH_INDEX_TIMEOUT);
+  if (group.source === "unavailable") return null;
   const map = {};
-  Object.entries(variableMap).forEach(([id, variableName]) => {
-    const raw = rawMap[variableName];
-    if (typeof raw !== "string") return;
-    const f = raw.split("~");
+  group.data.forEach((item, id) => {
     map[id] = {
-      f2: _numberOrNaN(f[3]),
-      f3: _numberOrNaN(f[32]),
+      f2: _numberOrNaN(item.price),
+      f3: _numberOrNaN(item.changePct),
       f12: id,
-      f14: f[1] || INDICES.find((idx) => idx.id === id)?.lbl || id,
-      f124: f[30] || null,
-      quoteAt: f[30] || null,
+      f14: item.name || INDICES.find((idx) => idx.id === id)?.lbl || id,
+      f124: item.quoteAt || null,
+      quoteAt: item.quoteAt || null,
     };
   });
-  return _isValidIndices(map) ? map : null;
+  if (!_isValidIndices(map)) return null;
+  return { map, group };
 }
 
 function fetchIndices() {
   if (_indicesPromise) return _indicesPromise;
   _indicesPromise = (async () => {
-    const primary = await _fetchPrimaryIndices();
-    if (primary) {
-      setIndices(primary, {
-        mode: "live",
-        source: "primary",
-        receivedAt: Date.now(),
-        quoteAt: _latestQuoteAt(primary),
-      });
+    const result = await _fetchIndexGroup();
+    if (!result) {
+      setIndicesUnavailable();
       return;
     }
-
-    const fallback = await _fetchFallbackIndices();
-    if (fallback) {
-      setIndices(fallback, {
-        mode: "live",
-        source: "fallback",
-        receivedAt: Date.now(),
-        quoteAt: _latestQuoteAt(fallback),
+    setIndices(result.map, {
+      mode: "live",
+      source: result.group.source,
+      sourceLabel: result.group.sourceLabel,
+      receivedAt: Date.now(),
+      quoteAt: _latestQuoteAt(result.map),
+    });
+    // 旁路PE引擎的 1.0 总市值路与 2.0 点位路，锚定沪深300 实时快照。
+    // 备用线路不带 PE/总市值，此时不写快照，让引擎回落到昨收锚定而不是喂 0 进去。
+    const anchor = result.group.data.get(SYS_CONFIG.IDX_PE);
+    if (anchor?.price > 0 && anchor?.marketCap > 0) {
+      setQQIndex({
+        price: anchor.price,
+        ts: anchor.quoteAt || "",
+        pe: anchor.pe,
+        mcap: anchor.marketCap,
       });
-      return;
     }
-    setIndicesUnavailable();
   })().finally(() => {
     _indicesPromise = null;
   });
   return _indicesPromise;
-}
-
-// 腾讯指数快照：取沪深300实时总市值/PE_TTM（旁路PE引擎数据源）
-// qt.gtimg 返回 `v_sh000300="..."` 全局变量赋值，~分隔：[3]点位 [30]时间戳 [39]PE [45]总市值(亿)
-let _qqBusy = false;
-function fetchQQIndex() {
-  if (_qqBusy) return;
-  _qqBusy = true;
-  _loadQQQuotes("sh000300", ["v_sh000300"])
-    .then((quotes) => {
-      try {
-        const raw = quotes?.v_sh000300;
-        if (typeof raw === "string") {
-          const f = raw.split("~");
-          const d = {
-            price: parseFloat(f[3]),
-            ts: f[30] || "",
-            pe: parseFloat(f[39]),
-            mcap: parseFloat(f[45]),
-          };
-          if (d.price > 0) setQQIndex(d);
-        }
-      } catch (e) {}
-    })
-    .finally(() => {
-      _qqBusy = false;
-    });
 }
 
 function getNavByCode(code) {

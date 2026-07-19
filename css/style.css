@@ -628,16 +628,27 @@ main {
     color: var(--t3);
     font-weight: 500;
 }
-.off-fallback-tag {
+.fund-source-label {
     display: inline-block;
-    font-size: 9px;
+    font-size: 10px;
     font-weight: 500;
     color: var(--t3);
-    border: 1px solid var(--bd);
-    border-radius: 3px;
-    padding: 0 3px;
-    margin-left: 4px;
+    white-space: nowrap;
     vertical-align: middle;
+}
+/* 整组来源三态。备用与不可用必须自己会说话，不依赖控制台或展开操作 */
+.fund-source-label.src-primary {
+    color: var(--t2);
+}
+.fund-source-label.src-backup {
+    color: var(--warn);
+}
+.fund-source-label.src-unavailable {
+    color: var(--sell);
+}
+.src-line {
+    padding: 0 12px 6px;
+    text-align: right;
 }
 .dh-pct {
     font-size: 26px;

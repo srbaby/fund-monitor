@@ -73,8 +73,13 @@ async function refreshData() {
     loadFunds();
     fetchIndices();
 
-    const results = await Promise.all(funds.map(fetchSingleFund));
-    setLastResults(results);
+    const [official, estimate] = await Promise.all([
+      fetchOfficialData(funds),
+      fetchEstimates(funds),
+    ]);
+    setLastResults(
+      funds.map((code) => fetchSingleFund(code, official, estimate)),
+    );
 
     if (funds.length > 0) rebuildSortable();
   } finally {
