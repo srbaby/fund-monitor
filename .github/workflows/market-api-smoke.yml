@@ -38,6 +38,8 @@ jobs:
             local required_codes="$3"
             local output
             output="$(request "$BASE_URL$endpoint")"
+            echo "Checking $endpoint"
+            echo "$output" | jq -c '{ok, status, source, sourceLabel, count: (.data | length)}'
             echo "$output" | jq -e --arg expected "$expected" --argjson count "$required_codes" '
               .ok == true and .status == $expected and (.data | length == $count) and
               ([.data[] | .code] | unique | length == $count)
