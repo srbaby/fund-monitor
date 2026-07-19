@@ -45,13 +45,16 @@ function getDisplayName(f) {
 // 整组来源提示：每个数据区一条，不按行/按卡片重复。
 // 主线路中性、备用琥珀带 ⚠、不可用红色，见 MARKET_DATA_GATEWAY_PLAN.md §5
 function renderSourceLabel(selector, source, sourceLabel) {
-  const tier = SOURCE_TIER[source] || SOURCE_TIER.unavailable;
+  // source 为空表示尚未请求，与主线路一样不出声，避免开局闪一行占位
+  const tier = SOURCE_TIER[source];
+  const text = !tier || tier.silent ? "" : tier.prefix + (sourceLabel || "");
   document.querySelectorAll(selector).forEach((el) => {
-    el.textContent = tier.prefix + (sourceLabel || "未请求");
+    el.textContent = text;
+    el.hidden = !el.textContent;
     // 只换三态类，绝不整体重写 className：那会把 selector 依赖的
     // src-idx/src-est/src-off 标记类一并抹掉，标签从此再不刷新
     Object.values(SOURCE_TIER).forEach((t) => el.classList.remove(t.cls));
-    el.classList.add(tier.cls);
+    if (tier) el.classList.add(tier.cls);
   });
 }
 

@@ -30,9 +30,11 @@ const SYS_CONFIG = {
 // 市场数据网关。浏览器只请求这一个域名，三条数据链的主备切换全在网关内完成。
 const API_BASE = "https://fund-api.bailuzun.com";
 
-// 网关整组来源 → 页面提示。备用必须带 ⚠，不可用为红色，见 MARKET_DATA_GATEWAY_PLAN.md §5
+// 网关整组来源 → 页面提示。主线路是常态，不出声；只有备用和不可用才显示，
+// 备用必须带 ⚠、不可用为红色，见 MARKET_DATA_GATEWAY_PLAN.md §5
+// unavailable 的 sourceLabel 本身已含「不可用 · 数据组」，故不再加前缀
 const SOURCE_TIER = {
-  primary: { cls: "src-primary", prefix: "主线路 · " },
+  primary: { cls: "src-primary", silent: true, prefix: "" },
   backup: { cls: "src-backup", prefix: "⚠ 备用线路 · " },
   unavailable: { cls: "src-unavailable", prefix: "" },
 };

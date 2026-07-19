@@ -636,19 +636,25 @@ main {
     white-space: nowrap;
     vertical-align: middle;
 }
-/* 整组来源三态。备用与不可用必须自己会说话，不依赖控制台或展开操作 */
-.fund-source-label.src-primary {
-    color: var(--t2);
-}
+/* 整组来源。主线路是常态不出声，只有备用与不可用才显示，
+   且必须自己会说话，不依赖控制台或展开操作 */
 .fund-source-label.src-backup {
     color: var(--warn);
 }
 .fund-source-label.src-unavailable {
     color: var(--sell);
 }
+/* display:inline-block 会盖掉 [hidden] 的 UA 样式，必须显式收回 */
+.fund-source-label[hidden] {
+    display: none;
+}
 .src-line {
     padding: 0 12px 6px;
     text-align: right;
+}
+/* 全部标签都隐藏时整行让位，不留一条空白 */
+.src-line:not(:has(.fund-source-label:not([hidden]))) {
+    display: none;
 }
 .dh-pct {
     font-size: 26px;
