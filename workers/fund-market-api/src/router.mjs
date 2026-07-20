@@ -1,3 +1,4 @@
+import { readLastKnownGood, saveLastKnownGood, stalePayload } from "./lkg.mjs";
 import { latestQuoteAt } from "./parsers.mjs";
 import {
   fetchBackupEstimates,
@@ -139,6 +140,20 @@ export async function handleRequest(request, env = {}, context, dependencies = {
   const status = selected.data ? selected.status : "unavailable";
   const payload = makePayload(endpoint, status, selected.data, selected.data ? quoteAtFor(endpoint, selected.data) : null);
   if (force) payload.diagnostic = selected.diagnostics;
-  if (!force && status !== "unavailable") cache.set(cacheKey, { createdAt: Date.now(), payload });
+
+  // D-001：这一次取不到，不等于把用户已有的数据清空。退回上次好数据并标记陈旧，
+  // 真的连 LKG 都没有（首次访问、换了基金列表、超出保质期）才如实返回不可用。
+  if (status === "unavailable") {
+    const record = await readLastKnownGood(env, cacheKey);
+    if (!record) return response(payload);
+    const stale = stalePayload(record);
+    if (force) stale.diagnostic = selected.diagnostics;
+    return response(stale);
+  }
+
+  if (!force) {
+    cache.set(cacheKey, { createdAt: Date.now(), payload });
+    saveLastKnownGood(env, context, cacheKey, payload);
+  }
   return response(payload);
 }

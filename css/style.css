@@ -653,6 +653,10 @@ main {
     margin-left: 4px;
     vertical-align: middle;
 }
+/* 陈旧不是异常，只是不新鲜，故用占位灰而非告警色 */
+.src-tag.is-stale {
+    color: var(--t3);
+}
 .dh-pct {
     font-size: 26px;
     font-weight: 600;

@@ -14,6 +14,23 @@ quote host directly. Breaking an endpoint breaks the board.
 
 Add the production environment variable `DIAGNOSTIC_TOKEN` as a random long string. Do not commit it. Add the same value to the repository Actions secret `MARKET_API_DIAGNOSTIC_TOKEN`.
 
+### KV binding `MARKET_LKG` (required for the last-known-good protection)
+
+Create a KV namespace and bind it to this Pages project as **`MARKET_LKG`**:
+
+```text
+Workers & Pages → KV → Create namespace → name: fund-market-lkg
+Pages project fund-market-api → Settings → Functions → KV namespace bindings
+  Variable name: MARKET_LKG      Namespace: fund-market-lkg
+```
+
+Bind it for **Production** (and Preview if you use preview deployments). Without the binding the gateway
+still works and simply reports `unavailable` on failure, exactly as it did before the protection existed —
+so a missing binding degrades quietly instead of breaking the board, but the board loses the protection.
+
+Writes are throttled to one per key per 5 minutes and stored groups expire after 72 hours, which keeps the
+namespace far inside the free tier while still covering a weekend.
+
 `fund-api.bailuzun.com` is registered under the Pages project's **Custom domains** page and resolves through
 this Tencent Cloud DNS record:
 
@@ -46,8 +63,22 @@ they stay reachable everywhere — harmless, since they make no upstream calls.
 - `GET /v1/funds/official?codes=003949,160622`
 
 Each endpoint selects a complete primary group or a complete backup group. It never mixes records, and a
-group that cannot be completed is reported `unavailable` rather than half-filled. Querying `force=primary`
+group that cannot be completed is **not** served half-filled. Querying `force=primary`
 or `force=backup` requires the `X-Diagnostic-Token` header; other callers receive `403`.
+
+`status` is one of:
+
+| status | meaning | `ok` |
+| --- | --- | --- |
+| `primary` / `backup` | fresh data from that line | `true` |
+| `stale` | both lines failed, so the last known good group is served from KV | `true` |
+| `unavailable` | both lines failed and there is no usable stored group | `false` |
+
+A `stale` payload keeps every record's original timestamp and adds `servedFrom`, `staleSince` and
+`staleAgeMs`. **The board must render it and mark it visibly stale** — serving old data silently is the
+one outcome this design refuses. See `docs/DECISIONS.md` D-001 for why the protection lives here and not
+in the browser: `localStorage` is per-device, so a second computer opening the board at night saw a blank
+page even while the first one still had the day's data.
 
 | endpoint | primary | backup |
 | --- | --- | --- |

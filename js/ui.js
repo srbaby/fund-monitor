@@ -43,8 +43,12 @@ function getDisplayName(f) {
 }
 
 // 备用线路的两个小字，只在整组降级时出现；主线路不出声
+// 主线路不出声。备用与陈旧各自就近挂两个小字：
+// 陈旧代表网关退回了上次好数据（D-001），旁边 meta 行的时间戳就是那份数据的原始时间。
 function srcTag(source) {
-  return source === "backup" ? '<span class="src-tag">备用</span>' : "";
+  if (source === "backup") return '<span class="src-tag">备用</span>';
+  if (source === "stale") return '<span class="src-tag is-stale">陈旧</span>';
+  return "";
 }
 
 // 判断某基金结果当前应使用官方净值还是估算净值

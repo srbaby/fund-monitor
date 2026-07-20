@@ -173,8 +173,10 @@ function fetchIndices() {
       setIndicesUnavailable();
       return;
     }
+    // 网关退回的陈旧组走 mode:"stale"，复用 idx-bar 既有的「行情暂断 · 显示 HH:MM 数据」
+    // 呈现；同时 setIndices 不会用陈旧数据覆盖本地快照，本地那份仍是网关够不着时的第二道防线。
     setIndices(result.map, {
-      mode: "live",
+      mode: result.group.source === "stale" ? "stale" : "live",
       source: result.group.source,
       receivedAt: Date.now(),
       quoteAt: _latestQuoteAt(result.map),
