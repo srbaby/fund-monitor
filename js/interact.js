@@ -73,9 +73,21 @@ async function refreshData() {
     loadFunds();
     fetchIndices();
 
+    // 估算只在盘中时段有意义。
+    // 盘后 / 盘前 / 周末跳过——节省 4s+ 的网关超时（fundgz 对 CF IP 限速）
+    const mkt = getMarketState();
+    const needEstimate =
+      mkt === "PRE_MARKET" ||
+      mkt === "TRADING" ||
+      mkt === "MID_BREAK";
+
+    const estimatePromise = needEstimate
+      ? fetchEstimates(funds)
+      : Promise.resolve({ source: "unavailable", data: new Map() });
+
     const [official, estimate] = await Promise.all([
       fetchOfficialData(funds),
-      fetchEstimates(funds),
+      estimatePromise,
     ]);
     setLastResults(
       funds.map((code) => fetchSingleFund(code, official, estimate)),
