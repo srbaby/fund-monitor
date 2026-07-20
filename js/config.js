@@ -33,7 +33,7 @@ const SYS_CONFIG = {
 //   DATA_MODE = "direct"  → 浏览器直连腾讯行情（TX_BASE），单源、零跨境延迟，最快但无主备
 // 改这一个常量 + 推一次即全站切换（详见 docs/DECISIONS.md D-013）。
 // 切换逻辑只在 data.js 的两个分支内，禁止在第三处另开数据源。
-const DATA_MODE = "gateway";
+const DATA_MODE = "direct";
 
 // 市场数据网关。浏览器只请求这一个域名，三条数据链的主备切换全在网关内完成。
 const API_BASE = "https://fund-api.bailuzun.com";
