@@ -61,6 +61,163 @@ function _officialCacheTtl(data) {
       : 3600000;
 }
 
+// ============================================================
+// 腾讯行情直连（DATA_MODE === "direct"）
+// 单域名、单请求覆盖「官方净值 + 盘中估算」两链（基金），指数单独单请求。
+// 返回 GBK，必须用 TextDecoder("gbk")，不能用 UTF-8（否则中文名乱码、字段错位）。
+// 字段布局与网关 parsers.mjs 的 parseTencent* 逐字段对齐，产物字段名与网关一致，
+// 保证 fetchSingleFund / setIndices / setQQIndex 无需感知来源。
+// ============================================================
+
+function _txNum(value) {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+// 日期/时间归一：接受 "YYYY-MM-DD" / "YYYY-MM-DD HH:MM:SS" / 14位 / 10~13位时间戳。
+// 与网关 parsers.mjs formatQuoteAt 同口径。
+function _txDate(value) {
+  if (!value) return null;
+  const text = String(value).trim();
+  if (/^\d{14}$/.test(text)) {
+    return `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6, 8)} ${text.slice(8, 10)}:${text.slice(10, 12)}:${text.slice(12, 14)}`;
+  }
+  if (/^\d{10,13}$/.test(text)) {
+    const epoch = Number(text.length === 10 ? text + "000" : text);
+    if (Number.isFinite(epoch)) {
+      return new Intl.DateTimeFormat("sv-SE", {
+        timeZone: "Asia/Shanghai",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      })
+        .format(new Date(epoch))
+        .replace(",", "");
+    }
+  }
+  return /^\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}(?::\d{2})?)?$/.test(text) ? text : null;
+}
+
+// 解析腾讯 `v_xxx="...";` 赋值串，返回 code → ["~"分割字段] 的 Map。
+function _parseTxAssignments(text) {
+  const quotes = new Map();
+  const pattern = /v_([^=\s]+)="([\s\S]*?)"\s*;/g;
+  for (const m of text.matchAll(pattern)) quotes.set(m[1], m[2].split("~"));
+  return quotes;
+}
+
+// 一次请求同时拆出官方净值链与盘中估算链。in-flight 去重保证同一次刷新内
+// fetchOfficialData 与 fetchEstimates 并发只打一次上游（与网关 router.mjs inflight 同思路）。
+const _txFundInflight = new Map();
+async function _fetchTencentFunds(codes) {
+  const key = codes.join(",");
+  if (_txFundInflight.has(key)) return _txFundInflight.get(key);
+  const promise = (async () => {
+    const url = `${TX_BASE}/q=` + codes.map((c) => `jj${c}`).join(",");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), SYS_CONFIG.FETCH_OFF_TIMEOUT);
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      const buf = await res.arrayBuffer();
+      const text = new TextDecoder("gbk").decode(buf);
+      return _parseTencentFunds(text, codes);
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  })().finally(() => _txFundInflight.delete(key));
+  _txFundInflight.set(key, promise);
+  return promise;
+}
+
+// 字段布局（与 parsers.mjs parseTencentEstimates / 官方块一致）：
+//   [1]名称 [2]估算净值 [3]估算% [4]估算时间 [5]官方净值 [7]官方% [8]官方日期
+// 官方块走 [5][7][8]；估算块走 [2][3][4]，baseNav/baseDate 借 [5][8]（= 最新确认净值）。
+function _parseTencentFunds(text, codes) {
+  const quotes = _parseTxAssignments(text);
+  const official = new Map();
+  const estimate = new Map();
+  for (const code of codes) {
+    const fields = quotes.get(`jj${code}`);
+    if (!fields || fields.length < 9) continue;
+    const name = fields[1] || NAMES[code] || null;
+    const officialNav = _txNum(fields[5]);
+    const officialPct = _txNum(fields[7]);
+    const officialAt = _txDate(fields[8]);
+    if (officialNav != null && officialNav > 0 && officialPct != null && officialAt) {
+      official.set(code, { code, name, officialNav, officialPct, officialAt });
+    }
+    const estimateNav = _txNum(fields[2]);
+    const estimatePct = _txNum(fields[3]);
+    const estimateAt = _txDate(fields[4]);
+    if (estimateNav != null && estimateNav > 0 && estimatePct != null && estimateAt) {
+      estimate.set(code, {
+        code,
+        name,
+        estimateNav,
+        estimatePct,
+        estimateAt,
+        baseNav: _txNum(fields[5]),
+        baseDate: _txDate(fields[8]),
+      });
+    }
+  }
+  return { official, estimate };
+}
+
+// 指数直连：单请求覆盖全部指数。字段布局与 parsers.mjs parseTencentIndices 对齐：
+//   [1]名称 [3]点位 [32]涨跌% [30]时间 [39]PE [45]市值
+async function _fetchIndexGroupTencent() {
+  const qqList = INDICES.map((idx) => TX_INDEX_QQ[idx.id]).filter(Boolean);
+  if (qqList.length === 0) return null;
+  const url = `${TX_BASE}/q=` + qqList.join(",");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SYS_CONFIG.FETCH_INDEX_TIMEOUT);
+  let text;
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    const buf = await res.arrayBuffer();
+    text = new TextDecoder("gbk").decode(buf);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+  const quotes = _parseTxAssignments(text);
+  const map = {};
+  const dataMap = new Map();
+  for (const idx of INDICES) {
+    const fields = quotes.get(TX_INDEX_QQ[idx.id]);
+    if (!fields || fields.length < 46) continue;
+    const price = _txNum(fields[3]);
+    const changePct = _txNum(fields[32]);
+    if (price == null || price <= 0 || changePct == null) continue;
+    const quoteAt = _txDate(fields[30]);
+    map[idx.id] = {
+      f2: price,
+      f3: changePct,
+      f12: idx.id,
+      f14: fields[1] || idx.lbl,
+      f124: quoteAt,
+      quoteAt,
+    };
+    dataMap.set(idx.id, {
+      price,
+      quoteAt,
+      pe: _txNum(fields[39]),
+      marketCap: _txNum(fields[45]),
+    });
+  }
+  if (!_isValidIndices(map)) return null;
+  return { map, group: { source: "tencent", data: dataMap } };
+}
+
 async function fetchOfficialData(codes) {
   const uniqueCodes = _normalizeCodes(codes);
   if (uniqueCodes.length === 0) {
@@ -73,10 +230,16 @@ async function fetchOfficialData(codes) {
     return cached.value;
   }
 
-  const group = await _fetchGroup(
-    "/v1/funds/official?codes=" + uniqueCodes.join(","),
-    SYS_CONFIG.FETCH_OFF_TIMEOUT,
-  );
+  let group;
+  if (DATA_MODE === "direct") {
+    const r = await _fetchTencentFunds(uniqueCodes);
+    group = r && r.official.size ? { source: "tencent", data: r.official } : _unavailable();
+  } else {
+    group = await _fetchGroup(
+      "/v1/funds/official?codes=" + uniqueCodes.join(","),
+      SYS_CONFIG.FETCH_OFF_TIMEOUT,
+    );
+  }
   if (group.source === "unavailable") {
     delete officialBatchCache[cacheKey];
     return group;
@@ -85,11 +248,19 @@ async function fetchOfficialData(codes) {
   return group;
 }
 
-// 盘中估算不缓存：网关侧已有 15 秒缓存，前端再叠一层只会让估算滞后
+// 盘中估算不缓存：网关侧已有 15 秒缓存，前端再叠一层只会让估算滞后。
+// 直连模式同样不缓存（但 _fetchTencentFunds 的 in-flight 去重保证与官方链并发只打一次）。
 function fetchEstimates(codes) {
   const uniqueCodes = _normalizeCodes(codes);
   if (uniqueCodes.length === 0) {
     return Promise.resolve(_unavailable());
+  }
+  if (DATA_MODE === "direct") {
+    return _fetchTencentFunds(uniqueCodes).then((r) =>
+      r && r.estimate.size
+        ? { source: "tencent", data: r.estimate }
+        : _unavailable(),
+    );
   }
   return _fetchGroup(
     "/v1/funds/estimate?codes=" + uniqueCodes.join(","),
@@ -148,6 +319,9 @@ function _latestQuoteAt(map) {
 }
 
 async function _fetchIndexGroup() {
+  if (DATA_MODE === "direct") {
+    return _fetchIndexGroupTencent();
+  }
   const group = await _fetchGroup("/v1/indices", SYS_CONFIG.FETCH_INDEX_TIMEOUT);
   if (group.source === "unavailable") return null;
   const map = {};

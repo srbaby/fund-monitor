@@ -23,7 +23,10 @@
 
 ## 二、红线（违反即打回，不必讨论）
 
-1. **前端禁止直连第三方行情**：只走 `API_BASE` 三个端点。改数据源去 `workers/fund-market-api/`。
+1. **数据源走 `DATA_MODE` 双模，禁止第三处另开**：`config.js` 的 `DATA_MODE` 切换两条链路——
+   - `"gateway"`：走 `API_BASE` 三个端点，主备切换 + KV last-known-good 全在 `workers/fund-market-api/` 网关内。
+   - `"direct"`：浏览器直连腾讯行情 `TX_BASE`，单源、零跨境延迟，最快但无主备；字段解析在 `js/data.js` 的 `_fetchTencentFunds` / `_fetchIndexGroupTencent`。
+   改数据源逻辑只在这两套分支内，不得到处加 fetch。
 2. **行情数据禁止因单次失败清空**：拿不到新数据时退回上次好数据并标记为陈旧，绝不把已有数据冲成空。
    保护落在**网关侧**（对所有设备生效），不是浏览器 localStorage。详见 [D-001](docs/DECISIONS.md)。
 3. **`js/` 文件上限 10 个**，已满。要加功能先合并，不许新增。
@@ -84,6 +87,11 @@ fund-monitor/
 │   └── pe-night-trigger/     # 夜间引擎触发器（Cloudflare Worker）
 └── automation/               # 夜间 PE 数据引擎（Python + GitHub Actions）
 ```
+
+**数据源双模（`DATA_MODE`，详见 `docs/DECISIONS.md` D-013）**：
+`config.js` 一个常量控制全站走网关还是直连腾讯。`"direct"` 时浏览器直连 `qt.gtimg.cn`，
+单请求覆盖「官方净值+盘中估算」两链、指数单独单请求，返回 GBK 须 `TextDecoder("gbk")` 解码；
+`workers/` 网关此时不被前端使用，仅作为备选保留。`"gateway"` 为当前默认。
 
 加载顺序：`config → logger → store → data → engine → ui → ui-holding → ui-pe → interact → main`
 

@@ -27,8 +27,29 @@ const SYS_CONFIG = {
   FETCH_INDEX_TIMEOUT: 12000, // 指数行情请求超时（ms）
 };
 
+// ============================================================
+// 数据源模式开关
+//   DATA_MODE = "gateway" → 走 Cloudflare 网关（API_BASE），三条链主备切换在网关内，带 KV last-known-good
+//   DATA_MODE = "direct"  → 浏览器直连腾讯行情（TX_BASE），单源、零跨境延迟，最快但无主备
+// 改这一个常量 + 推一次即全站切换（详见 docs/DECISIONS.md D-013）。
+// 切换逻辑只在 data.js 的两个分支内，禁止在第三处另开数据源。
+const DATA_MODE = "gateway";
+
 // 市场数据网关。浏览器只请求这一个域名，三条数据链的主备切换全在网关内完成。
 const API_BASE = "https://fund-api.bailuzun.com";
+
+// 腾讯行情直连基地址（DATA_MODE="direct" 时使用）。返回 GBK 编码，前端用 TextDecoder("gbk") 解。
+const TX_BASE = "https://qt.gtimg.cn";
+
+// 指数 → 腾讯行情代码映射（直连模式用）。A 股指数 sh 前缀，恒生用 hkHSI。
+const TX_INDEX_QQ = {
+  "000300": "sh000300",
+  "000510": "sh000510",
+  "000905": "sh000905",
+  "000832": "sh000832",
+  "000012": "sh000012",
+  HSI: "hkHSI",
+};
 
 // ---- 市场常量 ----
 const DAYS = [
