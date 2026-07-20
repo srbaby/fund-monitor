@@ -14,14 +14,23 @@ const TIMEOUT_MS = 5_000;
 async function fetchWithTimeout(fetcher, url, timeoutMs = TIMEOUT_MS) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  // Some upstreams sit behind a third-party CDN that caches by exact URL and
+  // has been observed serving 40+ minute stale responses to Cloudflare's
+  // egress IPs. A per-request cache-busting param defeats that URL-keyed
+  // cache; cf.cacheTtl:0 stops Cloudflare itself from also caching the hop.
+  // This does not affect SUCCESS_TTL in router.mjs, which throttles how
+  // often we ask, not whether the answer we get is fresh.
+  const bustedUrl = `${url}${url.includes("?") ? "&" : "?"}_=${Date.now()}`;
   try {
-    const response = await fetcher(url, {
+    const response = await fetcher(bustedUrl, {
       headers: {
         Accept: "application/json, text/plain;q=0.9, */*;q=0.8",
         "Accept-Language": "zh-CN,zh;q=0.9",
         Referer: "https://quote.eastmoney.com/",
         "User-Agent": "Mozilla/5.0 (compatible; fund-market-api/1.0)",
+        "Cache-Control": "no-cache",
       },
+      cf: { cacheTtl: 0, cacheEverything: false },
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
