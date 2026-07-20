@@ -311,15 +311,23 @@ function calcTodayProfit(
 
     const estD = f.estTime ? f.estTime.slice(0, 10) : "";
     const offD = f.offDate ? f.offDate.slice(0, 10) : "";
-    // 第三项与 getNavByCode、持仓抽屉 profitMap 同口径：没有估算时（估算整组
-    // 不可用）就用官方，否则这只会取到 null → NaN → 被整只跳过，导致今日涨跌
-    // 归零而抽屉里照常有收益。前两项是市场状态短路，engine 独有。
+    // 计算口径（与 getNavByCode、持仓抽屉 profitMap 同口径）：没有估算时
+    // （估算整组不可用）就用官方，否则这只会取到 null → NaN → 被整只跳过，
+    // 导致今日涨跌归零而抽屉里照常有收益。前两项是市场状态短路，engine 独有。
+    // 注意：这条只决定 nav/pct 取哪边，不决定「已更新」徽标。徽标必须严格——
+    // 估算空 + 官方是昨天的，算式还能凑出 0 涨跌，但不应让用户以为今天已收齐。
     const isOfficialUpdated =
       mktState === "WEEKEND" ||
       mktState === "BEFORE_PRE" ||
       !!(f.offVal && (!estD || offD >= estD));
 
-    if (!isOfficialUpdated) allUpdated = false;
+    // 「已更新」徽标：官方是今天 OR 估算是今天，缺一不可。
+    // 单独拆出来，避免「今天刷新未完成但估计整组挂了」时给出错误信号。
+    const isOffToday = offD === todayStr;
+    const isEstToday = estD === todayStr;
+    const isFundUpdated = isOffToday || isEstToday;
+
+    if (!isFundUpdated) allUpdated = false;
 
     const nav = isOfficialUpdated ? parseFloat(f.offVal) : parseFloat(f.estVal);
     const pct = isOfficialUpdated ? parseFloat(f.offPct) : parseFloat(f.estPct);

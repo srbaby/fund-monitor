@@ -14,6 +14,7 @@ import {
 // 不如说是上游的限流器——bailuzun.com 不在 CF zone 内，没有 WAF 可用。
 const SUCCESS_TTL = { indices: 8_000, estimate: 15_000, official: 60_000 };
 const cache = new Map();
+const inflight = new Map();
 
 const SOURCE = {
   indices: {
@@ -107,6 +108,7 @@ function quoteAtFor(kind, data) {
 
 export function resetGatewayCache() {
   cache.clear();
+  inflight.clear();
 }
 
 export async function handleRequest(request, env = {}, context, dependencies = {}) {
@@ -133,27 +135,40 @@ export async function handleRequest(request, env = {}, context, dependencies = {
   if (endpoint !== "indices" && !codes) return response({ ok: false, error: "valid_codes_required" }, 400);
 
   const cacheKey = `${endpoint}:${codes?.join(",") || "fixed"}`;
+
+  // in-flight 去重：有正在跑的请求就搭车等结果，不重复打上游
+  if (!force && inflight.has(cacheKey)) return inflight.get(cacheKey);
+
   const cached = !force && cache.get(cacheKey);
   if (cached && Date.now() - cached.createdAt < SUCCESS_TTL[endpoint]) return response(cached.payload);
 
-  const selected = await selectGroup(endpoint, force, dependencies.fetch || fetch, codes);
-  const status = selected.data ? selected.status : "unavailable";
-  const payload = makePayload(endpoint, status, selected.data, selected.data ? quoteAtFor(endpoint, selected.data) : null);
-  if (force) payload.diagnostic = selected.diagnostics;
+  const upstream = (async () => {
+    try {
+      const selected = await selectGroup(endpoint, force, dependencies.fetch || fetch, codes);
+      const status = selected.data ? selected.status : "unavailable";
+      const payload = makePayload(endpoint, status, selected.data, selected.data ? quoteAtFor(endpoint, selected.data) : null);
+      if (force) payload.diagnostic = selected.diagnostics;
 
-  // D-001：这一次取不到，不等于把用户已有的数据清空。退回上次好数据并标记陈旧，
-  // 真的连 LKG 都没有（首次访问、换了基金列表、超出保质期）才如实返回不可用。
-  if (status === "unavailable") {
-    const record = await readLastKnownGood(env, cacheKey);
-    if (!record) return response(payload);
-    const stale = stalePayload(record);
-    if (force) stale.diagnostic = selected.diagnostics;
-    return response(stale);
-  }
+      // D-001：这一次取不到，不等于把用户已有的数据清空。退回上次好数据并标记陈旧，
+      // 真的连 LKG 都没有（首次访问、换了基金列表、超出保质期）才如实返回不可用。
+      if (status === "unavailable") {
+        const record = await readLastKnownGood(env, cacheKey);
+        if (!record) return response(payload);
+        const stale = stalePayload(record);
+        if (force) stale.diagnostic = selected.diagnostics;
+        return response(stale);
+      }
 
-  if (!force) {
-    cache.set(cacheKey, { createdAt: Date.now(), payload });
-    saveLastKnownGood(env, context, cacheKey, payload);
-  }
-  return response(payload);
+      if (!force) {
+        cache.set(cacheKey, { createdAt: Date.now(), payload });
+        saveLastKnownGood(env, context, cacheKey, payload);
+      }
+      return response(payload);
+    } finally {
+      inflight.delete(cacheKey);
+    }
+  })();
+
+  if (!force) inflight.set(cacheKey, upstream);
+  return upstream;
 }
