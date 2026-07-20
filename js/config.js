@@ -137,6 +137,7 @@ const STORE_HOLDINGS = "jy_holdings_v1";
 const STORE_SELL_PLAN = "jy_sell_plan_v1";
 const STORE_PRIORITY_SELL = "jy_priority_sell_v1";
 const STORE_CONFIG_VER = "jy_config_ver_v1";
+const STORE_EST_CACHE = "fm_est_cache_v1";          // 估算 localStorage 缓存（收盘后保留）
 const STORE_GIST_ID = "fm_gist_id";
 const STORE_GIST_TOKEN = "fm_gist_token";
 
@@ -150,3 +151,4 @@ function isZZ500Product(name) {
 const GIST_FILE_PE = "fm_pe.json";
 const GIST_FILE_CONFIG = "fm_config.json";
 const GIST_FILE_PE_ENGINE = "fm_pe_engine.json"; // 旁路PE引擎（GitHub Actions夜间写入）
+const GIST_FILE_EST = "fm_est.json";              // 盘中估算收盘快照（跨设备兜底）

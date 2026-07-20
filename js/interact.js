@@ -74,12 +74,12 @@ async function refreshData() {
     fetchIndices();
 
     // 估算只在盘中时段有意义。
-    // 盘后 / 盘前 / 周末跳过——节省 4s+ 的网关超时（fundgz 对 CF IP 限速）
+    // 网关模式：盘后 / 盘前 / 周末跳过——节省 4s+ 的网关超时（fundgz 对 CF IP 限速）
+    // 直连模式：始终调用——返回空时自动回退 localStorage/Gist 缓存，估值列不消失
     const mkt = getMarketState();
-    const needEstimate =
-      mkt === "PRE_MARKET" ||
-      mkt === "TRADING" ||
-      mkt === "MID_BREAK";
+    const needEstimate = DATA_MODE === "direct"
+      ? true
+      : (mkt === "PRE_MARKET" || mkt === "TRADING" || mkt === "MID_BREAK");
 
     const estimatePromise = needEstimate
       ? fetchEstimates(funds)

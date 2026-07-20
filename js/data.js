@@ -4,6 +4,7 @@
 // ============================================================
 
 const officialBatchCache = {};
+let _estGistPushedDate = null;  // 记录今天已推 Gist 的日期，避免重复推送
 
 function _fetchJson(url, timeoutMs) {
   const controller = new AbortController();
@@ -59,6 +60,30 @@ function _officialCacheTtl(data) {
     : timeNum >= SYS_CONFIG.T_OFF_UPDATE
       ? 5 * 60000
       : 3600000;
+}
+
+// ---- 估算 localStorage 缓存（收盘后保留最后估值）----
+function _lsEstKey() { return STORE_EST_CACHE; }
+function _lsSaveEstCache(estMap) {
+  try {
+    const entry = { ts: Date.now(), date: todayDateStr(), data: [...estMap] };
+    localStorage.setItem(_lsEstKey(), JSON.stringify(entry));
+  } catch {}
+}
+function _lsLoadEstCache(codes) {
+  try {
+    const raw = localStorage.getItem(_lsEstKey());
+    if (!raw) return null;
+    const entry = JSON.parse(raw);
+    const maxAge = entry.date === todayDateStr() ? 18 * 3600000 : 2 * 3600000;
+    if (Date.now() - entry.ts > maxAge) return null;
+    const map = new Map(entry.data);
+    const filtered = new Map();
+    for (const code of codes) {
+      if (map.has(code)) filtered.set(code, map.get(code));
+    }
+    return filtered.size ? filtered : null;
+  } catch { return null; }
 }
 
 // ============================================================
@@ -248,24 +273,70 @@ async function fetchOfficialData(codes) {
   return group;
 }
 
-// 盘中估算不缓存：网关侧已有 15 秒缓存，前端再叠一层只会让估算滞后。
-// 直连模式同样不缓存（但 _fetchTencentFunds 的 in-flight 去重保证与官方链并发只打一次）。
+// 盘中估算：直连模式带 localStorage 持久化 + Gist 跨设备兜底。
+// 收盘后腾讯返回 0 → parse 滤空 → 回退缓存，避免估值列直接变"--"。
 function fetchEstimates(codes) {
   const uniqueCodes = _normalizeCodes(codes);
   if (uniqueCodes.length === 0) {
     return Promise.resolve(_unavailable());
   }
   if (DATA_MODE === "direct") {
-    return _fetchTencentFunds(uniqueCodes).then((r) =>
-      r && r.estimate.size
-        ? { source: "tencent", data: r.estimate }
-        : _unavailable(),
-    );
+    return (async () => {
+      const r = await _fetchTencentFunds(uniqueCodes);
+      if (r && r.estimate.size) {
+        _lsSaveEstCache(r.estimate);
+        _maybePushEstToGist();
+        return { source: "tencent", data: r.estimate };
+      }
+      // 本次无新估算 → 回退本地缓存
+      const lsCached = _lsLoadEstCache(uniqueCodes);
+      if (lsCached) return { source: "cached", data: lsCached };
+      // 本地无缓存 → 尝试 Gist 跨设备兜底
+      try {
+        const { id, token } = loadGistConfig();
+        if (id && token) {
+          const gistData = await cloudReadEst(id, token);
+          if (gistData?.data) {
+            const gistMap = new Map(gistData.data);
+            const filtered = new Map();
+            for (const code of uniqueCodes) {
+              if (gistMap.has(code)) filtered.set(code, gistMap.get(code));
+            }
+            if (filtered.size) {
+              _lsSaveEstCache(filtered); // 下载到本地，下次秒回
+              return { source: "gist", data: filtered };
+            }
+          }
+        }
+      } catch {}
+      return _unavailable();
+    })();
   }
   return _fetchGroup(
     "/v1/funds/estimate?codes=" + uniqueCodes.join(","),
     SYS_CONFIG.FETCH_EST_TIMEOUT,
   );
+}
+
+// Gist 快照：收盘后推送一次当日估算（fire-and-forget，不阻塞返回）。
+// 使用 localStorage 标记日期确保每天只推一次。
+function _maybePushEstToGist() {
+  const today = todayDateStr();
+  const marker = "fm_est_gist_date_v1";
+  try { if (localStorage.getItem(marker) === today) return; } catch { return; }
+  try { localStorage.setItem(marker, today); } catch {}
+  setTimeout(async () => {
+    try {
+      const { id, token } = loadGistConfig();
+      if (!id || !token) return;
+      const raw = localStorage.getItem(_lsEstKey());
+      if (!raw) return;
+      const entry = JSON.parse(raw);
+      if (entry.date !== today) return;
+      await cloudUpdateEst(id, token, { date: today, updatedAt: new Date().toISOString(), data: entry.data });
+      console.log("✅ 估算快照已同步 Gist");
+    } catch { /* 静默 */ }
+  }, 0);
 }
 
 function fetchSingleFund(code, official, estimate) {
@@ -429,4 +500,10 @@ function cloudUpdatePe(gistId, token, peData) {
 }
 function cloudUpdateConfig(gistId, token, payload) {
   return _cloudWriteFile(gistId, token, GIST_FILE_CONFIG, payload);
+}
+function cloudReadEst(gistId, token) {
+  return _cloudReadFile(gistId, token, GIST_FILE_EST);
+}
+function cloudUpdateEst(gistId, token, data) {
+  return _cloudWriteFile(gistId, token, GIST_FILE_EST, data);
 }
