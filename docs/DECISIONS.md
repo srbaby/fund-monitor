@@ -13,6 +13,9 @@
 
 | 编号 | 日期 | 决策 | 状态 |
 | --- | --- | --- | --- |
+| [D-012](#d-012) | 2026-07-20 | 盘后跳过估算请求，节省 4s+ 刷新等待 | 生效中 |
+| [D-011](#d-011) | 2026-07-20 | 网关 in-flight 请求去重 | 生效中 |
+| [D-010](#d-010) | 2026-07-20 | "已更新"徽标与净值选取判据拆开 | 生效中 |
 | [D-009](#d-009) | 2026-07-19 | 上游请求一律带缓存击穿参数 | 生效中 |
 | [D-008](#d-008) | 2026-07-16 | 前端一律不直连第三方行情，全部收口到网关 | 生效中 |
 | [D-007](#d-007) | 2026-07-16 | 不再用 gitignore 藏"本地专属"文件 | 生效中 |
@@ -217,6 +220,121 @@ clone 时它们已不在可追踪历史里，靠 `git log --all -- <path>` 找 D
 （带 `X-Diagnostic-Token` 除外，留一条证书/DNS 故障时的调试退路）。
 
 **代码位置**：`workers/fund-market-api/src/router.mjs` `hostAllowed`
+
+---
+
+<a id="d-010"></a>
+## D-010 · "已更新"徽标与净值选取判据拆开
+
+**状态**：生效中
+**日期**：2026-07-20
+
+### 背景
+
+`calcTodayProfit` 中 `isOfficialUpdated` 身兼两职：
+1. 决定 nav/pct 取哪边（官方还是估算）
+2. 驱动 `allUpdated` → 顶部"已更新"徽标
+
+2026-07-20 晚间盘中估算整组不可用（`status: "unavailable"`），`estD` 为空，
+`!estD` 短路使整条判据退化为 `!!f.offVal`——任何有官方净值的基金都被判为"已更新"，
+与 `offD` 是不是今天完全脱钩。用户看到部分基金官方还是昨天的，徽标却亮着。
+
+### 决策
+
+**净值选取口径（`isOfficialUpdated`）保持不变**：`mktState === "WEEKEND" || "BEFORE_PRE" || !!(offVal && (!estD || offD >= estD))`。
+三处（`getNavByCode`、`openHoldingDrawer` 的 profitMap、`calcTodayProfit` 的 nav/pct 选取）维持一致。
+
+**新增"徽标口径"（`isFundUpdated`）**，仅用于驱动 `allUpdated`：
+```javascript
+const isOffToday = offD === todayStr;
+const isEstToday = estD === todayStr;
+const isFundUpdated = isOffToday || isEstToday;
+```
+
+**两者分工**：`isOfficialUpdated` 管数值（放宽 fallback，避免整只跳过导致今日涨跌归零）；
+`isFundUpdated` 管状态（严格，必须有今天的数据才算"已更新"）。
+
+### 理由
+
+- **数值可以放宽、状态必须严格**：估算空时用昨天官方凑出 0 涨跌是可接受的 fallback；
+  用昨天数据显示"已更新"会误导用户，比显示空白更危险。
+- **估算整组不可用是常态（盘后）**，不能因此把"放宽的 fallback"误用到状态判定上。
+
+### 代码位置
+
+`js/engine.js` `calcTodayProfit`
+
+### 教训
+
+**判定状态徽标 vs. 判定数值选取，是两件不同的事。** 未来加任何带"状态标签"的 UI 元素，
+先问自己："这条展示信息的前提判据，和数值选取的判据，是同一道题吗？"
+
+---
+
+<a id="d-011"></a>
+## D-011 · 网关 in-flight 请求去重
+
+**状态**：生效中
+**日期**：2026-07-20
+
+### 背景
+
+`router.mjs` 的 `cache` Map 只缓存"已完成结果"，不缓存"进行中的 Promise"。
+同一 cacheKey 在 TTL 窗口内并发到达时，所有请求都各自调起 `selectGroup` → 打上游，
+直到第一个完成写回缓存。触发条件窄（TTL 8s~60s 窗口内并发重叠），但一旦触发就是
+无意义的重复上游调用。
+
+### 决策
+
+加 `inflight` Map，存储进行中的 Promise。请求到达时：
+1. 有 inflight → 搭车等同一个 Promise
+2. 有已完成缓存 → 秒回
+3. 都没有 → 发起一趟，写进 inflight，`finally` 中释放
+
+**`force` 参数跳过去重**（诊断用）。
+
+### 理由
+
+- 对单机自用影响极小，但对 PWA 公用部署或爬虫误触有防护价值。
+- 改动 <15 行，风险低。
+- Cloudflare Pages Functions 是 per-isolate，跨 isolate 不共享 inflight，
+  同 isolate 内的幂等已是当前能达到的最大保护。
+
+### 代码位置
+
+`workers/fund-market-api/src/router.mjs`
+
+---
+
+<a id="d-012"></a>
+## D-012 · 盘后跳过估算请求，节省 4s+ 刷新等待
+
+**状态**：生效中
+**日期**：2026-07-20
+
+### 背景
+
+刷新时 `Promise.all([fetchOfficialData, fetchEstimates])` 串等两者。盘后（POST_MARKET）：
+- 官方：1.3s 秒回（一次批量 API）
+- 估算：4.3s 才回（`fundgz.1234567.com.cn` 对 CF Worker IP 限速 → 6 并发拖秒数 →
+  超时回退备份 → 备份返回全 0 → 解析器拒掉 → `unavailable`）
+
+盘后这 4 秒无商业意义——估算来源只在天盘中有波动，盘后必然 unavailable。
+
+### 决策
+
+在 `refreshData` 中加市场状态判断：只在 `PRE_MARKET / TRADING / MID_BREAK` 时段调 `fetchEstimates`，
+其余用 `{ source: "unavailable", data: new Map() }` 秒回。
+
+### 理由
+
+- `POST_MARKET / BEFORE_PRE / WEEKEND` 时估算始终 unavailable，不值得调网关。
+- 盘中刷新不受影响，继续走完整请求链路。
+- 对 D-006（拆除 PE 双路验证）形成呼应：盘后数据稳定后，不需要再反复拉"不可能有的"盘中估算。
+
+### 代码位置
+
+`js/interact.js` `refreshData`
 
 ---
 
