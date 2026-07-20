@@ -93,6 +93,10 @@ fund-monitor/
 单请求覆盖「官方净值+盘中估算」两链、指数单独单请求，返回 GBK 须 `TextDecoder("gbk")` 解码；
 `workers/` 网关此时不被前端使用，仅作为备选保留。`"gateway"` 为当前默认。
 
+**估算持久化（D-014）**：直连模式盘后腾讯返回 0 → 自动回退 **localStorage 缓存**（同设备即时恢复）
+→ 再回退 **Gist `fm_est.json`**（跨设备兜底，收盘自动推送一次）。三层链：fresh → localStorage → Gist → unavailable。
+网关模式不受影响。
+
 加载顺序：`config → logger → store → data → engine → ui → ui-holding → ui-pe → interact → main`
 
 分层依赖单向向下，下层绝不调上层：

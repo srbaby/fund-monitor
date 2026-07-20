@@ -13,8 +13,9 @@
 
 | 编号 | 日期 | 决策 | 状态 |
 | --- | --- | --- | --- |
+| [D-014](#d-014) | 2026-07-20 | 估算数据持久化（localStorage + Gist 三层回退） | 生效中 |
 | [D-013](#d-013) | 2026-07-20 | 数据源双模：`DATA_MODE` 切换网关 / 腾讯直连 | 生效中 |
-| [D-012](#d-012) | 2026-07-20 | 盘后跳过估算请求，节省 4s+ 刷新等待 | 生效中 |
+| [D-012](#d-012) | 2026-07-20 | 盘后跳过估算请求，节省 4s+ 刷新等待 | 生效中（直连模式除外，见 D-014） |
 | [D-011](#d-011) | 2026-07-20 | 网关 in-flight 请求去重 | 生效中 |
 | [D-010](#d-010) | 2026-07-20 | "已更新"徽标与净值选取判据拆开 | 生效中 |
 | [D-009](#d-009) | 2026-07-19 | 上游请求一律带缓存击穿参数 | 生效中 |
@@ -80,6 +81,57 @@
 - `js/data.js`：`_txNum` / `_txDate` / `_parseTxAssignments` / `_fetchTencentFunds` / `_parseTencentFunds` / `_fetchIndexGroupTencent`；
   `fetchOfficialData` / `fetchEstimates` / `_fetchIndexGroup` 三处按 `DATA_MODE` 分流
 - `CLAUDE.md` 红线 #1 改为描述双模；`docs/02-系统架构.md` 2.4 节补双模说明
+
+---
+
+<a id="d-014"></a>
+## D-014 · 估算数据持久化：localStorage + Gist 三层回退
+
+**状态**：生效中
+**日期**：2026-07-20
+**关联**：[D-012](#d-012)（直连模式例外）、[D-013](#d-013)（直连数据源）
+
+### 背景
+
+直连模式（D-013）下，腾讯行情盘后估算字段返回 0 → `_parseTencentFunds` 的 `estimateNav > 0` 过滤
+→ 估值列全部变成 `"--"`。D-012 为了网关性能加了盘后跳过估算的优化，但在直连模式不需要
+（与官方链共享 in-flight 去重，无额外网络代价），反而造成了"收盘=空白"的体验问题。
+
+更严重的是：即使当时显示了，换设备或清缓存后也全部丢失。in-memory 变量不能跨设备持久化。
+
+### 决策
+
+估算数据做三层回退持久化：
+
+```
+fresh（腾讯直连有数据 → 返回）
+  ↓ 空
+localStorage（本地缓存 → 返回，标记来源 "cached"）
+  ↓ 空
+Gist fm_est.json（跨设备兜底 → 返回 + 同步到 localStorage，标记来源 "gist"）
+  ↓ 空
+unavailable（真正没数据）
+```
+
+### 理由
+
+- **localStorage**：即时、无网络、解决同设备刷新/关机后恢复。当日数据 TTL 18h。
+- **Gist**：复用现有 Gist 同步基础设施（`_cloudReadFile`/`_cloudWriteFile`），新文件 `fm_est.json`。
+  收盘后推送一次（fire-and-forget，每天一次），解决换设备首次打开的问题。
+- **代理模式不影响**：`DATA_MODE="gateway"` 时 `needEstimate` 策略原样保留。
+
+### 代价
+
+- `js/data.js` 新增约 50 行（三个缓存函数 + Gist 推送）。
+- 新增 `GIST_FILE_EST = "fm_est.json"` 到 `config.js`，一个 localStorage key `STORE_EST_CACHE`。
+- `interact.js` 的 `needEstimate` 加了一条 DATA_MODE 分支判断。
+
+### 代码位置
+
+- `js/config.js`：`GIST_FILE_EST`、`STORE_EST_CACHE`
+- `js/data.js`：`_lsSaveEstCache` / `_lsLoadEstCache`、`_maybePushEstToGist`、`cloudReadEst` / `cloudUpdateEst`；
+  `fetchEstimates` 直连模式改为 async，内联三层回退
+- `js/interact.js`：`needEstimate` 在 `DATA_MODE="direct"` 时为 `true`（始终调 `fetchEstimates` 走缓存）
 
 ---
 
