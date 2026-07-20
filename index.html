@@ -6,15 +6,19 @@
             name="viewport"
             content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
         />
+        <!-- mobile-web-app-capable 是标准名，apple- 前缀那个是 iOS 历史写法，两个都留 -->
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta
             name="apple-mobile-web-app-status-bar-style"
             content="black-translucent"
         />
         <meta name="apple-mobile-web-app-title" content="Fund M" />
+        <!-- 必须与 css/style.css 的 --bg 一致，否则状态栏/启动图和实际底色差一截。
+             #0a0e14 是配色改版前的冷蓝旧值，改版时（--bg 去蓝光转 #121417）漏改了这里。 -->
         <meta
             name="theme-color"
-            content="#0a0e14"
+            content="#121417"
             media="(prefers-color-scheme: dark)"
         />
         <meta
@@ -27,6 +31,7 @@
 
         <link rel="icon" href="favicon.png" />
         <link rel="apple-touch-icon" href="favicon.png" />
+        <link rel="manifest" href="manifest.webmanifest" />
         <link rel="stylesheet" href="css/style.css?v=20260703-depth" />
 
         <!-- defer：CDN 慢/被墙时不阻塞首屏渲染（否则整页卡在“系统初始化中”）；

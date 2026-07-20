@@ -1,0 +1,19 @@
+{
+  "name": "Fund M — Jany 基金看板",
+  "short_name": "Fund M",
+  "description": "基金持仓与 PE 百分位监控看板",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#121417",
+  "theme_color": "#121417",
+  "icons": [
+    {
+      "src": "favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
