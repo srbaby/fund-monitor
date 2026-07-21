@@ -16,6 +16,18 @@ const DATA_MODE = "direct";
 // 市场数据网关（gateway 模式用）。浏览器只请求这一个域名。
 const API_BASE = "https://fund-api.bailuzun.com";
 
+// 官方净值夜间采集器（详见 D-023）。**它不是第三个数据源，是 direct 模式的子路径**：
+// 官方净值 19:00–23:00 陆续披露，而浏览器侧只有腾讯一路可用——东财 FundMNFInfo
+// 前端直连被 ErrCode:61136 拦（需 APP 签名，仅服务端调得通），且没人开着看板时
+// 浏览器压根不会去取。采集器每分钟两源并行抢，把结果连同「谁先抢到 + 何时抢到」
+// 存进 KV，前端读一次即可。读不到就照旧回退 EM_BASE → TX_BASE 直连链。
+// **域名与网关同一个**：bailuzun.com 的权威 DNS 在腾讯（dnspod）不是 Cloudflare zone，
+// 而 Worker 的 Custom Domain / Routes 都要求 zone 在 CF，只剩 *.workers.dev——它在大陆
+// 常年不可达，前端读不到就等于白采。故采集 Worker 只写 KV，读端点挂在已有可达域名的
+// 网关（Pages Functions）上。这也是 gateway 与 direct 唯一的交汇点：即便 DATA_MODE
+// 是 "direct"，这一个端点仍走网关域名——它读的是 KV，不触发网关的任何上游主备逻辑。
+const NAV_BASE = API_BASE;
+
 // 腾讯行情直连基地址（direct 模式用）。返回 GBK，前端 TextDecoder("gbk") 解码。
 const TX_BASE = "https://qt.gtimg.cn";
 
@@ -181,6 +193,9 @@ const T_OFF_UPDATE = 1170;           // 官方净值更新 19:30
 const FETCH_EST_TIMEOUT = 12000;
 const FETCH_OFF_TIMEOUT = 12000;
 const FETCH_INDEX_TIMEOUT = 12000;
+
+// 夜间采集器读节流（ms），失败也推进（负缓存）。见 D-023
+const NAV_COLLECTOR_TTL = 30000;
 
 // 估算缓存（详见 docs/DECISIONS.md D-018）
 const EST_CACHE_MAX_AGE = 7 * 24 * 3600000;      // 整份丢弃硬上限（ms）

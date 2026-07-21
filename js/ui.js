@@ -42,6 +42,15 @@ function getDisplayName(f) {
   return f.name || NAMES[f.code] || f.code;
 }
 
+const SRC_LABELS = {
+  tencent: "腾讯",
+  eastmoney: "东财",
+  sina: "新浪",
+  backup: "备用",
+  proxy: "代理",
+  collector: "采集",
+};
+
 // 主线路不出声，只在数据不新鲜时挂两个小字。
 // backup / stale 由网关给定，stale 代表网关退回了上次好数据（D-001）。
 // cached / gist 是直连模式的本地/跨设备回退（D-018）——**它们本身不代表旧**：
@@ -51,13 +60,7 @@ function srcTag(source, dataDate, today) {
   // 一律标注数据来源，主源也出声——源分离后「这个数字打哪来」不再是常识。
   // 代理也出声（标「代理」）：否则估算列表头恒为空，看不出"还在用代理"与"源恢复了"的区别，
   // 而估算源复活是个没有通知的事件，全靠这一格变字来发现。
-  const sourceLabels = {
-    tencent: "腾讯",
-    eastmoney: "东财",
-    sina: "新浪",
-    backup: "备用",
-    proxy: "代理",
-  };
+  const sourceLabels = SRC_LABELS;
   if (sourceLabels[source]) {
     // 备用源与代理加 is-alt 上告警色：数字能用但打了折扣。主源保持常规灰。
     // 于是"恢复"表现为标签同时变字又变色，扫一眼就能察觉。
@@ -70,8 +73,9 @@ function srcTag(source, dataDate, today) {
   return "";
 }
 
-// 数据源标签只在表头出现一次。官方那列所有基金必然同源（整组取源，见 D-002），
-// 每行重复一遍纯属噪音。卡片视图不挂——手机收窄本就该少字。
+// 数据源标签在表头出现一次，手机卡片视图则挂在卡片上方那条（#cardSrcTags）。
+// **卡片视图原本刻意不挂**（D-020 C 节「手机收窄本就该少字」），D-023 改为挂——
+// 手机是主力入口，而"官方净值今晚是哪一路抢先、抢到几只"恰恰是手机上最该看见的一格。
 //
 // 估算那列**可能混源**：代理是逐只让路的，某只估算源复活时其余仍是代理（D-020 恢复路径）。
 // 故分两轮取：先找非代理的真实源，找不到才退回代理。这样任何一只恢复都能把表头顶成「腾讯」，
@@ -91,10 +95,30 @@ function renderSourceTags(results, today) {
     }
     return "";
   };
+
+  const estTag = pick("estSource", "estTime");
+  const offTag = pickWinnerTag(results, today, pick);
+
   const est = _getEl("thEstSrc"),
-    off = _getEl("thOffSrc");
-  if (est) est.innerHTML = pick("estSource", "estTime");
-  if (off) off.innerHTML = pick("offSource", "offDate");
+    off = _getEl("thOffSrc"),
+    card = _getEl("cardSrcTags");
+  if (est) est.innerHTML = estTag;
+  if (off) off.innerHTML = offTag;
+  if (card) card.innerHTML = estTag + offTag;
+}
+
+// 官方列标签 =「今晚最早抢到的那一路 + 它抢到的只数」，例：`腾讯 2`。
+// 不复用 pick()：那是为估算列写的"取第一个能出标签的"，官方列没有主次关系，
+// 抽样第一只等于以偏概全。而采集器逐只记了 offAt，可以精确算。
+//
+// first 由**时间戳**决定而非写入顺序，所以任何设备、任何时刻读，算出来都一样。
+// 采集器无数据时（未部署 / 当晚还没开始 / 盘中）offAt 全空，退回原来的源名标签。
+function pickWinnerTag(results, today, pick) {
+  const claimed = results.filter((f) => !f.error && f.offAt && SRC_LABELS[f.offSource]);
+  if (!claimed.length) return pick("offSource", "offDate");
+  const first = claimed.reduce((a, b) => (a.offAt <= b.offAt ? a : b)).offSource;
+  const count = claimed.filter((f) => f.offSource === first).length;
+  return `<span class="src-tag">${SRC_LABELS[first]} ${count}</span>`;
 }
 
 // 判断某基金结果当前应使用官方净值还是估算净值

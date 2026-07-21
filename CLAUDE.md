@@ -25,9 +25,15 @@
 
 1. **数据源走 `DATA_MODE` 双模，禁止第三处另开**：`config.js` 的 `DATA_MODE` 切换两条链路——
    - `"gateway"`：走 `API_BASE` 三个端点，主备切换 + KV last-known-good 全在 `workers/fund-market-api/` 网关内。
-   - `"direct"`：浏览器直连。**官方净值**主东财 `EM_BASE`（`_fetchEastmoneyOfficial`）备腾讯 `TX_BASE`（`_fetchTencentFunds`）；
-     **指数**单源腾讯（`_fetchIndexGroupTencent`）——新浪备源因无 CORS 头在浏览器侧不可用，已删，见 [D-020](docs/DECISIONS.md#d-020)。
+   - `"direct"`：浏览器直连。**官方净值**先问夜间采集器 `NAV_BASE`（`_fetchNavCollector`），
+     缺口再走主东财 `EM_BASE`（`_fetchEastmoneyOfficial`）备腾讯 `TX_BASE`（`_fetchTencentFunds`），
+     调度在 `_fetchOfficialDirect` 一处；**指数**单源腾讯（`_fetchIndexGroupTencent`）——
+     新浪备源因无 CORS 头在浏览器侧不可用，已删，见 [D-020](docs/DECISIONS.md#d-020)。
    改数据源逻辑只在这两套分支内，不得到处加 fetch。
+   **采集器不算"第三处另开"**（[D-023](docs/DECISIONS.md#d-023)）：它是 direct 的子路径，
+   整体不可用时完全退回上面那条直连链。判据是"能不能整条摘掉而看板行为回到原状"——能，就是子路径。
+   之所以要它：东财前端直连被 `ErrCode:61136` 拦（仅服务端调得通，2026-07-21 实测复核），
+   浏览器侧其实**只有腾讯一路**；且没人开着看板时浏览器根本不会去取。
    **选新数据源前先验 CORS**：浏览器直连要求对方返回 `Access-Control-Allow-Origin`，
    且 `Referer` / `User-Agent` 属 fetch 禁止修改头，靠伪造它们绕防盗链在浏览器里一律无效。
 2. **行情数据禁止因单次失败清空**：拿不到新数据时退回上次好数据并标记为陈旧，绝不把已有数据冲成空。
@@ -120,10 +126,21 @@ fund-monitor/
 ├── js/                       # 前端运行时，当前 10 个文件（数量上限已解除，见 D-021）
 │   config · logger · store · data · engine · ui · ui-holding · ui-pe · interact · main
 ├── workers/
-│   ├── fund-market-api/      # 市场数据网关（Cloudflare Pages Functions）
+│   ├── fund-market-api/      # 市场数据网关（Cloudflare Pages Functions，当前休眠）
+│   ├── fund-nav-collector/   # 官方净值夜间采集器（Cloudflare Worker + Cron + KV，D-023）
 │   └── pe-night-trigger/     # 夜间引擎触发器（Cloudflare Worker）
 └── automation/               # 夜间 PE 数据引擎（Python + GitHub Actions）
 ```
+
+**官方净值夜间采集器（`workers/fund-nav-collector/`，详见 D-023）**：带 Cron 的 Worker，
+19:00–23:00 北京每分钟一跳，**并行**打东财与腾讯，逐只只收当日净值、**先到先得**记账
+（`src` 谁给的 / `at` 何时给的，写入后不可变），写 KV。全部到齐即早退。
+⚠️ **读写分在两个部署里**：Worker 只写；前端读的 `/v1/nav/today` 挂在**网关** `router.mjs`，
+故 `NAV_BASE = API_BASE`。成因是 Worker 拿不到大陆可达域名（`bailuzun.com` 不在 CF zone，
+`*.workers.dev` 大陆不可达），详见 `workers/fund-nav-collector/README.md`「读写分离」节。
+目标基金列表读 Gist `fm_config.json` 的 `f`，跟随看板增删，**用户零操作**。
+表头与手机卡片的标签「腾讯 2」就是它算出来的：今晚最早抢到的那一路 + 它抢到的只数。
+**Worker 未部署时看板行为与接入前完全一致**——采集器只是 direct 的子路径。
 
 **数据源双模（`DATA_MODE`，详见 `docs/DECISIONS.md` D-013、D-020）**：
 `config.js` 一个常量控制全站走网关还是浏览器直连。`"direct"` 时分两路取数——

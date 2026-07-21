@@ -1,0 +1,34 @@
+# ⚠️ 当前实际部署走 Cloudflare Dashboard（见 README「网页端部署」），
+# **本文件此时完全不生效**——KV 绑定、变量、Cron 三样都在界面上配。
+# 保留它作配置留档，也为将来改回 CLI 部署留底。改本文件不会影响线上，别指望它。
+name = "fund-nav-collector"
+main = "src/index.js"
+compatibility_date = "2026-07-21"
+
+# ⚠️ 明文变量必须写全在这里，不能只在 CF 后台配。
+# wrangler 对 [vars] 是声明式的：本文件没写的明文变量，部署时会被判定为已删除。
+# pe-night-trigger 在 2026-07-20 首次 Git 部署时就因漏写 GH_REPO 把后台那份抹成
+# undefined，教训见 workers/pe-night-trigger/wrangler.toml 的注释。
+#
+# FALLBACK_CODES 只是 Gist 读不到时的兜底。正常路径是每跳从 Gist fm_config.json
+# 的 f 字段取当前持仓列表，用户在看板增删基金会自动同步过来，无需改这里。
+[vars]
+FALLBACK_CODES = "003949,160622,110027,011554,007466,022435"
+ALLOW_ORIGIN = "https://fund.bailuzun.com"
+
+# 加密机密（GIST_ID / GIST_TOKEN / COLLECT_TOKEN）走 `wrangler secret put`，
+# 是另一套存储，不受本文件部署影响，也绝不写进这里。
+
+[[kv_namespaces]]
+binding = "NAV"
+id = "PLACEHOLDER_KV_NAMESPACE_ID"
+
+# 北京时间 = UTC+8，官方净值发布高峰 19:00–23:00 北京 = 11:00–15:00 UTC。
+# Cloudflare 限制每个 Worker 最多 3 条 cron，这里用 2 条覆盖整个窗口。
+# 全部基金当日净值到齐后 handler 会立即 return（早退），后续跳只空转约 1ms、
+# 不打上游，所以「每分钟」的实际成本远低于 241 跳。
+[triggers]
+crons = [
+  "* 11-14 * * 1-5",  # 19:00–22:59 北京
+  "0 15 * * 1-5",     # 23:00 北京，收尾一跳
+]

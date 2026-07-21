@@ -262,3 +262,64 @@ test("repeated successful refreshes do not burn a KV write each time", async () 
   assert.equal(writes, 1, "节流窗口内只该落盘一次");
   assert.equal(store.size, 1);
 });
+
+// ---- D-023 官方净值采集器的读端点 ----
+// 数据由 workers/fund-nav-collector 写入 NAV，网关只读出。这里验三件事：
+// 没绑 KV 要明说、赢者按 src 计数、以及**不许触发任何上游**（它读 KV，不是数据源）。
+
+const NAV_URL = "https://fund-api.bailuzun.com/v1/nav/today";
+const NAV_TODAY = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
+
+function navKv(record) {
+  const { kv } = memoryKv({ [`nav:${NAV_TODAY}`]: JSON.stringify(record) });
+  return kv;
+}
+
+test("nav endpoint says so plainly when the KV namespace is not bound", async () => {
+  const res = await handleRequest(new Request(NAV_URL), {}, null, {
+    fetch: async () => { throw new Error("upstream must not run"); },
+  });
+  assert.equal(res.status, 503);
+  assert.equal((await res.json()).error, "nav_kv_unbound");
+});
+
+test("nav endpoint counts only the winner's claims", async () => {
+  const kv = navKv({
+    date: NAV_TODAY,
+    first: "tencent",
+    updatedAt: `${NAV_TODAY} 20:05:03`,
+    funds: {
+      "003949": { nav: 1.2362, pct: 0.01, src: "tencent", at: `${NAV_TODAY} 19:41:12` },
+      "160622": { nav: 1.1472, pct: 0.12, src: "tencent", at: `${NAV_TODAY} 19:52:30` },
+      "110027": { nav: 2.3278, pct: 1.7, src: "eastmoney", at: `${NAV_TODAY} 20:03:55` },
+    },
+  });
+  const body = await (await handleRequest(new Request(NAV_URL), { NAV: kv }, null, {
+    fetch: async () => { throw new Error("upstream must not run"); },
+  })).json();
+  assert.equal(body.ok, true);
+  assert.equal(body.first, "tencent");
+  assert.equal(body.firstCount, 2, "腾讯抢到 2 只，标签应显示「腾讯 2」");
+  assert.equal(body.count, 3);
+});
+
+test("nav endpoint returns an empty day rather than inventing a winner", async () => {
+  const { kv } = memoryKv();
+  const body = await (await handleRequest(new Request(NAV_URL), { NAV: kv }, null, {
+    fetch: async () => { throw new Error("upstream must not run"); },
+  })).json();
+  assert.equal(body.ok, true);
+  assert.equal(body.first, null);
+  assert.equal(body.firstCount, 0);
+  assert.deepEqual(body.funds, {});
+});
+
+test("nav endpoint stays behind the custom-domain guard like every other route", async () => {
+  const res = await handleRequest(
+    new Request("https://fund-market-api.pages.dev/v1/nav/today"),
+    { NAV: navKv({ date: NAV_TODAY, first: "tencent", funds: {} }) },
+    null,
+    { fetch: async () => { throw new Error("upstream must not run"); } },
+  );
+  assert.equal(res.status, 403);
+});

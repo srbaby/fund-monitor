@@ -660,6 +660,22 @@ main {
     vertical-align: middle;
     letter-spacing: 0.2px;
 }
+/* 卡片视图的数据源标签行（手机）。夹在收益条与第一张卡片之间那道空隙里。
+   靠左排布，避开 .col-handle 那个 left:50% 的 ▾ 手柄。
+   :empty 时整行收掉，不留空白——数据没来时不该先占一格高度。 */
+.card-src-tags {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 2px 2px;
+}
+.card-src-tags:empty {
+    display: none;
+}
+.card-src-tags .src-tag {
+    margin-left: 0;
+}
+
 /* 备用源：数字能用但打了折扣，换告警底色与主源区分 */
 .src-tag.is-alt {
     color: var(--bg2);
@@ -1854,6 +1870,7 @@ main {
     .card-header-bar,
     #cycleBtn,
     #colBtn,
+    .card-src-tags,
     .card-view {
         display: none !important;
     }

@@ -256,6 +256,65 @@ async function _fetchIndexGroupTencent() {
   return { map, group: { source: "tencent", data: dataMap } };
 }
 
+// 夜间采集器（D-023）。每条自带 navSource / navAt = 「谁先抢到 / 何时抢到」，
+// 这两个字段一路透传到 fetchSingleFund，表头与卡片的「腾讯 2」就是数它们算出来的。
+// 只认当日：payload.date 不是今天说明采集器那边还没跑或已跨日，一律不用。
+let _navCollectorCache = { ts: 0, value: null };
+async function _fetchNavCollector() {
+  if (Date.now() - _navCollectorCache.ts < NAV_COLLECTOR_TTL)
+    return _navCollectorCache.value;
+  let value = null;
+  try {
+    const payload = await _fetchJson(`${NAV_BASE}/v1/nav/today`, FETCH_OFF_TIMEOUT);
+    if (payload?.ok && payload.funds && payload.date === todayDateStr()) {
+      const data = new Map();
+      for (const [code, item] of Object.entries(payload.funds)) {
+        if (!(item?.nav > 0)) continue;
+        data.set(code, {
+          code,
+          name: item.name || NAMES[code] || null,
+          officialNav: item.nav,
+          officialPct: item.pct,
+          officialAt: payload.date,
+          navSource: item.src,
+          navAt: item.at,
+        });
+      }
+      if (data.size) value = { source: "collector", data };
+    }
+  } catch {
+    value = null;
+  }
+  // 失败也写缓存（负缓存）：采集器未部署 / 当晚还没数据时，
+  // 不该每 60 秒都串一次注定失败的请求在刷新链上。
+  _navCollectorCache = { ts: Date.now(), value };
+  return value;
+}
+
+// direct 模式官方净值：采集器优先，直连补缺口。
+// 采集器只存**当日**净值，所以早于发布时段它是空的，此时整组走直连拿上一交易日数据
+// ——这正是原有行为，不能因为接了采集器就让盘中变空白（红线 #2）。
+async function _fetchOfficialDirect(codes) {
+  const collected = await _fetchNavCollector();
+  const missing = codes.filter((code) => !collected?.data.has(code));
+  if (collected && missing.length === 0) return collected;
+
+  const target = missing.length ? missing : codes;
+  const em = await _fetchEastmoneyOfficial(target);
+  let fallback = em && em.size ? { source: "eastmoney", data: em } : null;
+  if (!fallback) {
+    const tx = await _fetchTencentFunds(target);
+    fallback = tx && tx.official.size ? { source: "tencent", data: tx.official } : null;
+  }
+
+  if (!collected) return fallback || _unavailable();
+  if (!fallback) return collected;
+  // 采集器的条目盖在直连之上：它是当日的，且带抢先记账
+  const merged = new Map(fallback.data);
+  for (const [code, item] of collected.data) merged.set(code, item);
+  return { source: collected.source, data: merged };
+}
+
 async function fetchOfficialData(codes) {
   const uniqueCodes = _normalizeCodes(codes);
   if (uniqueCodes.length === 0) {
@@ -270,14 +329,7 @@ async function fetchOfficialData(codes) {
 
   let group;
   if (DATA_MODE === "direct") {
-    // 主源东财 FundMNFInfo → 备源腾讯 jj{code}
-    const r = await _fetchEastmoneyOfficial(uniqueCodes);
-    if (r && r.size) {
-      group = { source: "eastmoney", data: r };
-    } else {
-      const r2 = await _fetchTencentFunds(uniqueCodes);
-      group = r2 && r2.official.size ? { source: "tencent", data: r2.official } : _unavailable();
-    }
+    group = await _fetchOfficialDirect(uniqueCodes);
   } else {
     group = await _fetchGroup(
       "/v1/funds/official?codes=" + uniqueCodes.join(","),
@@ -359,23 +411,45 @@ function pushEstToGist() {
   }, 0);
 }
 
+// 涨跌幅一律规整到 2 位小数，**在数据入口统一，不留给渲染层**（D-023）。
+// 上游精度本就不一致：东财 NAVCHGRT 给 2 位（"1.70"），腾讯给 4 位（"1.7039"）。
+// 渲染层的 fp() 早就 toFixed(2)，所以**显示从来是一致的**——但原始值会漏进两处判断：
+//   1. calcFlash 逐字比较 pr.offPct !== f.offPct → 源切换时 1.7039 ≠ 1.70 成立，
+//      触发涨跌闪烁动画，可界面上数字纹丝未动（都是 1.70）。伪闪烁。
+//   2. calcTodayProfit 直接拿 offPct 算收益 → 同一只基金的今日收益随源切换微跳。
+// 统一到 2 位后两处自然消停。精度代价：单只最多 0.005%，10 万持仓约 5 元，
+// 远小于净值本身 4 位小数的量化误差，可忽略。
+function _pct2(value) {
+  return value == null || !Number.isFinite(Number(value))
+    ? null
+    : Number(Number(value).toFixed(2));
+}
+
 function fetchSingleFund(code, official, estimate) {
   const key = String(code).trim().padStart(6, "0");
   const est = estimate.data.get(key) || null;
   const off = official.data.get(key) || null;
-  const sources = { estSource: estimate.source, offSource: official.source };
+  // offSource 优先读条目自带的源（采集器逐只记账，官方列因此**可能混源**，
+  // 与 D-002「整组同源」的差别见 D-023）；整组 source 只作没有逐条信息时的兜底。
+  const sources = {
+    estSource: estimate.source,
+    offSource: off?.navSource || official.source,
+  };
   if (!est && !off) return { code, error: true, ...sources };
   return {
     code,
     error: false,
     name: est?.name || NAMES[code] || off?.name || "基金 " + code,
-    estPct: est?.estimatePct ?? null,
+    estPct: _pct2(est?.estimatePct),
     // 净值统一补足4位小数，否则 1.236 会当作 "1.236" 直接显示
     estVal: est?.estimateNav != null ? est.estimateNav.toFixed(4) : null,
     estTime: est?.estimateAt || null,
-    offPct: off?.officialPct ?? null,
+    offPct: _pct2(off?.officialPct),
     offVal: off?.officialNav != null ? off.officialNav.toFixed(4) : null,
     offDate: off?.officialAt || null,
+    // 采集器抢到该只的时刻。ui 用它挑出「今晚最早那条」定标签名，直连补的条目没有此字段，
+    // 自然不参与抢先计算（它本来也说不清是谁先）。
+    offAt: off?.navAt || null,
     ...sources,
     baseNav: est?.baseNav ?? null,
     baseDate: est?.baseDate || null,

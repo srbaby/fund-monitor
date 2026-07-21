@@ -120,6 +120,32 @@ export async function handleRequest(request, env = {}, context, dependencies = {
     return response({ ok: false, error: "host_not_allowed" }, 403);
   }
 
+  // D-023：官方净值采集器的**读**端点。数据由 workers/fund-nav-collector 每分钟写入
+  // 同一个 KV，这里只做读出，不打任何上游、不走主备那套。
+  //
+  // 为什么读写分在两个部署里：采集要 Cron，而本项目是 Pages Functions 没有 Cron；
+  // 反过来采集 Worker 又拿不到可达域名——bailuzun.com 的权威 DNS 在腾讯不是 CF zone，
+  // Worker 的 Custom Domain / Routes 都要求 zone 在 CF，只剩 *.workers.dev 而它在
+  // 大陆常年不可达。于是 Worker 只写、网关只读，KV 是两者唯一的交接点。
+  if (url.pathname === "/v1/nav/today") {
+    if (!env?.NAV) return response({ ok: false, error: "nav_kv_unbound" }, 503);
+    const today = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
+    const record = await env.NAV.get(`nav:${today}`, "json");
+    const funds = record?.funds || {};
+    const first = record?.first || null;
+    return response({
+      ok: true,
+      date: today,
+      first,
+      firstCount: first
+        ? Object.values(funds).filter((item) => item.src === first).length
+        : 0,
+      count: Object.keys(funds).length,
+      updatedAt: record?.updatedAt || null,
+      funds,
+    });
+  }
+
   const endpoint = {
     "/v1/indices": "indices",
     "/v1/funds/estimate": "estimate",
