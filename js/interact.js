@@ -64,6 +64,24 @@ function rebuildSortable() {
   });
 }
 
+// 指数每 10 秒一跳，代理估值要跟着重算，否则权益%/持仓总额/收益只能等 60 秒的
+// 净值刷新才动一次。重算走 setLastResults 广播，订阅者照常重画（D-022）。
+// applyProxyEstimates 幂等且只覆盖自产的代理条目，反复调用安全。
+// 无持仓或无结果时直接返回，避免每 10 秒空转一次全量重画。
+function reapplyProxyEstimates() {
+  if (DATA_SOURCE_SWITCH !== "benchmark") return;
+  const results = getLastResults();
+  if (!results.length) return;
+  setLastResults(
+    applyProxyEstimates(
+      results,
+      todayDateStr(),
+      getIndices(),
+      getIndicesMeta()?.quoteAt,
+    ),
+  );
+}
+
 async function refreshData() {
   if (_isFetchingData) return;
   _isFetchingData = true;
@@ -89,8 +107,20 @@ async function refreshData() {
       fetchOfficialData(funds),
       estimatePromise,
     ]);
+    // 基准代理在**入库前**回填，让 results 从此只有一条净值链（D-022）：
+    // 官方缺当日 → 估算位填代理值，全站（权益%、持仓总额、收益、卡片）读同一份数字。
+    // 放在 setLastResults 之前而非渲染时，是因为 getNavByCode 读的是 store 里的 results，
+    // 渲染层的副本它看不见——那正是"顶部有收益、权益%却纹丝不动"的成因。
+    // 安全性：估算缓存与 Gist 推送都只吃 fetchEstimates 抓到的原始 map（saveEstCache /
+    // loadEstCacheEntry），不读 results，故代理值不会沉进缓存冒充真估算。
+    const merged = funds.map((code) => fetchSingleFund(code, official, estimate));
     setLastResults(
-      funds.map((code) => fetchSingleFund(code, official, estimate)),
+      applyProxyEstimates(
+        merged,
+        todayDateStr(),
+        getIndices(),
+        getIndicesMeta()?.quoteAt,
+      ),
     );
 
     // 收盘后把当日最后一笔估算推一次 Gist，供换设备冷启动兜底（D-018）。
@@ -235,6 +265,8 @@ function openHoldingDrawer() {
     // D-010 当初修掉的那个 bug：顶部归零，抽屉里却照常有收益，两者对不上。
     const isNonTradingDay = mkt === "WEEKEND" || mkt === "BEFORE_PRE";
     const isFundUpdated = offD === today || estD === today;
+    // 与 calcTodayProfit 同口径（红线 #6）。代理回退已上移到 refreshData 的入库前回填
+    // （D-022），两处都不再自带代理分支，同步契约因此回到"只有一套判据"。
     if (!isFundUpdated && !isNonTradingDay) {
       profitMap[p.code] = null;
       return;

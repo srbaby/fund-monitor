@@ -48,11 +48,53 @@ function getDisplayName(f) {
 // 收盘后沿用当日 14:59 那笔仍是当日数据，标成陈旧反而不准。故按数据自带日期判，
 // 不按来源判。dataDate 取自条目的 estimateAt / officialAt，旁边 meta 行显示的就是它。
 function srcTag(source, dataDate, today) {
-  if (source === "backup") return '<span class="src-tag">备用</span>';
+  // 一律标注数据来源，主源也出声——源分离后「这个数字打哪来」不再是常识。
+  // 代理也出声（标「代理」）：否则估算列表头恒为空，看不出"还在用代理"与"源恢复了"的区别，
+  // 而估算源复活是个没有通知的事件，全靠这一格变字来发现。
+  const sourceLabels = {
+    tencent: "腾讯",
+    eastmoney: "东财",
+    sina: "新浪",
+    backup: "备用",
+    proxy: "代理",
+  };
+  if (sourceLabels[source]) {
+    // 备用源与代理加 is-alt 上告警色：数字能用但打了折扣。主源保持常规灰。
+    // 于是"恢复"表现为标签同时变字又变色，扫一眼就能察觉。
+    const alt = source === "sina" || source === "backup" || source === "proxy";
+    return `<span class="src-tag${alt ? " is-alt" : ""}">${sourceLabels[source]}</span>`;
+  }
   if (source === "stale") return '<span class="src-tag is-stale">陈旧</span>';
   if ((source === "cached" || source === "gist") && dataDate && dataDate !== today)
     return '<span class="src-tag is-stale">陈旧</span>';
   return "";
+}
+
+// 数据源标签只在表头出现一次。官方那列所有基金必然同源（整组取源，见 D-002），
+// 每行重复一遍纯属噪音。卡片视图不挂——手机收窄本就该少字。
+//
+// 估算那列**可能混源**：代理是逐只让路的，某只估算源复活时其余仍是代理（D-020 恢复路径）。
+// 故分两轮取：先找非代理的真实源，找不到才退回代理。这样任何一只恢复都能把表头顶成「腾讯」，
+// 而这一格变字正是察觉"估算源活了"的唯一信号——反过来（代理优先）会把恢复整个盖住。
+function renderSourceTags(results, today) {
+  const pick = (srcKey, dateKey) => {
+    const tagOf = (f) => srcTag(f[srcKey], f[dateKey]?.slice(0, 10), today);
+    const usable = results.filter((f) => !f.error);
+    for (const f of usable) {
+      if (f[srcKey] === "proxy") continue;
+      const tag = tagOf(f);
+      if (tag) return tag;
+    }
+    for (const f of usable) {
+      const tag = tagOf(f);
+      if (tag) return tag;
+    }
+    return "";
+  };
+  const est = _getEl("thEstSrc"),
+    off = _getEl("thOffSrc");
+  if (est) est.innerHTML = pick("estSource", "estTime");
+  if (off) off.innerHTML = pick("offSource", "offDate");
 }
 
 // 判断某基金结果当前应使用官方净值还是估算净值
@@ -227,8 +269,8 @@ function buildCardInnerHtml(f, fl, today, tradingDay) {
     <div class="card-actions"><button class="del-btn" onclick="delFund('${f.code}')">删除</button></div>
   </div>
   <div class="card-data">
-    <div class="data-half"><div class="dh-label">盘中估算${srcTag(f.estSource, f.estTime?.slice(0, 10), today)}</div><div class="dh-pct num ${ep.cls} ${ef}">${ep.txt}</div><div class="dh-meta"><span>净值 <b class="num">${f.estVal || "--"}</b></span><span class="num">${f.estTime ? f.estTime.slice(11, 16) : "--"}</span></div></div>
-    <div class="data-half${isStale ? " stale" : ""}"><div class="dh-label">官方数据${srcTag(f.offSource, f.offDate?.slice(0, 10), today)}</div><div class="dh-pct num ${op.cls} ${of2}">${op.txt}</div><div class="dh-meta"><span>净值 <b class="num">${f.offVal || "--"}</b></span><span class="num">${f.offDate ? f.offDate.slice(5) : "--"}</span></div></div>
+    <div class="data-half"><div class="dh-label">盘中估算</div><div class="dh-pct num ${ep.cls} ${ef}">${ep.txt}</div><div class="dh-meta"><span>净值 <b class="num">${f.estVal || "--"}</b></span><span class="num">${f.estTime ? f.estTime.slice(11, 16) : "--"}</span></div></div>
+    <div class="data-half${isStale ? " stale" : ""}"><div class="dh-label">官方数据</div><div class="dh-pct num ${op.cls} ${of2}">${op.txt}</div><div class="dh-meta"><span>净值 <b class="num">${f.offVal || "--"}</b></span><span class="num">${f.offDate ? f.offDate.slice(5) : "--"}</span></div></div>
   </div>`;
 }
 
@@ -278,8 +320,8 @@ function buildTableInnerHtml(f, fl, today, tradingDay) {
     (!f.offDate || f.offDate.slice(0, 10) < today);
 
   return `<td><span class="tbl-drag">⠿</span><div style="display:inline-block;vertical-align:top"><div class="tbl-name">${dName}</div><div class="tbl-code num">${f.code}</div></div></td>
-    <td><div class="tbl-pct num ${ep.cls} ${ef}">${ep.txt}</div><div class="tbl-nav">净值 <span class="nv num">${f.estVal || "--"}</span></div><div class="tbl-time num">${f.estTime || "--"}${srcTag(f.estSource, f.estTime?.slice(0, 10), today)}</div></td>
-    <td><div style="${tblStale ? "opacity:0.35;filter:grayscale(1)" : ""}"><div class="tbl-pct num ${op.cls} ${of2}">${op.txt}</div><div class="tbl-nav">净值 <span class="nv num">${f.offVal || "--"}</span></div><div class="tbl-time num">${f.offDate || "--"}${srcTag(f.offSource, f.offDate?.slice(0, 10), today)}</div></div></td>
+    <td><div class="tbl-pct num ${ep.cls} ${ef}">${ep.txt}</div><div class="tbl-nav">净值 <span class="nv num">${f.estVal || "--"}</span></div><div class="tbl-time num">${f.estTime || "--"}</div></td>
+    <td><div style="${tblStale ? "opacity:0.35;filter:grayscale(1)" : ""}"><div class="tbl-pct num ${op.cls} ${of2}">${op.txt}</div><div class="tbl-nav">净值 <span class="nv num">${f.offVal || "--"}</span></div><div class="tbl-time num">${f.offDate || "--"}</div></div></td>
     <td><button class="tbl-del" onclick="delFund('${f.code}')">删除</button></td>`;
 }
 
@@ -381,8 +423,10 @@ function UI_updateFunds() {
     document.getElementById("cardView").innerHTML = empty.card;
     document.getElementById("fundTbody").innerHTML = empty.table;
   } else if (uiResults.length > 0) {
+    // results 入库前已由 refreshData 回填代理（D-022），渲染层直接用，不再另做副本
     renderCards(uiResults, fl, today, tradingDay);
     renderTable(uiResults, fl, today, tradingDay);
+    renderSourceTags(uiResults, today);
   }
 
   renderTodayProfit(

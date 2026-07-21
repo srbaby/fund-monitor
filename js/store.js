@@ -266,7 +266,7 @@ function saveEstCache(estMap) {
 }
 function loadEstCacheEntry() {
   const entry = safeParse(_lsGet(STORE_EST_CACHE), null);
-  if (!entry?.data || Date.now() - entry.ts > SYS_CONFIG.EST_CACHE_MAX_AGE)
+  if (!entry?.data || Date.now() - entry.ts > EST_CACHE_MAX_AGE)
     return null;
   return entry;
 }

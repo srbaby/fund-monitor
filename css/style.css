@@ -205,18 +205,19 @@ body {
     grid-template-columns: repeat(3, 1fr);
     gap: 1px;
 }
-.idx-bar[data-status]:not([data-status=""])::before {
-    content: attr(data-status);
-    grid-column: 1 / -1;
-    background: var(--bg2);
-    color: var(--t3);
-    font-family: var(--f-zh);
-    font-size: 9px;
-    font-weight: 400;
-    line-height: 1.2;
-    padding: 4px 8px;
-    text-align: right;
+/* 源标签：放在 idx-cell 右上角，由 JS 在最后一张卡片注入。
+   选择器带 .idx-cell 抬权重——否则被下方后出现的 .src-tag 基础规则整条盖掉 */
+/* 只改定位，配色与胶囊底沿用 .src-tag——两处标签视觉必须一致 */
+.idx-cell .idx-src-tag {
+    position: absolute;
+    top: 3px;
+    right: 4px;
+    margin-left: 0;
+    line-height: 1.3;
     pointer-events: none;
+}
+.idx-cell .idx-src-tag.is-stale {
+    background: var(--warn);
 }
 .idx-bar.is-stale .idx-cell {
     filter: grayscale(1);
@@ -644,18 +645,30 @@ main {
     margin-left: 0;
 }
 
-/* 备用线路的两个小字。主线路不出声，故无对应样式 */
+/* 源标签。D-020 起主线路也出声，做成实心小胶囊——描边字在 9px 下几乎看不清，
+   底色撑起对比度。文字用 --bg2（页面底色）而非固定白：浅色主题下是白字，
+   深色主题下自动变深字，两边都对胶囊底色形成最大反差，不必写死颜色。 */
 .src-tag {
     display: inline-block;
     font-size: 9px;
     font-weight: 500;
-    color: var(--warn);
-    margin-left: 4px;
+    color: var(--bg2);
+    background: var(--t3);
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-left: 5px;
     vertical-align: middle;
+    letter-spacing: 0.2px;
 }
-/* 陈旧不是异常，只是不新鲜，故用占位灰而非告警色 */
+/* 备用源：数字能用但打了折扣，换告警底色与主源区分 */
+.src-tag.is-alt {
+    color: var(--bg2);
+    background: var(--warn);
+}
+/* 陈旧不是异常，只是不新鲜：底色降到 --bg4 配常规文字，比主源弱、比告警轻 */
 .src-tag.is-stale {
-    color: var(--t3);
+    color: var(--t2);
+    background: var(--bg4);
 }
 .dh-pct {
     font-size: 26px;

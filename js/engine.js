@@ -9,14 +9,14 @@ function getMarketState(now = new Date()) {
   const d = now.getDay(),
     t = now.getHours() * 60 + now.getMinutes();
   if (d === 0 || d === 6) return "WEEKEND";
-  if (t < SYS_CONFIG.T_PRE_MARKET) return "BEFORE_PRE";
-  if (t < SYS_CONFIG.T_OPEN) return "PRE_MARKET";
+  if (t < T_PRE_MARKET) return "BEFORE_PRE";
+  if (t < T_OPEN) return "PRE_MARKET";
   if (
-    t < SYS_CONFIG.T_MID_BREAK ||
-    (t >= SYS_CONFIG.T_AFTERNOON && t < SYS_CONFIG.T_CLOSE)
+    t < T_MID_BREAK ||
+    (t >= T_AFTERNOON && t < T_CLOSE)
   )
     return "TRADING";
-  if (t >= SYS_CONFIG.T_MID_BREAK && t < SYS_CONFIG.T_AFTERNOON)
+  if (t >= T_MID_BREAK && t < T_AFTERNOON)
     return "MID_BREAK";
   return "POST_MARKET";
 }
@@ -24,9 +24,9 @@ function getMarketState(now = new Date()) {
 function isEquityWrongDir(peVal, diff) {
   if (peVal == null || diff == null) return false;
   return (
-    (peVal >= SYS_CONFIG.PE_HIGH_THRESHOLD &&
-      diff < -SYS_CONFIG.EQUITY_DEV_LIMIT) ||
-    (peVal < SYS_CONFIG.PE_HIGH_THRESHOLD && diff > SYS_CONFIG.EQUITY_DEV_LIMIT)
+    (peVal >= PE_HIGH_THRESHOLD &&
+      diff < -EQUITY_DEV_LIMIT) ||
+    (peVal < PE_HIGH_THRESHOLD && diff > EQUITY_DEV_LIMIT)
   );
 }
 
@@ -38,8 +38,8 @@ function getCurrentPE(peData, engineResult) {
   if (!peData || !peData.bucketStr) return null;
 
   const [loStr, hiStr] = peData.bucketStr.split(",");
-  const buyPct = parseFloat(loStr) - SYS_CONFIG.BUFFER_ZONE;
-  const sellPct = parseFloat(hiStr) + SYS_CONFIG.BUFFER_ZONE;
+  const buyPct = parseFloat(loStr) - BUFFER_ZONE;
+  const sellPct = parseFloat(hiStr) + BUFFER_ZONE;
 
   const isDynamic = !!(engineResult && engineResult.mode !== "close");
   return {
@@ -181,13 +181,13 @@ function calcBuyPlanDraft(holdings, activeProducts, getNavFn, targetEq) {
   const { total: totalVal, equity: currentEq } = eqResult;
   const buyAmt = Math.max(0, (totalVal * (targetEq - currentEq)) / 100);
 
-  const xqNav = getNavFn(SYS_CONFIG.CODE_XQ) || 1.0;
-  const a500cNav = getNavFn(SYS_CONFIG.CODE_A500) || 1.0;
+  const xqNav = getNavFn(CODE_XQ) || 1.0;
+  const a500cNav = getNavFn(CODE_A500) || 1.0;
 
-  const currA500CVal = (holdings[SYS_CONFIG.CODE_A500] || 0) * a500cNav;
+  const currA500CVal = (holdings[CODE_A500] || 0) * a500cNav;
   const a500cRoom = Math.max(
     0,
-    totalVal * SYS_CONFIG.LIMIT_A500C - currA500CVal,
+    totalVal * LIMIT_A500C - currA500CVal,
   );
 
   const allocA500C = Math.min(buyAmt, a500cRoom);
@@ -290,7 +290,7 @@ function calcSellExecutionDraft(
     const res = results[p.code];
     if (!res || !res.amt) return;
     hasAnySell = true;
-    const feeRate = p.equity === 0 || p.equity === 1 ? 0 : SYS_CONFIG.FEE;
+    const feeRate = p.equity === 0 || p.equity === 1 ? 0 : FEE;
     const feeAmt = res.amt * feeRate;
 
     totalCashOut += res.amt - feeAmt;
@@ -309,18 +309,63 @@ function calcSellExecutionDraft(
   };
 }
 
-function calcTodayProfit(
-  results,
-  holdings,
-  activeProducts,
-  mktState,
-  todayStr,
-) {
+// 业绩基准代理估值：按产品库自定义基准权重 × 对应指数实时涨跌，估算基金日内净值变动。
+// 混合品种只挂权益腿（债券部分日波动 1-2bp，摊薄后 <0.02%，忽略）；纯债品种挂国债指数腿。
+// 纯函数，无副作用。不在 BENCHMARK_PROXY 表中、或表中腿为空的基金返回 null。
+// 任一条腿缺指数数据即整只返回 null——宁可留空，不出半截权重算出来的错数。
+function getBenchmarkProxyPct(code, offVal, indicesMap) {
+  const cfg = BENCHMARK_PROXY[code];
+  if (!cfg || !cfg.legs.length) return null;
+  if (offVal == null || isNaN(offVal) || offVal <= 0) return null;
+  if (!indicesMap) return null;
+
+  let estPct = 0;
+  for (const leg of cfg.legs) {
+    const idx = indicesMap[leg.idx];
+    if (!idx || idx.f3 == null || isNaN(idx.f3)) return null;
+    estPct += leg.w * idx.f3;
+  }
+  return { estPct, estVal: offVal * (1 + estPct / 100) };
+}
+
+// 基准代理回填（D-020 引入，D-022 改为入库前统一回填）：
+// 外部估算源全死后，用「产品自定义基准权重 × 实时指数」补出估算净值。
+// 由 refreshData 在 setLastResults **之前**调用，于是 results 只有一条净值链——
+// 权益%、持仓总额、最新收益、卡片估算列全部读同一份数字，不会各算各的。
+//
+// **返回新数组新对象，不就地改入参**：入参可能就是 store 里的上一份 results
+// （指数 tick 重算时），就地改会绕过 setLastResults 的广播，让订阅者看不到变化。
+//
+// 幂等：代理条目自身可被下一次指数 tick 覆盖重算（判据看 estSource 而非日期）。
+// 真估算永远优先，一旦某只拿到当日真估算，代理不再覆盖它。
+// 官方净值当晚落地后无需在此处理——`getNavByCode` 的 `offD >= estD` 会自动改用官方，
+// 一只一只替换，这正是"晚间刷新一个替换一个"。
+function applyProxyEstimates(results, todayStr, indicesMap, quoteAt) {
+  if (DATA_SOURCE_SWITCH !== "benchmark" || !indicesMap) return results;
+  return results.map((f) => {
+    if (f.error || !f.offVal) return f;
+    // 只让路给**真**估算；自己产的代理条目要允许被重算，否则指数再涨也不动
+    const isRealEstToday =
+      f.estTime && f.estTime.slice(0, 10) === todayStr && f.estSource !== "proxy";
+    if (isRealEstToday) return f;
+    const proxy = getBenchmarkProxyPct(f.code, parseFloat(f.offVal), indicesMap);
+    if (!proxy) return f;
+    return {
+      ...f,
+      estVal: proxy.estVal.toFixed(4),
+      estPct: parseFloat(proxy.estPct.toFixed(2)),
+      estTime: quoteAt || null,
+      estSource: "proxy",
+    };
+  });
+}
+
+function calcTodayProfit(results, holdings, activeProducts, mktState, todayStr) {
   let totalProfit = 0,
     totalYestVal = 0,
     allUpdated = true,
-    hasHoldings = false, // 有持仓（不论数据新旧）
-    hasParticipating = false; // 其中有今日数据、真正参与了计算的
+    hasHoldings = false,
+    hasParticipating = false;
 
   activeProducts.forEach((p) => {
     const shares = holdings[p.code] || 0;
@@ -337,19 +382,29 @@ function calcTodayProfit(
     const estD = f.estTime ? f.estTime.slice(0, 10) : "";
     const offD = f.offDate ? f.offDate.slice(0, 10) : "";
 
-    // 「已更新」徽标：官方是今天 OR 估算是今天，缺一不可（D-010）。
     const isOffToday = offD === todayStr;
     const isEstToday = estD === todayStr;
+    // 取值用：今天有官方或估算（含代理）就能算出今日收益
     const isFundUpdated = isOffToday || isEstToday;
 
-    if (!isFundUpdated) allUpdated = false;
+    // 「已更新」徽标用：**代理不算已更新**（D-022）。徽标语义是"今天的数据到了"，
+    // 而代理是拿昨日净值乘指数推出来的，一条真数据都没到。D-022 把代理并进净值链后，
+    // 若沿用 isFundUpdated，徽标会在估算源全死的日子里天天亮着，等于永久说谎——
+    // D-010 当初拆开徽标与取值判据，正是为了"数值可放宽、状态必须严格"。
+    const isRealUpdate =
+      isOffToday || (isEstToday && f.estSource !== "proxy");
+    if (!isRealUpdate) allUpdated = false;
 
     // 收益口径的日期闸门（D-019）：**只有今天的数据才算今天的收益。**
     // 盘中官方永远停在昨天，估算断供时旧判据会退到官方，把上一交易日的涨跌
     // 当成今日收益发出来（2026-07-21 实测 +1010，实为周一那段）。
     // 非交易日例外：WEEKEND / BEFORE_PRE 今天本就不该有数据，回退到最近可得，
-    // 顶部因而改名「最新收益」；其余时段今天该有却没有，属异常，整只不参与。
+    // 顶部因而改名「最新收益」；其余时段今天该有却没有，先试代理再谈弃权。
     const isNonTradingDay = mktState === "WEEKEND" || mktState === "BEFORE_PRE";
+
+    // 交易日却没有今日数据 → 整只弃权。
+    // D-022 前这里还有一段基准代理兜底，现已上移到 refreshData：results 入库时
+    // 估算位就填好了代理值，走到这里 estD 必为今日，本分支再也不会因代理而进入。
     if (!isFundUpdated && !isNonTradingDay) return;
 
     // 同为今日时官方优先；非交易日回退沿用「有官方且不比估算旧」。
@@ -378,7 +433,7 @@ function calcTodayProfit(
     totalProfit += shares * (nav - yestNav);
   });
 
-  // 有持仓、却没有一只拿得出今日数据 → 顶部显示「-」而不是编一个 0.00。
+  // 有持仓、却没有一只拿得出今日数据（连代理都算不出）→ 顶部显示「-」而不是编一个 0.00。
   // 盘前集合竞价同理（今日估算还没开始推）。
   const isWaitingForData =
     mktState === "PRE_MARKET" || (hasHoldings && !hasParticipating);

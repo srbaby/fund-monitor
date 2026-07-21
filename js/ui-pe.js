@@ -34,21 +34,27 @@ function renderIndices(map, meta) {
   const dataMap = map || {};
   const mode = meta?.mode || "empty";
   bar.classList.toggle("is-stale", mode === "stale");
-  if (meta?.source === "backup") {
-    bar.dataset.status = "备用行情";
-  } else if (mode === "stale") {
-    const time = _formatIndexTime(meta.quoteAt, meta.receivedAt);
-    bar.dataset.status = `行情暂断${time ? ` · 显示 ${time} 数据` : ""}`;
+
+  // 源标签放在最后一张卡片（中证500）右上角。主源也显示——腾讯/新浪两条链
+  // 精度不同（新浪无 PE、无总市值，PE 主路会静默退回昨收），静默切源无从察觉。
+  let sourceTag = "";
+  const source = meta?.source;
+  if (mode === "stale") {
+    const t = _formatIndexTime(meta.quoteAt, meta.receivedAt);
+    sourceTag = `<span class="src-tag idx-src-tag is-stale">行情暂断${t ? ` · ${t}` : ""}</span>`;
+  } else if (source === "sina") {
+    sourceTag = '<span class="src-tag idx-src-tag is-alt">新浪</span>';
+  } else if (source === "tencent") {
+    sourceTag = '<span class="src-tag idx-src-tag">腾讯</span>';
   } else if (mode === "empty") {
-    bar.dataset.status = "行情暂不可用";
-  } else {
-    bar.dataset.status = "";
+    sourceTag = '<span class="src-tag idx-src-tag">暂不可用</span>';
   }
 
-  bar.innerHTML = INDICES.map((idx) => {
+  bar.innerHTML = INDICES.map((idx, i) => {
     const d = dataMap[idx.id];
+    const isLast = i === INDICES.length - 1;
     if (!d || !Number.isFinite(d.f2))
-      return `<div class="idx-cell"><div class="idx-lbl">${idx.lbl}</div><div class="idx-row"><div class="idx-chg flat num">—</div><div class="idx-price num">—</div></div></div>`;
+      return `<div class="idx-cell"><div class="idx-lbl">${idx.lbl}</div><div class="idx-row"><div class="idx-chg flat num">—</div><div class="idx-price num">—</div></div>${isLast ? sourceTag : ""}</div>`;
     const price = typeof d.f2 === "number" ? d.f2.toFixed(2) : String(d.f2);
     const pct = d.f3 ?? 0,
       cls = pct > 0 ? "up" : pct < 0 ? "down" : "flat",
@@ -61,7 +67,7 @@ function renderIndices(map, meta) {
           : "flash-down"
         : "";
     idxPrev[idx.id] = price;
-    return `<div class="idx-cell ${cls} ${flash}"><div class="idx-lbl">${idx.lbl}</div><div class="idx-row"><div class="idx-chg num ${cls}">${sign}${typeof pct === "number" ? pct.toFixed(2) : pct}%</div><div class="idx-price num">${price}</div></div></div>`;
+    return `<div class="idx-cell ${cls} ${flash}"><div class="idx-lbl">${idx.lbl}</div><div class="idx-row"><div class="idx-chg num ${cls}">${sign}${typeof pct === "number" ? pct.toFixed(2) : pct}%</div><div class="idx-price num">${price}</div></div>${isLast ? sourceTag : ""}</div>`;
   }).join("");
 }
 
@@ -96,17 +102,17 @@ function updatePeBar() {
   }
 
   const { value: v, bounds } = currentPE;
-  // 备用指数源不带总市值，mcap 锚失效、bar 退回昨收，在参考数字下方标出
-  const refHtml = engRef && engRef.mode !== "close"
-    ? `<span class="pe-bypass2"><span class="num">${engRef.pct.toFixed(2)}%</span>${
-        getIndicesMeta()?.source === "backup" ? '<span class="src-tag">备用</span>' : ""
-      }</span>`
-    : "";
   // 参考路只由自己的 mode 决定显示，不挂在主路的 isDynamic 上：
   // 走备用指数源时总市值路因缺 mcap 而失效、主数字冻回昨收，此时点位路算出的
   // 数字恰恰是仅存的实时估计，正是最该露出来的时候。
   // 注：类名 pe-bypass2 是 PE_ANCHOR="mcap" 时代的遗留（那时小字恒为 2.0）。
   // 翻成 "price" 后小字变 1.0，类名语义会反过来——纯命名问题，不影响渲染，故不动 CSS。
+  // 备用源标签由数据源名称替代（D-020）。
+  const refHtml = engRef && engRef.mode !== "close"
+    ? `<span class="pe-bypass2"><span class="num">${engRef.pct.toFixed(2)}%</span>${
+        getIndicesMeta()?.source === "sina" ? '<span class="src-tag is-alt">新浪</span>' : ""
+      }</span>`
+    : "";
   _peDOM.display.innerHTML = `<span class="num">${v.toFixed(2)}%</span>${refHtml}`;
 
   const span = (bounds.sellPct - bounds.buyPct) * 2;

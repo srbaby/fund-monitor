@@ -57,7 +57,7 @@ function _officialCacheTtl(data) {
     dates.length > 0 && dates.every((date) => date === todayDateStr());
   return isTodayData || day === 0 || day === 6
     ? 12 * 3600000
-    : timeNum >= SYS_CONFIG.T_OFF_UPDATE
+    : timeNum >= T_OFF_UPDATE
       ? 5 * 60000
       : 3600000;
 }
@@ -121,7 +121,7 @@ async function _fetchTencentFunds(codes) {
   const promise = (async () => {
     const url = `${TX_BASE}/q=` + codes.map((c) => `jj${c}`).join(",");
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), SYS_CONFIG.FETCH_OFF_TIMEOUT);
+    const timer = setTimeout(() => controller.abort(), FETCH_OFF_TIMEOUT);
     try {
       const res = await fetch(url, { signal: controller.signal });
       const buf = await res.arrayBuffer();
@@ -172,6 +172,43 @@ function _parseTencentFunds(text, codes) {
   return { official, estimate };
 }
 
+// 东方财富官方净值（direct 模式主源，字段与 _parseTencentFunds.official 对齐）
+// API: GET fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?Fcodes=...
+// 响应：{ Datas: [{ FCODE, SHORTNAME, PDATE, NAV, NAVCHGRT }] }
+// NAVCHGRT=官方净值较前一日的涨跌幅(%)，PDATE=净值日期
+async function _fetchEastmoneyOfficial(codes) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_OFF_TIMEOUT);
+  try {
+    const url = `${EM_BASE}/FundMNewApi/FundMNFInfo?Fcodes=${codes.join(",")}&pageIndex=1&pageSize=50&plat=Android&appType=ttjj&product=EFund&Version=1&deviceid=Wap`;
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36" },
+    });
+    const json = await res.json();
+    const datas = json?.Datas;
+    if (!datas || !Array.isArray(datas)) return new Map();
+    const result = new Map();
+    for (const d of datas) {
+      const nav = parseFloat(d.NAV);
+      const pct = parseFloat(d.NAVCHGRT);
+      if (!d.FCODE || isNaN(nav) || nav <= 0 || isNaN(pct)) continue;
+      result.set(d.FCODE, {
+        code: d.FCODE,
+        name: d.SHORTNAME || NAMES[d.FCODE] || null,
+        officialNav: nav,
+        officialPct: pct,
+        officialAt: d.PDATE || null,
+      });
+    }
+    return result;
+  } catch {
+    return new Map();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // 指数直连：单请求覆盖全部指数。字段布局与 parsers.mjs parseTencentIndices 对齐：
 //   [1]名称 [3]点位 [32]涨跌% [30]时间 [39]PE [45]市值
 async function _fetchIndexGroupTencent() {
@@ -179,7 +216,7 @@ async function _fetchIndexGroupTencent() {
   if (qqList.length === 0) return null;
   const url = `${TX_BASE}/q=` + qqList.join(",");
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SYS_CONFIG.FETCH_INDEX_TIMEOUT);
+  const timer = setTimeout(() => controller.abort(), FETCH_INDEX_TIMEOUT);
   let text;
   try {
     const res = await fetch(url, { signal: controller.signal });
@@ -233,12 +270,18 @@ async function fetchOfficialData(codes) {
 
   let group;
   if (DATA_MODE === "direct") {
-    const r = await _fetchTencentFunds(uniqueCodes);
-    group = r && r.official.size ? { source: "tencent", data: r.official } : _unavailable();
+    // 主源东财 FundMNFInfo → 备源腾讯 jj{code}
+    const r = await _fetchEastmoneyOfficial(uniqueCodes);
+    if (r && r.size) {
+      group = { source: "eastmoney", data: r };
+    } else {
+      const r2 = await _fetchTencentFunds(uniqueCodes);
+      group = r2 && r2.official.size ? { source: "tencent", data: r2.official } : _unavailable();
+    }
   } else {
     group = await _fetchGroup(
       "/v1/funds/official?codes=" + uniqueCodes.join(","),
-      SYS_CONFIG.FETCH_OFF_TIMEOUT,
+      FETCH_OFF_TIMEOUT,
     );
   }
   if (group.source === "unavailable") {
@@ -269,7 +312,7 @@ function fetchEstimates(codes) {
       // 本地无缓存 → Gist 跨设备兜底。节流且失败也推进时间戳：
       // 估算源断供时 fm_est.json 可能长期不存在，只在成功时节流等于没节流，
       // 会退化成每 60 秒一次注定 404 的认证请求，还串在刷新的 await 链上。
-      if (Date.now() - _estGistReadTs < SYS_CONFIG.EST_GIST_READ_THROTTLE)
+      if (Date.now() - _estGistReadTs < EST_GIST_READ_THROTTLE)
         return _unavailable();
       _estGistReadTs = Date.now();
       const { id, token } = loadGistConfig();
@@ -287,7 +330,7 @@ function fetchEstimates(codes) {
   }
   return _fetchGroup(
     "/v1/funds/estimate?codes=" + uniqueCodes.join(","),
-    SYS_CONFIG.FETCH_EST_TIMEOUT,
+    FETCH_EST_TIMEOUT,
   );
 }
 
@@ -367,10 +410,11 @@ function _latestQuoteAt(map) {
 }
 
 async function _fetchIndexGroup() {
-  if (DATA_MODE === "direct") {
-    return _fetchIndexGroupTencent();
-  }
-  const group = await _fetchGroup("/v1/indices", SYS_CONFIG.FETCH_INDEX_TIMEOUT);
+  // direct 模式指数是**单源**：曾接过新浪备源，但 hq.sinajs.cn 不返回 CORS 头，
+  // 浏览器 fetch 必失败，代码恒返回 null，已删（D-020 代价栏留了考证）。
+  // 要恢复主备只能搬回网关（服务端无 CORS 限制）或换带 CORS 的源。
+  if (DATA_MODE === "direct") return _fetchIndexGroupTencent();
+  const group = await _fetchGroup("/v1/indices", FETCH_INDEX_TIMEOUT);
   if (group.source === "unavailable") return null;
   const map = {};
   group.data.forEach((item, id) => {
@@ -406,7 +450,7 @@ function fetchIndices() {
     // 旁路PE引擎的 1.0 总市值路与 2.0 点位路，锚定沪深300 实时快照。
     // 备用线路只有点位、没有总市值，仍要写入：2.0 走点位照常可算，
     // 1.0 由 getEnginePE1 自己的 mcap>0 判据回落昨收，不在这里一刀切掉两路。
-    const anchor = result.group.data.get(SYS_CONFIG.IDX_PE);
+    const anchor = result.group.data.get(IDX_PE);
     if (anchor?.price > 0) {
       setQQIndex({
         price: anchor.price,

@@ -217,10 +217,10 @@ function UI_buildHoldingPlanHtml(
         <div class="dr-lbl" style="margin-bottom:6px; font-family:var(--f-zh);">资金调配 (固定转出)</div>
         <div class="dr-flow-list">
           <div class="dr-flow-row">
-            <div class="dr-flow-main"><span>转出</span> <b>${SHORT_NAMES[SYS_CONFIG.CODE_XQ]}</b><em>→ ${SHORT_NAMES[SYS_CONFIG.CODE_A500]}</em></div>
+            <div class="dr-flow-main"><span>转出</span> <b>${SHORT_NAMES[CODE_XQ]}</b><em>→ ${SHORT_NAMES[CODE_A500]}</em></div>
             <div class="dr-flow-shares buy num">${fmt(buyDraft.sharesA500C, 2)} <span>份</span></div>
           </div>
-          ${buyDraft.allocZZ500C > 0 ? `<div class="dr-flow-row"><div class="dr-flow-main"><span>转出</span> <b>${SHORT_NAMES[SYS_CONFIG.CODE_XQ]}</b><em>→ ${buyDraft.zz500Code ? SHORT_NAMES[buyDraft.zz500Code] || buyDraft.zz500Code : "中证500C"}</em></div><div class="dr-flow-shares buy num">${fmt(buyDraft.sharesZZ500C, 2)} <span>份</span></div></div>` : ""}
+          ${buyDraft.allocZZ500C > 0 ? `<div class="dr-flow-row"><div class="dr-flow-main"><span>转出</span> <b>${SHORT_NAMES[CODE_XQ]}</b><em>→ ${buyDraft.zz500Code ? SHORT_NAMES[buyDraft.zz500Code] || buyDraft.zz500Code : "中证500C"}</em></div><div class="dr-flow-shares buy num">${fmt(buyDraft.sharesZZ500C, 2)} <span>份</span></div></div>` : ""}
         </div>
         <div class="dr-plan-foot">
           <span>调配金额 <b class="num">${fmt(buyDraft.buyAmt, 2)}</b></span>
