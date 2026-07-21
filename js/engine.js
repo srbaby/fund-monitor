@@ -313,10 +313,10 @@ function calcSellExecutionDraft(
 // 混合品种只挂权益腿（债券部分日波动 1-2bp，摊薄后 <0.02%，忽略）；纯债品种挂国债指数腿。
 // 纯函数，无副作用。不在 BENCHMARK_PROXY 表中、或表中腿为空的基金返回 null。
 // 任一条腿缺指数数据即整只返回 null——宁可留空，不出半截权重算出来的错数。
-function getBenchmarkProxyPct(code, offVal, indicesMap) {
+function getBenchmarkProxyPct(code, baseNav, indicesMap) {
   const cfg = BENCHMARK_PROXY[code];
   if (!cfg || !cfg.legs.length) return null;
-  if (offVal == null || isNaN(offVal) || offVal <= 0) return null;
+  if (baseNav == null || isNaN(baseNav) || baseNav <= 0) return null;
   if (!indicesMap) return null;
 
   let estPct = 0;
@@ -325,7 +325,7 @@ function getBenchmarkProxyPct(code, offVal, indicesMap) {
     if (!idx || idx.f3 == null || isNaN(idx.f3)) return null;
     estPct += leg.w * idx.f3;
   }
-  return { estPct, estVal: offVal * (1 + estPct / 100) };
+  return { estPct, estVal: baseNav * (1 + estPct / 100) };
 }
 
 // 基准代理回填（D-020 引入，D-022 改为入库前统一回填）：
@@ -338,8 +338,8 @@ function getBenchmarkProxyPct(code, offVal, indicesMap) {
 //
 // 幂等：代理条目自身可被下一次指数 tick 覆盖重算（判据看 estSource 而非日期）。
 // 真估算永远优先，一旦某只拿到当日真估算，代理不再覆盖它。
-// 官方净值当晚落地后无需在此处理——`getNavByCode` 的 `offD >= estD` 会自动改用官方，
-// 一只一只替换，这正是"晚间刷新一个替换一个"。
+// 官方净值落地后，市值链由 `getNavByCode` 自动切到官方；估算列仍保留盘中代理供对照。
+// 冷启动也不依赖旧终端：官方旧于指数就直接作基准，同日则先按官方涨幅还原前一日净值。
 function applyProxyEstimates(results, todayStr, indicesMap, quoteAt) {
   if (DATA_SOURCE_SWITCH !== "benchmark" || !indicesMap) return results;
   return results.map((f) => {
@@ -348,7 +348,19 @@ function applyProxyEstimates(results, todayStr, indicesMap, quoteAt) {
     const isRealEstToday =
       f.estTime && f.estTime.slice(0, 10) === todayStr && f.estSource !== "proxy";
     if (isRealEstToday) return f;
-    const proxy = getBenchmarkProxyPct(f.code, parseFloat(f.offVal), indicesMap);
+    const offD = f.offDate ? f.offDate.slice(0, 10) : "";
+    const quoteD = quoteAt ? quoteAt.slice(0, 10) : "";
+    if (!offD || !quoteD || offD > quoteD) return f;
+
+    // 两套冷启动算法：白天官方还是昨日值可直接乘；夜间同日正式值已落地则先还原昨日值。
+    let baseNav = parseFloat(f.offVal);
+    if (offD === quoteD) {
+      const offPct = parseFloat(f.offPct);
+      const factor = 1 + offPct / 100;
+      if (!Number.isFinite(offPct) || factor <= 0) return f;
+      baseNav /= factor;
+    }
+    const proxy = getBenchmarkProxyPct(f.code, baseNav, indicesMap);
     if (!proxy) return f;
     return {
       ...f,
