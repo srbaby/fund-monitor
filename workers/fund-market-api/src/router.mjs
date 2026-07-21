@@ -130,12 +130,17 @@ export async function handleRequest(request, env = {}, context, dependencies = {
   if (url.pathname === "/v1/nav/today") {
     if (!env?.NAV) return response({ ok: false, error: "nav_kv_unbound" }, 503);
     const today = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
-    const record = await env.NAV.get(`nav:${today}`, "json");
+    // 先today后latest：官方净值是全站唯一来源，而盘中/周末/节假日没有「今日记录」，
+    // 必须回退到上一交易日，否则那些时段官方净值整列变空（红线 #2）。
+    // 返回的 date 是**记录自带的**日期，不是请求当天——前端据它判新旧，不会误当今日。
+    const record =
+      (await env.NAV.get(`nav:${today}`, "json")) ||
+      (await env.NAV.get("nav:latest", "json"));
     const funds = record?.funds || {};
     const first = record?.first || null;
     return response({
       ok: true,
-      date: today,
+      date: record?.date || today,
       first,
       firstCount: first
         ? Object.values(funds).filter((item) => item.src === first).length

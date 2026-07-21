@@ -23,17 +23,19 @@
 
 ## 二、红线（违反即打回，不必讨论）
 
-1. **数据源走 `DATA_MODE` 双模，禁止第三处另开**：`config.js` 的 `DATA_MODE` 切换两条链路——
+1. **官方净值走采集器 KV（唯一来源），盘中数据走 `DATA_MODE` 双模**（[D-023](docs/DECISIONS.md#d-023) G 节）。
+   **`DATA_MODE` 不再管官方净值**——`fetchOfficialData` 只读 `NAV_BASE/v1/nav/today`，
+   拿不到就走 `officialBatchCache` 上次好数据。**不许再加"直连兜底"**：浏览器侧东财恒被
+   `ErrCode:61136` 拦、腾讯只有一路，兜不出第二个源，加回来只是把已收敛的取数路径重新摊开。
+   盘中 / 周末 / 节假日没有当日记录时，读端点回退 `nav:latest`，返回的 `date` 是**记录自带日期**，
+   两类口径（红线 #6）据它照旧判新旧，不需要感知这层回退。
+
+   以下双模只适用于**盘中数据（估算、指数）**：`config.js` 的 `DATA_MODE` 切换两条链路——
    - `"gateway"`：走 `API_BASE` 三个端点，主备切换 + KV last-known-good 全在 `workers/fund-market-api/` 网关内。
-   - `"direct"`：浏览器直连。**官方净值**先问夜间采集器 `NAV_BASE`（`_fetchNavCollector`），
-     缺口再走主东财 `EM_BASE`（`_fetchEastmoneyOfficial`）备腾讯 `TX_BASE`（`_fetchTencentFunds`），
-     调度在 `_fetchOfficialDirect` 一处；**指数**单源腾讯（`_fetchIndexGroupTencent`）——
-     新浪备源因无 CORS 头在浏览器侧不可用，已删，见 [D-020](docs/DECISIONS.md#d-020)。
-   改数据源逻辑只在这两套分支内，不得到处加 fetch。
-   **采集器不算"第三处另开"**（[D-023](docs/DECISIONS.md#d-023)）：它是 direct 的子路径，
-   整体不可用时完全退回上面那条直连链。判据是"能不能整条摘掉而看板行为回到原状"——能，就是子路径。
-   之所以要它：东财前端直连被 `ErrCode:61136` 拦（仅服务端调得通，2026-07-21 实测复核），
-   浏览器侧其实**只有腾讯一路**；且没人开着看板时浏览器根本不会去取。
+   - `"direct"`：浏览器直连。**估算**腾讯 `TX_BASE`（`_fetchTencentFunds`，只产出 estimate 块）；
+     **指数**单源腾讯（`_fetchIndexGroupTencent`）——新浪备源因无 CORS 头在浏览器侧不可用，
+     已删，见 [D-020](docs/DECISIONS.md#d-020)。
+   改盘中数据逻辑只在这两套分支内，不得到处加 fetch。
    **选新数据源前先验 CORS**：浏览器直连要求对方返回 `Access-Control-Allow-Origin`，
    且 `Referer` / `User-Agent` 属 fetch 禁止修改头，靠伪造它们绕防盗链在浏览器里一律无效。
 2. **行情数据禁止因单次失败清空**：拿不到新数据时退回上次好数据并标记为陈旧，绝不把已有数据冲成空。

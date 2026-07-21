@@ -219,11 +219,11 @@
                 >
                     ▾
                 </div>
+                <!-- 官方数据源标签（手机）。**必须留在 .card-header-bar 内部**：它和 #colBtn
+                     一样是 absolute 挂在这条 sticky 上的，浮在下沿的空隙里，不占布局高度。
+                     挪到 bar 外面就会变成一个独立行、把卡片整体往下推 22px。见 D-023 -->
+                <div class="card-src-tags" id="cardSrcTags"></div>
             </div>
-
-            <!-- 数据源标签（手机）。表格视图的表头已有同样两格，这里是卡片视图的对应位置。
-                 靠左排布以避开 #colBtn 那个居中的 ▾ 折叠手柄。见 D-023 -->
-            <div class="card-src-tags" id="cardSrcTags"></div>
 
             <div class="card-view" id="cardView">
                 <div class="empty-state loading-pulse">

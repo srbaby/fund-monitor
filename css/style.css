@@ -660,14 +660,20 @@ main {
     vertical-align: middle;
     letter-spacing: 0.2px;
 }
-/* 卡片视图的数据源标签行（手机）。夹在收益条与第一张卡片之间那道空隙里。
-   靠左排布，避开 .col-handle 那个 left:50% 的 ▾ 手柄。
-   :empty 时整行收掉，不留空白——数据没来时不该先占一格高度。 */
+/* 卡片视图的官方数据源标签（手机）。与 .col-handle 同一套路：absolute 挂在 sticky 的
+   .card-header-bar 下沿，**浮在原有空隙里，不占布局高度**——初版做成独立块级行，
+   把卡片整体往下推了 22px，用户判为撑开。现在只多出 2px 的 top 间距。
+   右对齐到 12px = 与「估算」按钮(#cycleBtn)右边缘、卡片右边缘同一条竖线。
+   左侧 .col-handle 在 left:50%，两者不会碰。 */
 .card-src-tags {
+    position: absolute;
+    top: 100%;
+    right: 12px;
+    padding-top: 2px;
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 6px 2px 2px;
+    pointer-events: none;
 }
 .card-src-tags:empty {
     display: none;

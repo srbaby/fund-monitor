@@ -323,3 +323,42 @@ test("nav endpoint stays behind the custom-domain guard like every other route",
   );
   assert.equal(res.status, 403);
 });
+
+test("nav endpoint falls back to the latest record when today has none", async () => {
+  // 盘中 / 周末 / 节假日没有「今日记录」。官方净值是全站唯一来源，
+  // 若这里不回退，那些时段官方净值整列变空、持仓市值直接算不出（红线 #2）。
+  const { kv } = memoryKv({
+    "nav:latest": JSON.stringify({
+      date: "2026-07-20",
+      first: "tencent",
+      funds: { "003949": { nav: 1.2362, pct: 0.01, src: "tencent", at: "2026-07-20 19:41:12" } },
+    }),
+  });
+  const body = await (await handleRequest(new Request(NAV_URL), { NAV: kv }, null, {
+    fetch: async () => { throw new Error("upstream must not run"); },
+  })).json();
+  assert.equal(body.count, 1, "应回退到 nav:latest");
+  assert.equal(body.date, "2026-07-20", "date 必须是记录自带日期，不是请求当天——前端据它判新旧");
+  assert.equal(body.first, "tencent");
+});
+
+test("today's record wins over the latest pointer", async () => {
+  const { kv } = memoryKv({
+    [`nav:${NAV_TODAY}`]: JSON.stringify({
+      date: NAV_TODAY,
+      first: "eastmoney",
+      funds: { "110027": { nav: 2.3278, pct: 1.7, src: "eastmoney", at: `${NAV_TODAY} 20:03:55` } },
+    }),
+    "nav:latest": JSON.stringify({
+      date: "2026-07-20",
+      first: "tencent",
+      funds: { "003949": { nav: 1.2362, pct: 0.01, src: "tencent", at: "2026-07-20 19:41:12" } },
+    }),
+  });
+  const body = await (await handleRequest(new Request(NAV_URL), { NAV: kv }, null, {
+    fetch: async () => { throw new Error("upstream must not run"); },
+  })).json();
+  assert.equal(body.date, NAV_TODAY);
+  assert.equal(body.first, "eastmoney");
+  assert.deepEqual(Object.keys(body.funds), ["110027"]);
+});

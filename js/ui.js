@@ -104,7 +104,10 @@ function renderSourceTags(results, today) {
     card = _getEl("cardSrcTags");
   if (est) est.innerHTML = estTag;
   if (off) off.innerHTML = offTag;
-  if (card) card.innerHTML = estTag + offTag;
+  // 手机只挂官方那格。估算源标签（当前恒为「代理」）在手机上是常态噪音——
+  // 它天天挂着不变，而这一格的价值全在"变字"。桌面表头仍然保留它，
+  // D-020 说的"估算源复活的唯一信号"因此没有丢，只是不在手机上抢位置。
+  if (card) card.innerHTML = offTag;
 }
 
 // 官方列标签 =「今晚最早抢到的那一路 + 它抢到的只数」，例：`腾讯 2`。

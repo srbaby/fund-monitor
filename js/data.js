@@ -112,8 +112,8 @@ function _parseTxAssignments(text) {
   return quotes;
 }
 
-// 一次请求同时拆出官方净值链与盘中估算链。in-flight 去重保证同一次刷新内
-// fetchOfficialData 与 fetchEstimates 并发只打一次上游（与网关 router.mjs inflight 同思路）。
+// 盘中估算链。**官方净值已不走这里**——它统一从采集器 KV 取（D-023 修订），
+// 故本函数只产出 estimate 一条链。in-flight 去重保留：同一次刷新内若有并发调用只打一次上游。
 const _txFundInflight = new Map();
 async function _fetchTencentFunds(codes) {
   const key = codes.join(",");
@@ -137,30 +137,24 @@ async function _fetchTencentFunds(codes) {
   return promise;
 }
 
-// 字段布局（与 parsers.mjs parseTencentEstimates / 官方块一致）：
+// 字段布局（与 parsers.mjs parseTencentEstimates 一致）：
 //   [1]名称 [2]估算净值 [3]估算% [4]估算时间 [5]官方净值 [7]官方% [8]官方日期
-// 官方块走 [5][7][8]；估算块走 [2][3][4]，baseNav/baseDate 借 [5][8]（= 最新确认净值）。
+// 只取估算块 [2][3][4]；baseNav/baseDate 仍借 [5][8]（= 最新确认净值，估算的基数）。
+// **官方块 [5][7][8] 不再产出条目**——官方净值统一走采集器 KV（D-023 修订），
+// 这里再解析一份就是两条并存的取数路径，正是那次修订要消除的东西。
 function _parseTencentFunds(text, codes) {
   const quotes = _parseTxAssignments(text);
-  const official = new Map();
   const estimate = new Map();
   for (const code of codes) {
     const fields = quotes.get(`jj${code}`);
     if (!fields || fields.length < 9) continue;
-    const name = fields[1] || NAMES[code] || null;
-    const officialNav = _txNum(fields[5]);
-    const officialPct = _txNum(fields[7]);
-    const officialAt = _txDate(fields[8]);
-    if (officialNav != null && officialNav > 0 && officialPct != null && officialAt) {
-      official.set(code, { code, name, officialNav, officialPct, officialAt });
-    }
     const estimateNav = _txNum(fields[2]);
     const estimatePct = _txNum(fields[3]);
     const estimateAt = _txDate(fields[4]);
     if (estimateNav != null && estimateNav > 0 && estimatePct != null && estimateAt) {
       estimate.set(code, {
         code,
-        name,
+        name: fields[1] || NAMES[code] || null,
         estimateNav,
         estimatePct,
         estimateAt,
@@ -169,44 +163,7 @@ function _parseTencentFunds(text, codes) {
       });
     }
   }
-  return { official, estimate };
-}
-
-// 东方财富官方净值（direct 模式主源，字段与 _parseTencentFunds.official 对齐）
-// API: GET fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?Fcodes=...
-// 响应：{ Datas: [{ FCODE, SHORTNAME, PDATE, NAV, NAVCHGRT }] }
-// NAVCHGRT=官方净值较前一日的涨跌幅(%)，PDATE=净值日期
-async function _fetchEastmoneyOfficial(codes) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_OFF_TIMEOUT);
-  try {
-    const url = `${EM_BASE}/FundMNewApi/FundMNFInfo?Fcodes=${codes.join(",")}&pageIndex=1&pageSize=50&plat=Android&appType=ttjj&product=EFund&Version=1&deviceid=Wap`;
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: { "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36" },
-    });
-    const json = await res.json();
-    const datas = json?.Datas;
-    if (!datas || !Array.isArray(datas)) return new Map();
-    const result = new Map();
-    for (const d of datas) {
-      const nav = parseFloat(d.NAV);
-      const pct = parseFloat(d.NAVCHGRT);
-      if (!d.FCODE || isNaN(nav) || nav <= 0 || isNaN(pct)) continue;
-      result.set(d.FCODE, {
-        code: d.FCODE,
-        name: d.SHORTNAME || NAMES[d.FCODE] || null,
-        officialNav: nav,
-        officialPct: pct,
-        officialAt: d.PDATE || null,
-      });
-    }
-    return result;
-  } catch {
-    return new Map();
-  } finally {
-    clearTimeout(timer);
-  }
+  return { estimate };
 }
 
 // 指数直连：单请求覆盖全部指数。字段布局与 parsers.mjs parseTencentIndices 对齐：
@@ -256,9 +213,17 @@ async function _fetchIndexGroupTencent() {
   return { map, group: { source: "tencent", data: dataMap } };
 }
 
-// 夜间采集器（D-023）。每条自带 navSource / navAt = 「谁先抢到 / 何时抢到」，
-// 这两个字段一路透传到 fetchSingleFund，表头与卡片的「腾讯 2」就是数它们算出来的。
-// 只认当日：payload.date 不是今天说明采集器那边还没跑或已跨日，一律不用。
+// 官方净值：**全站唯一来源是采集器 KV，不再看 DATA_MODE**（D-023 修订）。
+// `DATA_MODE` 从此只管盘中数据（估算、指数）——官方净值那两条老链路已经删干净，
+// 别再往这里加"直连兜底"：浏览器侧东财被 61136 拦、腾讯只有一路，兜不出第二个源，
+// 加回来只是把已经收敛的取数路径重新摊开。KV 拿不到就走下面的 officialBatchCache。
+//
+// 每条自带 navSource / navAt =「谁先抢到 / 何时抢到」，透传到 fetchSingleFund，
+// 表头与卡片的「腾讯 2」就是数它们算出来的。
+//
+// **不再要求 payload.date === 今天**：盘中 / 周末 / 节假日本来就没有「今日记录」，
+// 读端点会回退到 nav:latest（上一交易日）。officialAt 取记录自带日期，
+// 于是 getNavByCode 的市值口径与 calcTodayProfit 的收益口径各自照旧判新旧，无需感知回退。
 let _navCollectorCache = { ts: 0, value: null };
 async function _fetchNavCollector() {
   if (Date.now() - _navCollectorCache.ts < NAV_COLLECTOR_TTL)
@@ -266,7 +231,7 @@ async function _fetchNavCollector() {
   let value = null;
   try {
     const payload = await _fetchJson(`${NAV_BASE}/v1/nav/today`, FETCH_OFF_TIMEOUT);
-    if (payload?.ok && payload.funds && payload.date === todayDateStr()) {
+    if (payload?.ok && payload.funds && payload.date) {
       const data = new Map();
       for (const [code, item] of Object.entries(payload.funds)) {
         if (!(item?.nav > 0)) continue;
@@ -285,34 +250,10 @@ async function _fetchNavCollector() {
   } catch {
     value = null;
   }
-  // 失败也写缓存（负缓存）：采集器未部署 / 当晚还没数据时，
+  // 失败也写缓存（负缓存）：采集器未部署 / 请求失败时，
   // 不该每 60 秒都串一次注定失败的请求在刷新链上。
   _navCollectorCache = { ts: Date.now(), value };
   return value;
-}
-
-// direct 模式官方净值：采集器优先，直连补缺口。
-// 采集器只存**当日**净值，所以早于发布时段它是空的，此时整组走直连拿上一交易日数据
-// ——这正是原有行为，不能因为接了采集器就让盘中变空白（红线 #2）。
-async function _fetchOfficialDirect(codes) {
-  const collected = await _fetchNavCollector();
-  const missing = codes.filter((code) => !collected?.data.has(code));
-  if (collected && missing.length === 0) return collected;
-
-  const target = missing.length ? missing : codes;
-  const em = await _fetchEastmoneyOfficial(target);
-  let fallback = em && em.size ? { source: "eastmoney", data: em } : null;
-  if (!fallback) {
-    const tx = await _fetchTencentFunds(target);
-    fallback = tx && tx.official.size ? { source: "tencent", data: tx.official } : null;
-  }
-
-  if (!collected) return fallback || _unavailable();
-  if (!fallback) return collected;
-  // 采集器的条目盖在直连之上：它是当日的，且带抢先记账
-  const merged = new Map(fallback.data);
-  for (const [code, item] of collected.data) merged.set(code, item);
-  return { source: collected.source, data: merged };
 }
 
 async function fetchOfficialData(codes) {
@@ -327,15 +268,7 @@ async function fetchOfficialData(codes) {
     return cached.value;
   }
 
-  let group;
-  if (DATA_MODE === "direct") {
-    group = await _fetchOfficialDirect(uniqueCodes);
-  } else {
-    group = await _fetchGroup(
-      "/v1/funds/official?codes=" + uniqueCodes.join(","),
-      FETCH_OFF_TIMEOUT,
-    );
-  }
+  const group = (await _fetchNavCollector()) || _unavailable();
   if (group.source === "unavailable") {
     delete officialBatchCache[cacheKey];
     return group;

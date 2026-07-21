@@ -115,8 +115,15 @@ async function fetchTencent(codes) {
 
 // 目标基金列表：跟随看板。前端增删基金 → saveFunds → syncCloud("push_config")
 // → Gist fm_config.json 的 f 字段，所以这里读它就自动同步，用户无需改配置。
+//
+// **失败必须可见**：读不到就静默回退 FALLBACK_CODES 的话，token 过期 / 权限不足 /
+// Gist 被删这些情况都表现为"Worker 一直采着写死的那几只"，而看板上新加的基金没数据，
+// 从日志里完全看不出根因。故返回 { codes, source, error }，一路带到 collect 的返回值里，
+// 打一次 /v1/collect 就能看出这一跳的列表到底是从哪来的。
 async function fetchGistCodes(env) {
-  if (!env.GIST_ID || !env.GIST_TOKEN) return null;
+  if (!env.GIST_ID || !env.GIST_TOKEN) {
+    return { codes: null, error: "gist_not_configured" };
+  }
   try {
     const response = await fetch(`https://api.github.com/gists/${env.GIST_ID}`, {
       headers: {
@@ -125,34 +132,45 @@ async function fetchGistCodes(env) {
         Accept: "application/vnd.github+json",
       },
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      // 401/403 = token 无效或缺 gist 权限；404 = GIST_ID 写错或 Gist 已删
+      return { codes: null, error: `gist_http_${response.status}` };
+    }
     const gist = await response.json();
     const content = gist?.files?.["fm_config.json"]?.content;
-    if (!content) return null;
+    if (!content) return { codes: null, error: "gist_missing_fm_config" };
     const config = JSON.parse(content);
     const codes = Array.isArray(config.f)
       ? config.f.filter((code) => /^\d{6}$/.test(code))
       : null;
-    return codes?.length ? codes : null;
-  } catch {
-    return null;
+    if (!codes?.length) return { codes: null, error: "gist_empty_f_field" };
+    return { codes, error: null };
+  } catch (e) {
+    return { codes: null, error: `gist_fetch_failed: ${e}` };
   }
 }
 
 async function loadCodes(env) {
   const cached = await env.NAV.get("codes", "json");
-  if (cached?.codes && Date.now() - cached.ts < CODES_CACHE_MS) return cached.codes;
-  const fresh = await fetchGistCodes(env);
+  if (cached?.codes && Date.now() - cached.ts < CODES_CACHE_MS) {
+    return { codes: cached.codes, source: "cache", error: null };
+  }
+  const { codes: fresh, error } = await fetchGistCodes(env);
   if (fresh) {
     await env.NAV.put("codes", JSON.stringify({ ts: Date.now(), codes: fresh }));
-    return fresh;
+    return { codes: fresh, source: "gist", error: null };
   }
-  // Gist 读失败不清空已缓存的列表——宁可用旧列表，也不要因一次网络抖动漏采
-  if (cached?.codes) return cached.codes;
-  return String(env.FALLBACK_CODES || "")
-    .split(",")
-    .map((code) => code.trim())
-    .filter((code) => /^\d{6}$/.test(code));
+  // Gist 读失败不清空已缓存的列表——宁可用旧列表，也不要因一次网络抖动漏采。
+  // 但 source 要如实标成 stale-cache，别让它冒充 gist。
+  if (cached?.codes) return { codes: cached.codes, source: "stale-cache", error };
+  return {
+    codes: String(env.FALLBACK_CODES || "")
+      .split(",")
+      .map((code) => code.trim())
+      .filter((code) => /^\d{6}$/.test(code)),
+    source: "fallback",
+    error,
+  };
 }
 
 async function collect(env) {
@@ -165,68 +183,118 @@ async function collect(env) {
     idle: 0,
   };
 
-  const codes = await loadCodes(env);
-  if (!codes.length) return { status: "no-codes" };
+  const { codes, source: codesSource, error: codesError } = await loadCodes(env);
+  if (!codes.length) return { status: "no-codes", codesSource, codesError };
+
+  // 僵尸清理：基金已从看板删除，KV 里那条就该走。**必须在早退判断之前**——
+  // 放后面的话，当日一旦 complete 就再没有跳会走到清理，僵尸能赖到记录过期。
+  // 不清的代价不只是数据脏：端点的 count / firstCount 数的是 record.funds，
+  // 僵尸会让这两个数一直偏大，而 first 还可能锚在一只已经删掉的基金上。
+  const wanted = new Set(codes);
+  let pruned = 0;
+  for (const code of Object.keys(record.funds)) {
+    if (!wanted.has(code)) {
+      delete record.funds[code];
+      pruned += 1;
+    }
+  }
 
   // 非交易日：连续 IDLE_GIVE_UP 跳一条都没抓到就收工，避免整晚空打上游。
   // 判据要求 funds 为空——已抓到一部分只是某几只发布晚，不能据此收工。
-  if (record.done) return { status: "done-earlier", have: Object.keys(record.funds).length };
+  if (record.done)
+    return {
+      status: "done-earlier",
+      have: Object.keys(record.funds).length,
+      codesSource,
+      codesError,
+    };
 
   // 早退：全部到齐。complete **不落盘**，每跳按当前列表现算——
   // 否则用户 21:00 加一只基金时当晚已 complete，会一直早退，新基金永远抓不到。
-  if (codes.every((code) => record.funds[code])) {
-    return { status: "complete", have: codes.length };
-  }
-
-  const [em, tx] = await Promise.allSettled([fetchEastmoney(codes), fetchTencent(codes)]);
-  const emMap = em.status === "fulfilled" ? em.value : new Map();
-  const txMap = tx.status === "fulfilled" ? tx.value : new Map();
+  const complete = codes.every((code) => record.funds[code]);
 
   const at = bjStamp();
   let added = 0;
-  for (const code of codes) {
-    if (record.funds[code]) continue; // 先到先得：已记账的绝不覆盖，保证 at/src 不可变
-    const fromEm = emMap.get(code);
-    const fromTx = txMap.get(code);
-    const emOk = fromEm?.date === today;
-    const txOk = fromTx?.date === today;
-    // 只接受**当日**净值。原前端 bug 的根因正是没判这一条：东财在净值未披露时
-    // 返回昨日数据且 size>0，于是整组被采纳，腾讯备源一次都轮不到。
-    if (!emOk && !txOk) continue;
-    const picked = emOk ? { ...fromEm, src: "eastmoney" } : { ...fromTx, src: "tencent" };
-    record.funds[code] = {
-      nav: picked.nav,
-      pct: picked.pct,
-      name: picked.name,
-      src: picked.src,
-      at,
+  // 上游诊断，只在真正打了上游的那些跳里有意义；早退跳保持零值
+  let diag = { emSize: 0, txSize: 0, emError: null, txError: null };
+  if (!complete) {
+    const [em, tx] = await Promise.allSettled([fetchEastmoney(codes), fetchTencent(codes)]);
+    const emMap = em.status === "fulfilled" ? em.value : new Map();
+    const txMap = tx.status === "fulfilled" ? tx.value : new Map();
+    diag = {
+      emSize: emMap.size,
+      txSize: txMap.size,
+      emError: em.status === "rejected" ? String(em.reason) : null,
+      txError: tx.status === "rejected" ? String(tx.reason) : null,
     };
-    added += 1;
+    for (const code of codes) {
+      if (record.funds[code]) continue; // 先到先得：已记账的绝不覆盖，保证 at/src 不可变
+      const fromEm = emMap.get(code);
+      const fromTx = txMap.get(code);
+      const emOk = fromEm?.date === today;
+      const txOk = fromTx?.date === today;
+      // 只接受**当日**净值。原前端 bug 的根因正是没判这一条：东财在净值未披露时
+      // 返回昨日数据且 size>0，于是整组被采纳，腾讯备源一次都轮不到。
+      if (!emOk && !txOk) continue;
+      const picked = emOk ? { ...fromEm, src: "eastmoney" } : { ...fromTx, src: "tencent" };
+      record.funds[code] = {
+        nav: picked.nav,
+        pct: picked.pct,
+        name: picked.name,
+        src: picked.src,
+        at,
+      };
+      added += 1;
+    }
+    record.idle = added > 0 ? 0 : (record.idle || 0) + 1;
   }
 
   // first = 今晚最早抓到的那条的源。由**时间戳**决定而非写入顺序，
   // 所以任何设备任何时候读，算出来都一样。
+  // 放在清理之后统一重算：删掉的可能正是最早那只，那时 first 必须换人。
   const entries = Object.values(record.funds);
-  if (entries.length) {
-    record.first = entries.reduce((a, b) => (a.at <= b.at ? a : b)).src;
+  record.first = entries.length
+    ? entries.reduce((a, b) => (a.at <= b.at ? a : b)).src
+    : null;
+
+  if (record.idle >= IDLE_GIVE_UP && entries.length === 0) record.done = true;
+
+  // 落盘条件：有新增或有清理。纯早退跳（两者皆无）不写，免得晚间 241 跳
+  // 把 KV 免费写配额（1000/天）烧掉四分之一。
+  const dirty = added > 0 || pruned > 0;
+  if (dirty) {
+    record.updatedAt = at;
+    await env.NAV.put(key, JSON.stringify(record), { expirationTtl: RECORD_TTL_S });
   }
 
-  record.idle = added > 0 ? 0 : (record.idle || 0) + 1;
-  if (record.idle >= IDLE_GIVE_UP && entries.length === 0) record.done = true;
-  record.updatedAt = at;
+  // 「最近可得」指针。官方净值是全站唯一来源（D-023 G 节），而盘中 / 周末 / 节假日
+  // 根本没有「今日记录」——读端点靠它回退到上一交易日，否则那些时段官方净值整列变空
+  // （红线 #2）。内容与当日记录一致，`date` 自带日期，前端据它判新旧，不会误当今日。
+  //
+  // ⚠️ **早退跳也要走到这里**：当日 complete 后每跳都早退，不在这儿补写的话 latest
+  // 永远出不来，次日盘中官方净值整列空白到当晚 19:00。按 date 比对节流，每天最多一次；
+  // dirty 时无条件重写，否则清理掉的僵尸会继续活在 latest 里。
+  if (entries.length) {
+    const latest = await env.NAV.get("nav:latest", "json");
+    if (dirty || latest?.date !== record.date) {
+      await env.NAV.put("nav:latest", JSON.stringify(record));
+    }
+  }
 
-  await env.NAV.put(key, JSON.stringify(record), { expirationTtl: RECORD_TTL_S });
+  if (complete) {
+    return { status: "complete", have: codes.length, pruned, codesSource, codesError };
+  }
 
   return {
     status: "collected",
     added,
+    pruned,
     have: entries.length,
     want: codes.length,
     first: record.first,
-    emSize: emMap.size,
-    txSize: txMap.size,
-    emError: em.status === "rejected" ? String(em.reason) : null,
-    txError: tx.status === "rejected" ? String(tx.reason) : null,
+    codesSource,
+    codesError,
+    ...diag,
   };
 }
 
@@ -262,14 +330,18 @@ export default {
 
     if (url.pathname === "/v1/nav/today") {
       const today = bjDateStr();
-      const record = await env.NAV.get(`nav:${today}`, "json");
+      // 与网关 router.mjs 的同名端点**必须逐字同口径**：先 today 后 latest。
+      // 前端实际读的是网关那个；这里是调试用，行为不一致会让排查跑偏。
+      const record =
+        (await env.NAV.get(`nav:${today}`, "json")) ||
+        (await env.NAV.get("nav:latest", "json"));
       const funds = record?.funds || {};
       const codes = Object.keys(funds);
       const first = record?.first || null;
       return new Response(
         JSON.stringify({
           ok: true,
-          date: today,
+          date: record?.date || today,
           first,
           // 赢者抓到的只数——表头标签「腾讯 2」里的那个 2
           firstCount: first
@@ -291,6 +363,10 @@ export default {
           headers: corsHeaders(env),
         });
       }
+      // 手动触发的用途就是「立刻看看现在到底什么状态」，所以先丢掉 codes 缓存，
+      // 强制这一跳真去读一次 Gist。否则命中 5 分钟缓存时 codesSource 恒为 "cache"，
+      // 想验证 token 通不通反而验不出来。
+      await env.NAV.delete("codes");
       const result = await collect(env);
       return new Response(JSON.stringify({ ok: true, ...result }), {
         headers: corsHeaders(env),
