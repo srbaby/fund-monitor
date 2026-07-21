@@ -16,5 +16,8 @@ venv/
 # Legacy cloud mirror of .github/
 github/
 
+# Wrangler build artifacts
+.wrangler/
+
 # WorkBuddy project data
 .workbuddy/
