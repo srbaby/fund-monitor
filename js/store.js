@@ -256,6 +256,37 @@ function saveSellPlan(plan) {
   fmLog("saveSellPlan", plan);
 }
 
+// ---- 盘中估算缓存（直连模式收盘后保留最后估值，见 D-018）----
+// 结构 { ts, data }。**刻意不存日期**——新旧一律由每条估算自带的 estimateAt 判定。
+// 旧实现存了 date 且 Gist 兜底回写时无条件盖成今天，把隔周数据洗成"当日"，
+// 配合当时缺失的陈旧标记，用户完全无从察觉。没有这个字段，那个 bug 就无处可藏。
+// ts 只作整份丢弃的硬上限，不参与新旧判断。
+function saveEstCache(estMap) {
+  _lsSet(STORE_EST_CACHE, JSON.stringify({ ts: Date.now(), data: [...estMap] }));
+}
+function loadEstCacheEntry() {
+  const entry = safeParse(_lsGet(STORE_EST_CACHE), null);
+  if (!entry?.data || Date.now() - entry.ts > SYS_CONFIG.EST_CACHE_MAX_AGE)
+    return null;
+  return entry;
+}
+function loadEstCache(codes) {
+  const entry = loadEstCacheEntry();
+  if (!entry) return null;
+  const cached = new Map(entry.data);
+  const filtered = new Map();
+  for (const code of codes) {
+    if (cached.has(code)) filtered.set(code, cached.get(code));
+  }
+  return filtered.size ? filtered : null;
+}
+function loadEstGistDate() {
+  return _lsGet(STORE_EST_GIST_DATE) || "";
+}
+function markEstGistPushed() {
+  _lsSet(STORE_EST_GIST_DATE, todayDateStr());
+}
+
 // ---- Gist 云同步配置 ----
 function loadGistConfig() {
   return {

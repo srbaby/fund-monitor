@@ -97,7 +97,7 @@ function UI_renderHoldingDrawerBody(
     </div>
     <div class="dr-card dr-table-card">
       <div class="dr-table-head" style="${gridDet}">
-        <div>产品简称</div><div style="display:flex;justify-content:flex-end;">今日收益(¥)</div><div style="display:flex;justify-content:flex-end;">持仓占比</div><div style="display:flex;justify-content:flex-end;">持仓金额(¥)</div>
+        <div>产品简称</div><div style="display:flex;justify-content:flex-end;">最新收益(¥)</div><div style="display:flex;justify-content:flex-end;">持仓占比</div><div style="display:flex;justify-content:flex-end;">持仓金额(¥)</div>
       </div>`;
 
   activeProds.forEach((p) => {
@@ -191,7 +191,6 @@ function UI_renderHoldingDrawerBody(
 
 function UI_buildHoldingPlanHtml(
   activeProds,
-  currentPE,
   targetEqNeutral,
   eqData,
   buyDraft,

@@ -79,9 +79,8 @@ function updatePeBar() {
   const peData = loadPe();
   const qqIdx = getQQIndex();
   const engineData = loadPeEngine();
-  const eng = getEnginePE(engineData, qqIdx);   // 2.0 price路，旁路参考展示
-  const eng1 = getEnginePE1(engineData, qqIdx); // 1.0 mcap路，PE主路径
-  const currentPE = getCurrentPE(peData, null, eng1);
+  const engRef = getRefPE(engineData, qqIdx); // 非锚定的那条，小字并列展示
+  const currentPE = getCurrentPE(peData, getAnchorPE(engineData, qqIdx));
 
   // 已定档但引擎数据未就绪(新开端/夜锚未拉到)时 value 为非有限值，
   // 直接落入“未就绪”分支，避免下方 v.toFixed 抛错致定档保存“没反应”
@@ -97,16 +96,18 @@ function updatePeBar() {
   }
 
   const { value: v, bounds } = currentPE;
-  // 备用指数源不带总市值，1.0 锚失效、bar 退回昨收，在 2.0 数字下方标出
-  const bypass2Html = eng && eng.mode !== "close"
-    ? `<span class="pe-bypass2"><span class="num">${eng.pct.toFixed(2)}%</span>${
+  // 备用指数源不带总市值，mcap 锚失效、bar 退回昨收，在参考数字下方标出
+  const refHtml = engRef && engRef.mode !== "close"
+    ? `<span class="pe-bypass2"><span class="num">${engRef.pct.toFixed(2)}%</span>${
         getIndicesMeta()?.source === "backup" ? '<span class="src-tag">备用</span>' : ""
       }</span>`
     : "";
-  // 2.0 只由自己的 mode 决定显示，不再挂在 isDynamic（那取自 1.0）上：
-  // 走备用指数源时 1.0 因缺总市值而失效、主数字冻回昨收，此时点位路算出的
-  // 2.0 恰恰是仅存的实时估计，正是最该露出来的时候。
-  _peDOM.display.innerHTML = `<span class="num">${v.toFixed(2)}%</span>${bypass2Html}`;
+  // 参考路只由自己的 mode 决定显示，不挂在主路的 isDynamic 上：
+  // 走备用指数源时总市值路因缺 mcap 而失效、主数字冻回昨收，此时点位路算出的
+  // 数字恰恰是仅存的实时估计，正是最该露出来的时候。
+  // 注：类名 pe-bypass2 是 PE_ANCHOR="mcap" 时代的遗留（那时小字恒为 2.0）。
+  // 翻成 "price" 后小字变 1.0，类名语义会反过来——纯命名问题，不影响渲染，故不动 CSS。
+  _peDOM.display.innerHTML = `<span class="num">${v.toFixed(2)}%</span>${refHtml}`;
 
   const span = (bounds.sellPct - bounds.buyPct) * 2;
   const peMin = (bounds.buyPct + bounds.sellPct) / 2 - span / 2;
@@ -221,6 +222,4 @@ function UI_updateIndices() {
   renderIndices(getIndices(), getIndicesMeta());
   updatePeBar();
 }
-
-// 2. 本地配置(定锚/持仓)更新时触发 (手动触发)
 

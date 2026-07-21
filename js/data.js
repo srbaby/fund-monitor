@@ -4,7 +4,7 @@
 // ============================================================
 
 const officialBatchCache = {};
-let _estGistPushedDate = null;  // 记录今天已推 Gist 的日期，避免重复推送
+let _estGistReadTs = 0; // Gist 兜底读的节流时间戳，成败均推进（负缓存，见 D-018）
 
 function _fetchJson(url, timeoutMs) {
   const controller = new AbortController();
@@ -60,30 +60,6 @@ function _officialCacheTtl(data) {
     : timeNum >= SYS_CONFIG.T_OFF_UPDATE
       ? 5 * 60000
       : 3600000;
-}
-
-// ---- 估算 localStorage 缓存（收盘后保留最后估值）----
-function _lsEstKey() { return STORE_EST_CACHE; }
-function _lsSaveEstCache(estMap) {
-  try {
-    const entry = { ts: Date.now(), date: todayDateStr(), data: [...estMap] };
-    localStorage.setItem(_lsEstKey(), JSON.stringify(entry));
-  } catch {}
-}
-function _lsLoadEstCache(codes) {
-  try {
-    const raw = localStorage.getItem(_lsEstKey());
-    if (!raw) return null;
-    const entry = JSON.parse(raw);
-    const maxAge = entry.date === todayDateStr() ? 18 * 3600000 : 2 * 3600000;
-    if (Date.now() - entry.ts > maxAge) return null;
-    const map = new Map(entry.data);
-    const filtered = new Map();
-    for (const code of codes) {
-      if (map.has(code)) filtered.set(code, map.get(code));
-    }
-    return filtered.size ? filtered : null;
-  } catch { return null; }
 }
 
 // ============================================================
@@ -284,32 +260,29 @@ function fetchEstimates(codes) {
     return (async () => {
       const r = await _fetchTencentFunds(uniqueCodes);
       if (r && r.estimate.size) {
-        _lsSaveEstCache(r.estimate);
-        _maybePushEstToGist();
+        saveEstCache(r.estimate);
         return { source: "tencent", data: r.estimate };
       }
       // 本次无新估算 → 回退本地缓存
-      const lsCached = _lsLoadEstCache(uniqueCodes);
+      const lsCached = loadEstCache(uniqueCodes);
       if (lsCached) return { source: "cached", data: lsCached };
-      // 本地无缓存 → 尝试 Gist 跨设备兜底
-      try {
-        const { id, token } = loadGistConfig();
-        if (id && token) {
-          const gistData = await cloudReadEst(id, token);
-          if (gistData?.data) {
-            const gistMap = new Map(gistData.data);
-            const filtered = new Map();
-            for (const code of uniqueCodes) {
-              if (gistMap.has(code)) filtered.set(code, gistMap.get(code));
-            }
-            if (filtered.size) {
-              _lsSaveEstCache(filtered); // 下载到本地，下次秒回
-              return { source: "gist", data: filtered };
-            }
-          }
-        }
-      } catch {}
-      return _unavailable();
+      // 本地无缓存 → Gist 跨设备兜底。节流且失败也推进时间戳：
+      // 估算源断供时 fm_est.json 可能长期不存在，只在成功时节流等于没节流，
+      // 会退化成每 60 秒一次注定 404 的认证请求，还串在刷新的 await 链上。
+      if (Date.now() - _estGistReadTs < SYS_CONFIG.EST_GIST_READ_THROTTLE)
+        return _unavailable();
+      _estGistReadTs = Date.now();
+      const { id, token } = loadGistConfig();
+      if (!id || !token) return _unavailable();
+      const gistData = await cloudReadEst(id, token);
+      const gistMap = new Map(gistData?.data || []);
+      const filtered = new Map();
+      for (const code of uniqueCodes) {
+        if (gistMap.has(code)) filtered.set(code, gistMap.get(code));
+      }
+      if (!filtered.size) return _unavailable();
+      saveEstCache(filtered); // 落到本地，下次秒回
+      return { source: "gist", data: filtered };
     })();
   }
   return _fetchGroup(
@@ -318,24 +291,28 @@ function fetchEstimates(codes) {
   );
 }
 
-// Gist 快照：收盘后推送一次当日估算（fire-and-forget，不阻塞返回）。
-// 使用 localStorage 标记日期确保每天只推一次。
-function _maybePushEstToGist() {
+// Gist 快照：收盘后推一次当日最后的估算（fire-and-forget，不阻塞刷新）。
+// **时机由 interact 的 refreshData 按 POST_MARKET 决定，不在这里判**——getMarketState 属
+// engine 层，而 data 与 engine 平级互不依赖（docs/02 §2.2）。
+// 旧实现挂在每次估算成功之后，推的是当日第一笔（09:31 开盘估算），与 D-014 的「收盘后」相悖。
+// 标记改为推送成功后才落：先落会让一次失败吞掉当天仅有的机会。
+function pushEstToGist() {
   const today = todayDateStr();
-  const marker = "fm_est_gist_date_v1";
-  try { if (localStorage.getItem(marker) === today) return; } catch { return; }
-  try { localStorage.setItem(marker, today); } catch {}
+  if (loadEstGistDate() === today) return;
+  const { id, token } = loadGistConfig();
+  if (!id || !token) return;
+  const entry = loadEstCacheEntry();
+  if (!entry) return;
   setTimeout(async () => {
-    try {
-      const { id, token } = loadGistConfig();
-      if (!id || !token) return;
-      const raw = localStorage.getItem(_lsEstKey());
-      if (!raw) return;
-      const entry = JSON.parse(raw);
-      if (entry.date !== today) return;
-      await cloudUpdateEst(id, token, { date: today, updatedAt: new Date().toISOString(), data: entry.data });
+    const ok = await cloudUpdateEst(id, token, {
+      date: today,
+      updatedAt: new Date().toISOString(),
+      data: entry.data,
+    });
+    if (ok) {
+      markEstGistPushed();
       console.log("✅ 估算快照已同步 Gist");
-    } catch { /* 静默 */ }
+    }
   }, 0);
 }
 

@@ -25,6 +25,11 @@ const SYS_CONFIG = {
   FETCH_EST_TIMEOUT: 12000, // 盘中估算请求超时（ms）
   FETCH_OFF_TIMEOUT: 12000, // 官方净值请求超时（ms）
   FETCH_INDEX_TIMEOUT: 12000, // 指数行情请求超时（ms）
+  // 估算缓存与 Gist 兜底（详见 docs/DECISIONS.md D-018）
+  EST_CACHE_MAX_AGE: 7 * 24 * 3600000, // 估算缓存整份丢弃的硬上限（ms）。新旧不由它判——
+  // 每条估算自带 estimateAt，标签按那个日期打，这里只防缓存无限期沉底
+  EST_GIST_READ_THROTTLE: 30 * 60000, // Gist 兜底读节流（ms）。失败也推进时间戳作负缓存：
+  // fm_est.json 可能长期不存在，只在成功时节流等于没节流
 };
 
 // ============================================================
@@ -34,6 +39,17 @@ const SYS_CONFIG = {
 // 改这一个常量 + 推一次即全站切换（详见 docs/DECISIONS.md D-013）。
 // 切换逻辑只在 data.js 的两个分支内，禁止在第三处另开数据源。
 const DATA_MODE = "direct";
+
+// ============================================================
+// PE 锚定路径开关（详见 docs/DECISIONS.md D-017）
+//   PE_ANCHOR = "mcap"  → 1.0 总市值路（getEnginePE1）。D-006 实测平均误差 0.41pp / 最大 0.86pp
+//   PE_ANCHOR = "price" → 2.0 点位路（getEnginePE）。平均 1.31pp / 最大 3.69pp，
+//                         但成分调整日总市值会跳变，那种日子点位路反而是有效参照
+// 大号 PE、bar、触发状态、权益方向异常判断——全部经 engine 的 getAnchorPE 走这一个常量。
+// PE 栏小字自动展示**另一条**路（getRefPE），翻转开关时主副对调，两条路永远同时可见。
+// 新增 PE 相关调用点一律走 getAnchorPE，禁止直接调 getEnginePE / getEnginePE1，否则会像
+// 2026-07-21 之前那样：PE 栏用 1.0、持仓抽屉用 2.0，同一份持仓两处染色不一致。
+const PE_ANCHOR = "mcap";
 
 // 市场数据网关。浏览器只请求这一个域名，三条数据链的主备切换全在网关内完成。
 const API_BASE = "https://fund-api.bailuzun.com";
@@ -138,6 +154,7 @@ const STORE_SELL_PLAN = "jy_sell_plan_v1";
 const STORE_PRIORITY_SELL = "jy_priority_sell_v1";
 const STORE_CONFIG_VER = "jy_config_ver_v1";
 const STORE_EST_CACHE = "fm_est_cache_v1";          // 估算 localStorage 缓存（收盘后保留）
+const STORE_EST_GIST_DATE = "fm_est_gist_date_v1";  // 估算已推 Gist 的日期（每日一次去重）
 const STORE_GIST_ID = "fm_gist_id";
 const STORE_GIST_TOKEN = "fm_gist_token";
 

@@ -30,9 +30,11 @@ function isEquityWrongDir(peVal, diff) {
   );
 }
 
-// engineResult: getEnginePE() 的返回值，由调用方注入（依赖注入，engine 层不读 store）
-// 优先用旁路引擎实时百分位；引擎不可用时回落到昨收官方百分位
-function getCurrentPE(peData, _currentIdxPrice, engineResult) {
+// engineResult: getAnchorPE() 的返回值，由调用方注入（依赖注入，engine 层不读 store）。
+// peData 只承载 bucketStr（用户定的档位区间），PE 数值全部来自旁路引擎——
+// 早年的"夜间录入三个点位 + 分段线性插值"已被引擎百分位取代，见 D-016。
+// 引擎未就绪时 value 为 undefined，由 ui-pe.js 的 Number.isFinite 守卫落入"等待数据"。
+function getCurrentPE(peData, engineResult) {
   if (!peData || !peData.bucketStr) return null;
 
   const [loStr, hiStr] = peData.bucketStr.split(",");
@@ -40,8 +42,12 @@ function getCurrentPE(peData, _currentIdxPrice, engineResult) {
   const sellPct = parseFloat(hiStr) + SYS_CONFIG.BUFFER_ZONE;
 
   const isDynamic = !!(engineResult && engineResult.mode !== "close");
-  const v = engineResult ? engineResult.pct : peData.peYest;
-  return { value: v, isDynamic, rawData: peData, bounds: { buyPct, sellPct } };
+  return {
+    value: engineResult?.pct,
+    isDynamic,
+    rawData: peData,
+    bounds: { buyPct, sellPct },
+  };
 }
 
 // 旁路2.0（点位路）：旁路参考展示（小字显示于主PE旁）
@@ -102,6 +108,23 @@ function getEnginePE1(engineData, qqIdx) {
     else hi = mid;
   }
   return { pe, pct: (lo / a.length) * 100, mode, date: engineData.date || "" };
+}
+
+// PE 锚定路径分发：全站 PE 的唯一入口，由 config 的 PE_ANCHOR 决定走哪条（D-017）。
+// 收口在这里而不是各调用点自己选，是因为"哪条是主路径"这个知识一旦散落，
+// 下次新增调用点必然再分叉一次——2026-07-21 之前 PE 栏走 1.0、持仓抽屉走 2.0 就是这么来的。
+function getAnchorPE(engineData, qqIdx) {
+  return PE_ANCHOR === "price"
+    ? getEnginePE(engineData, qqIdx)
+    : getEnginePE1(engineData, qqIdx);
+}
+
+// 参考路径：永远返回锚定路径之外的**另一条**，供 PE 栏小字并列展示。
+// 与 getAnchorPE 互补，翻转 PE_ANCHOR 时主副自动对调，开关才真正可用。
+function getRefPE(engineData, qqIdx) {
+  return PE_ANCHOR === "price"
+    ? getEnginePE1(engineData, qqIdx)
+    : getEnginePE(engineData, qqIdx);
 }
 
 // 根据 PE 百分位反查对应的沪深300点位（用于 tooltip 显示买卖边界点位）
@@ -296,73 +319,76 @@ function calcTodayProfit(
   let totalProfit = 0,
     totalYestVal = 0,
     allUpdated = true,
-    hasHoldings = false;
-  let isWaitingForOpen = mktState === "PRE_MARKET";
+    hasHoldings = false, // 有持仓（不论数据新旧）
+    hasParticipating = false; // 其中有今日数据、真正参与了计算的
 
   activeProducts.forEach((p) => {
     const shares = holdings[p.code] || 0;
     if (shares <= 0) return;
+    // 「有持仓」只看份额，不看请求成没成功——否则整组超时会让顶部变空白，
+    // 看起来像"没有持仓"，而正确的表达是"有持仓但此刻不知道"（显示 -）。
+    hasHoldings = true;
     const f = results.find((r) => r.code === p.code);
     if (!f || f.error) {
       allUpdated = false;
       return;
     }
-    hasHoldings = true;
 
     const estD = f.estTime ? f.estTime.slice(0, 10) : "";
     const offD = f.offDate ? f.offDate.slice(0, 10) : "";
-    // 计算口径（与 getNavByCode、持仓抽屉 profitMap 同口径）：没有估算时
-    // （估算整组不可用）就用官方，否则这只会取到 null → NaN → 被整只跳过，
-    // 导致今日涨跌归零而抽屉里照常有收益。前两项是市场状态短路，engine 独有。
-    // 注意：这条只决定 nav/pct 取哪边，不决定「已更新」徽标。徽标必须严格——
-    // 估算空 + 官方是昨天的，算式还能凑出 0 涨跌，但不应让用户以为今天已收齐。
-    const isOfficialUpdated =
-      mktState === "WEEKEND" ||
-      mktState === "BEFORE_PRE" ||
-      !!(f.offVal && (!estD || offD >= estD));
 
-    // 「已更新」徽标：官方是今天 OR 估算是今天，缺一不可。
-    // 单独拆出来，避免「今天刷新未完成但估计整组挂了」时给出错误信号。
+    // 「已更新」徽标：官方是今天 OR 估算是今天，缺一不可（D-010）。
     const isOffToday = offD === todayStr;
     const isEstToday = estD === todayStr;
     const isFundUpdated = isOffToday || isEstToday;
 
     if (!isFundUpdated) allUpdated = false;
 
-    const nav = isOfficialUpdated ? parseFloat(f.offVal) : parseFloat(f.estVal);
-    const pct = isOfficialUpdated ? parseFloat(f.offPct) : parseFloat(f.estPct);
+    // 收益口径的日期闸门（D-019）：**只有今天的数据才算今天的收益。**
+    // 盘中官方永远停在昨天，估算断供时旧判据会退到官方，把上一交易日的涨跌
+    // 当成今日收益发出来（2026-07-21 实测 +1010，实为周一那段）。
+    // 非交易日例外：WEEKEND / BEFORE_PRE 今天本就不该有数据，回退到最近可得，
+    // 顶部因而改名「最新收益」；其余时段今天该有却没有，属异常，整只不参与。
+    const isNonTradingDay = mktState === "WEEKEND" || mktState === "BEFORE_PRE";
+    if (!isFundUpdated && !isNonTradingDay) return;
 
-    if (!isNaN(nav)) {
-      let yestNav = null;
-      const isBaseNavValid =
-        f.baseNav &&
-        f.baseDate &&
-        ((isOfficialUpdated && f.baseDate < offD) ||
-          (!isOfficialUpdated && f.baseDate < todayStr));
+    // 同为今日时官方优先；非交易日回退沿用「有官方且不比估算旧」。
+    // ⚠️ 与 data.js 的 getNavByCode **有意不同**——那条是市值口径，要最新可得净值，
+    // 哪天的都对；这条是收益口径，必须是今天的。见红线 #6 的两类口径。
+    const useOfficial = isNonTradingDay
+      ? !!(f.offVal && (!estD || offD >= estD))
+      : isOffToday;
 
-      if (isBaseNavValid) yestNav = f.baseNav;
-      else if (!isNaN(pct)) yestNav = nav / (1 + pct / 100);
-      else return;
+    const nav = useOfficial ? parseFloat(f.offVal) : parseFloat(f.estVal);
+    const pct = useOfficial ? parseFloat(f.offPct) : parseFloat(f.estPct);
+    if (isNaN(nav)) return;
 
-      totalYestVal += shares * yestNav;
-      totalProfit += shares * (nav - yestNav);
+    let yestNav = null;
+    const isBaseNavValid =
+      f.baseNav &&
+      f.baseDate &&
+      (useOfficial ? f.baseDate < offD : f.baseDate < todayStr);
 
-      if (
-        !isOfficialUpdated &&
-        estD !== todayStr &&
-        (mktState === "PRE_MARKET" || mktState === "TRADING")
-      ) {
-        isWaitingForOpen = true;
-      }
-    }
+    if (isBaseNavValid) yestNav = f.baseNav;
+    else if (!isNaN(pct)) yestNav = nav / (1 + pct / 100);
+    else return;
+
+    hasParticipating = true;
+    totalYestVal += shares * yestNav;
+    totalProfit += shares * (nav - yestNav);
   });
+
+  // 有持仓、却没有一只拿得出今日数据 → 顶部显示「-」而不是编一个 0.00。
+  // 盘前集合竞价同理（今日估算还没开始推）。
+  const isWaitingForData =
+    mktState === "PRE_MARKET" || (hasHoldings && !hasParticipating);
 
   return {
     totalProfit,
     totalYestVal,
     allUpdated,
-    hasHoldings,
-    isWaitingForOpen,
+    hasHoldings: hasParticipating,
+    isWaitingForData,
   };
 }
 

@@ -93,6 +93,11 @@ async function refreshData() {
       funds.map((code) => fetchSingleFund(code, official, estimate)),
     );
 
+    // 收盘后把当日最后一笔估算推一次 Gist，供换设备冷启动兜底（D-018）。
+    // 判断放这里而非 data 层：getMarketState 属 engine，与 data 平级互不依赖。
+    // 收盘后首个 tick 落在 15:00–15:01，缓存里正是当日最后一笔，"收盘后"与"最新"同时满足。
+    if (DATA_MODE === "direct" && mkt === "POST_MARKET") pushEstToGist();
+
     if (funds.length > 0) rebuildSortable();
   } finally {
     _isFetchingData = false;
@@ -138,7 +143,6 @@ function closePeModal() {
 
 function confirmPe() {
   const bucketStr = document.getElementById("peModalBucket").value;
-  const peData = loadPe() || {};
   savePe({ bucketStr });
   syncCloud("push_pe_now");
   closePeModal();
@@ -153,7 +157,6 @@ function liveUpdateHoldingPlan() {
 
   const activeProds = getActiveProducts();
   const peData = loadPe();
-  const currentPE = getCurrentPE(peData, null, getEnginePE(loadPeEngine(), getQQIndex()));
   const targetEqNeutral = getDynamicTarget("neutral", peData?.bucketStr);
 
   // 叠加当前表单未保存的内容
@@ -194,7 +197,6 @@ function liveUpdateHoldingPlan() {
 
   planArea.innerHTML = UI_buildHoldingPlanHtml(
     activeProds,
-    currentPE,
     targetEqNeutral,
     eqData,
     buyDraft,
@@ -208,7 +210,7 @@ function openHoldingDrawer() {
     shortNameMap = loadShortNames();
   const activeProds = getActiveProducts();
   const peData = loadPe();
-  const currentPE = getCurrentPE(peData, null, getEnginePE(loadPeEngine(), getQQIndex()));
+  const currentPE = getCurrentPE(peData, getAnchorPE(loadPeEngine(), getQQIndex()));
   const targetEqNeutral = getDynamicTarget("neutral", peData?.bucketStr);
 
   // 在 interact 层完成权益计算，传给 UI 工厂
@@ -217,6 +219,7 @@ function openHoldingDrawer() {
   // 在 interact 层计算各产品今日盈亏，传给 UI 工厂（避免 ui 层自行做计算）
   const lastResults = getLastResults();
   const today = todayDateStr();
+  const mkt = getMarketState();
   const profitMap = {};
   activeProds.forEach((p) => {
     const shares = holdings[p.code] || 0;
@@ -227,13 +230,24 @@ function openHoldingDrawer() {
     }
     const offD = f.offDate ? f.offDate.slice(0, 10) : "";
     const estD = f.estTime ? f.estTime.slice(0, 10) : "";
-    const isOfficialUpdated = f.offVal && (!estD || offD >= estD);
-    const nav = parseFloat(isOfficialUpdated ? f.offVal : f.estVal);
+    // 收益口径的日期闸门，与 engine 的 calcTodayProfit 同口径（D-019）。
+    // 顶部和抽屉是同一个口径的两个出口，**必须同步**——只改顶部就会精确复现
+    // D-010 当初修掉的那个 bug：顶部归零，抽屉里却照常有收益，两者对不上。
+    const isNonTradingDay = mkt === "WEEKEND" || mkt === "BEFORE_PRE";
+    const isFundUpdated = offD === today || estD === today;
+    if (!isFundUpdated && !isNonTradingDay) {
+      profitMap[p.code] = null;
+      return;
+    }
+    const useOfficial = isNonTradingDay
+      ? !!(f.offVal && (!estD || offD >= estD))
+      : offD === today;
+    const nav = parseFloat(useOfficial ? f.offVal : f.estVal);
     if (isNaN(nav)) {
       profitMap[p.code] = null;
       return;
     }
-    const activePct = isOfficialUpdated ? f.offPct : f.estPct;
+    const activePct = useOfficial ? f.offPct : f.estPct;
     let yestNav = null;
     if (f.baseNav && f.baseDate) yestNav = f.baseNav;
     else if (activePct != null && !isNaN(activePct))
@@ -428,7 +442,9 @@ function openCloudConfig() {
   });
 }
 
-// 返回 true 表示有实际数据变更，false 表示失败或内容无变化
+// pull 的返回值表示**拉取是否成功**，不是"内容是否变更"——取到任一文件即 true（哪怕无变更），
+// 仅两文件都取不到才 false。manualPull / openCloudConfig 据此提示成败，main.js 据此决定是否本地补刷。
+// 见 docs/02-系统架构.md §2.5。
 // mode: "pull" | "push_pe" | "push_pe_now" | "push_config"
 async function syncCloud(mode = "pull") {
   const { id: gid, token: gtk } = loadGistConfig();

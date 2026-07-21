@@ -42,12 +42,16 @@ function getDisplayName(f) {
   return f.name || NAMES[f.code] || f.code;
 }
 
-// 备用线路的两个小字，只在整组降级时出现；主线路不出声
-// 主线路不出声。备用与陈旧各自就近挂两个小字：
-// 陈旧代表网关退回了上次好数据（D-001），旁边 meta 行的时间戳就是那份数据的原始时间。
-function srcTag(source) {
+// 主线路不出声，只在数据不新鲜时挂两个小字。
+// backup / stale 由网关给定，stale 代表网关退回了上次好数据（D-001）。
+// cached / gist 是直连模式的本地/跨设备回退（D-018）——**它们本身不代表旧**：
+// 收盘后沿用当日 14:59 那笔仍是当日数据，标成陈旧反而不准。故按数据自带日期判，
+// 不按来源判。dataDate 取自条目的 estimateAt / officialAt，旁边 meta 行显示的就是它。
+function srcTag(source, dataDate, today) {
   if (source === "backup") return '<span class="src-tag">备用</span>';
   if (source === "stale") return '<span class="src-tag is-stale">陈旧</span>';
+  if ((source === "cached" || source === "gist") && dataDate && dataDate !== today)
+    return '<span class="src-tag is-stale">陈旧</span>';
   return "";
 }
 
@@ -223,8 +227,8 @@ function buildCardInnerHtml(f, fl, today, tradingDay) {
     <div class="card-actions"><button class="del-btn" onclick="delFund('${f.code}')">删除</button></div>
   </div>
   <div class="card-data">
-    <div class="data-half"><div class="dh-label">盘中估算${srcTag(f.estSource)}</div><div class="dh-pct num ${ep.cls} ${ef}">${ep.txt}</div><div class="dh-meta"><span>净值 <b class="num">${f.estVal || "--"}</b></span><span class="num">${f.estTime ? f.estTime.slice(11, 16) : "--"}</span></div></div>
-    <div class="data-half${isStale ? " stale" : ""}"><div class="dh-label">官方数据${srcTag(f.offSource)}</div><div class="dh-pct num ${op.cls} ${of2}">${op.txt}</div><div class="dh-meta"><span>净值 <b class="num">${f.offVal || "--"}</b></span><span class="num">${f.offDate ? f.offDate.slice(5) : "--"}</span></div></div>
+    <div class="data-half"><div class="dh-label">盘中估算${srcTag(f.estSource, f.estTime?.slice(0, 10), today)}</div><div class="dh-pct num ${ep.cls} ${ef}">${ep.txt}</div><div class="dh-meta"><span>净值 <b class="num">${f.estVal || "--"}</b></span><span class="num">${f.estTime ? f.estTime.slice(11, 16) : "--"}</span></div></div>
+    <div class="data-half${isStale ? " stale" : ""}"><div class="dh-label">官方数据${srcTag(f.offSource, f.offDate?.slice(0, 10), today)}</div><div class="dh-pct num ${op.cls} ${of2}">${op.txt}</div><div class="dh-meta"><span>净值 <b class="num">${f.offVal || "--"}</b></span><span class="num">${f.offDate ? f.offDate.slice(5) : "--"}</span></div></div>
   </div>`;
 }
 
@@ -274,8 +278,8 @@ function buildTableInnerHtml(f, fl, today, tradingDay) {
     (!f.offDate || f.offDate.slice(0, 10) < today);
 
   return `<td><span class="tbl-drag">⠿</span><div style="display:inline-block;vertical-align:top"><div class="tbl-name">${dName}</div><div class="tbl-code num">${f.code}</div></div></td>
-    <td><div class="tbl-pct num ${ep.cls} ${ef}">${ep.txt}</div><div class="tbl-nav">净值 <span class="nv num">${f.estVal || "--"}</span></div><div class="tbl-time num">${f.estTime || "--"}</div></td>
-    <td><div style="${tblStale ? "opacity:0.35;filter:grayscale(1)" : ""}"><div class="tbl-pct num ${op.cls} ${of2}">${op.txt}</div><div class="tbl-nav">净值 <span class="nv num">${f.offVal || "--"}</span></div><div class="tbl-time num">${f.offDate || "--"}</div></div></td>
+    <td><div class="tbl-pct num ${ep.cls} ${ef}">${ep.txt}</div><div class="tbl-nav">净值 <span class="nv num">${f.estVal || "--"}</span></div><div class="tbl-time num">${f.estTime || "--"}${srcTag(f.estSource, f.estTime?.slice(0, 10), today)}</div></td>
+    <td><div style="${tblStale ? "opacity:0.35;filter:grayscale(1)" : ""}"><div class="tbl-pct num ${op.cls} ${of2}">${op.txt}</div><div class="tbl-nav">净值 <span class="nv num">${f.offVal || "--"}</span></div><div class="tbl-time num">${f.offDate || "--"}${srcTag(f.offSource, f.offDate?.slice(0, 10), today)}</div></div></td>
     <td><button class="tbl-del" onclick="delFund('${f.code}')">删除</button></td>`;
 }
 
@@ -319,11 +323,11 @@ function renderTodayProfit(results, holdings, activeProds, mktState, todayStr) {
     totalYestVal,
     allUpdated,
     hasHoldings,
-    isWaitingForOpen,
+    isWaitingForData,
   } = calcTodayProfit(results, holdings, activeProds, mktState, todayStr);
-  let html = isWaitingForOpen ? `<span style="color:var(--t3)">-</span>` : "";
+  let html = isWaitingForData ? `<span style="color:var(--t3)">-</span>` : "";
 
-  if (!isWaitingForOpen && hasHoldings) {
+  if (!isWaitingForData && hasHoldings) {
     const sign = totalProfit > 0 ? "+" : "",
       cls = totalProfit > 0 ? "up" : totalProfit < 0 ? "down" : "flat";
     const pctText =
@@ -344,7 +348,7 @@ function renderTodayProfit(results, holdings, activeProds, mktState, todayStr) {
 // 响应式订阅更新器 (Topic-based Renderers)
 // ============================================================
 
-// 1. 仅指数更新时触发 (每10秒)
+// LOCAL_CONFIG 频道：PE 定锚、持仓/降权预案/优先卖出变更时触发
 function UI_updateLocalConfig() {
   const results = getLastResults(),
     mktState = getMarketState(),
@@ -362,7 +366,7 @@ function UI_updateLocalConfig() {
   );
 }
 
-// 3. 基金净值更新、或列表增删时触发 (每60秒 / 手动增删)
+// FUNDS 频道：净值刷新（每 60 秒）、或列表增删时触发
 function UI_updateFunds() {
   const results = getLastResults();
   const fl = calcFlash(results),
