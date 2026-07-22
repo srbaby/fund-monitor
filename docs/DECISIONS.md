@@ -24,6 +24,8 @@
 
 | 编号 | 日期 | 决策 | 状态 |
 | --- | --- | --- | --- |
+| [D-026](#d-026) | 2026-07-22 | 采集器真竞争：按完成时间选源，per-fund at；取代 D-023 A 节"东财平局胜" | 生效中 |
+| [D-025](#d-025) | 2026-07-22 | 刷新按钮 force 绕过缓存；半成品短缓存；direct 模式 LKG 回退 | 生效中 |
 | [D-024](#d-024) | 2026-07-22 | 基准代理净值按指数日期对齐前一交易日基准，禁止正式净值落地后重复计算当日涨幅 | 生效中 |
 | [D-023](#d-023) | 2026-07-21 | 官方净值双源并行 + 逐只取新；官方列允许混源，表头标签改「抢先源 + 抢到数」 | 生效中 |
 | [D-022](#d-022) | 2026-07-21 | 基准代理改为入库前统一回填，权益%/总额/收益共用一条净值链 | 生效中 |
@@ -48,6 +50,135 @@
 | [D-003](#d-003) | 早于 2026-06 | 增权份额除以兴全净值而非买入标的净值 | 生效中 |
 | [D-002](#d-002) | 2026-07-16 | 网关"整组成败"，禁止主备混用 | 生效中（边界见 D-001） |
 | [D-001](#d-001) | 2026-06-19 / 2026-07-20 | 行情数据 last-known-good 保护，落在网关侧 | 生效中 |
+
+---
+
+<a id="d-026"></a>
+## D-026 · 采集器真竞争：按完成时间选源，取代 D-023 A 节"东财平局胜"
+
+**状态**：生效中
+**日期**：2026-07-22
+**关联**：[D-023](#d-023) A 节（本条取代其"同一跳两源都给出当日 → 记 eastmoney"规则）
+
+### 背景
+
+D-023 A 节白纸黑字写"先到先得记账"，但实现是 `Promise.allSettled` 等两源都完成后 `emOk ? em : tx`
+永远东财优先。只要东财能提供全部基金的当日净值，标签永远是"东财N"，腾讯永远没机会"抢到"。
+用户原话："改成真正的按到达时间竞争——腾讯先到就用腾讯。"
+
+此外，同一跳所有基金共用一个 `at = bjStamp()`（循环外取一次），前端 `pickWinnerTag` 取 `offAt`
+最小者——同跳内 `at` 全相同，first 取决于 reduce 写入顺序，无法反映真实抢先。
+
+### 决策
+
+1. 两源各 `.then((m) => ({ map: m, doneAt: Date.now() }))` 记录完成时间戳。`Promise.allSettled`
+   仍等两源完成（`diag` 需要两源诊断），但选源按完成时间。
+2. `useEm = emOk && (!txOk || emDoneAt <= txDoneAt)` —— 东财有当日数据且（腾讯没有 或 东财先完成/同时完成）
+   时用东财；否则用腾讯。真正的"先到先得"体现在选源逻辑。
+3. per-fund `at = bjStamp(emDoneAt/txDoneAt)` 反映实际抢到时刻（毫秒级），不再同一跳统一。
+4. 平局（`doneAt` 相等，毫秒级极少见）仍归东财，保留主源 tiebreaker 作为兜底，保证可重现性。
+5. `first` 重算逻辑（取 `at` 最小的 src）不需要改——per-fund at 改后自然正确。
+
+### 理由
+
+- "先到先得"是 D-023 的承诺，原实现名不副实。真竞争让腾讯有机会在它更快时抢到，标签会变字，
+  用户能据此判断两源是否都在工作。
+- 不改批量请求方式：东财腾讯都是批量 API，`Promise.allSettled` 仍要等两源完成（diag 需要）。
+  真竞争体现在选源逻辑，不是"不等慢源"——慢源可能抢到快源没有的那些基金。
+- 平局归东财：完全平局随机会让结果不可重现（同一份 KV 不同设备算出不同 first）。保留东财
+  tiebreaker 是稳定选择。
+
+### 代价
+
+- `workers/fund-nav-collector/src/index.js` 净增约 10 行（`bjStamp` 加默认参数 +1、collect 里
+  doneAt 记录和选源 +10、删 `const at = bjStamp()` -1）。换来的能力：真竞争、per-fund 抢到时刻。
+- 若东财始终比腾讯快（如东财 2s、腾讯 5s），标签仍可能永远是东财——但这取决于两源实际响应速度，
+  非本条能控制。至少腾讯偶尔更快时标签会正确变字。
+
+### 代码位置
+
+- `workers/fund-nav-collector/src/index.js`：`bjStamp` 加可选 ms 参数；`collect` 内 doneAt 记录和按完成时间选源
+
+### 须同步修订的正文章节
+
+- `docs/DECISIONS.md` D-023 A 节：注明"同一跳东财平局胜"规则已被 D-026 取代
+- `CLAUDE.md` 第四节"先到先得记账"补充"按完成时间，平局归东财"
+
+### 取代关系
+
+取代 [D-023](#d-023) A 节"同一跳两源都给出当日 → 记 eastmoney（主源平局规则）"。D-023 其余各节（B–G）继续生效。
+
+---
+
+<a id="d-025"></a>
+## D-025 · 刷新按钮 force 绕过缓存；半成品短缓存；direct 模式 LKG 回退
+
+**状态**：生效中
+**日期**：2026-07-22
+**关联**：[D-023](#d-023)（采集器 KV 唯一来源，本条补前端缓存策略）/[D-001](#d-001)（LKG 保护，本条补齐 direct 模式缺失）
+
+### 背景
+
+三个症状，同一根因链：
+
+1. **刷新按钮无效**：`refreshData()` → `fetchOfficialData()` 命中 `officialBatchCache`，TTL 由
+   `_officialCacheTtl()` 决定。采集器 19:00+ 写今日数据后 `isTodayData=true` → TTL 跳 **12 小时**。
+   半成品（只采到部分基金）被锁 12h，刷新按钮命中缓存返回旧部分数据。点 LOGO 的
+   `location.reload()` 清空所有模块级变量才能重新请求。
+
+2. **晚间部分基金"什么都没有"**：采集器半成品没采到的基金 `off=null`，盘后腾讯返回 0 +
+   无当日 localStorage/Gist → `est=null` → `fetchSingleFund` 返回 `error:true` →
+   `applyProxyEstimates` 对 error 条目直接 return → 代理也不填 → 估算列全空 → 卡片"⚠ 获取超时"。
+
+3. **direct 模式无 LKG**：D-001 明确"保护落在网关侧"，但 direct 模式不走网关，采集器 KV
+   失败/半成品时前端无回退，违反红线 #2"拿不到新数据时退回上次好数据"的意图。
+
+### 决策
+
+1. **`refreshData(force=false)`**：force=true 时绕过 `officialBatchCache` 和 `_navCollectorCache`。
+   刷新按钮 onclick 传 `true`；60 秒定时器 / visibilitychange / 增删基金 / 云同步保持 `false`。
+
+2. **`_officialCacheTtl(data, codesCount)`**：加 codesCount 参数，今日数据但 `data.size < codesCount`
+   （半成品）时走 5min 短缓存，采全后才 12h。不假设固定时段（用户可能在 Dashboard 随时改 cron）。
+
+3. **direct 模式 LKG 回退**：`refreshData` 里 `fetchSingleFund` 返回 error 时，从 `getLastResults()`
+   找上次好数据填入，`offSource: "stale"` 标记陈旧。`applyProxyEstimates` 据此重算代理，估算列不会全空。
+   `offSource: "stale"` 复用 `srcTag` 既有的"陈旧"分支（ui.js），`pickWinnerTag` 跳过 stale
+   （`SRC_LABELS` 无此项），UI 零改动。
+
+### 理由
+
+- **force 参数**：刷新按钮的语义就是"实时刷新"，不应被缓存拦截。但 60 秒定时器和 visibilitychange
+  不应绕过缓存——采集器 cron 每分钟一跳，前端再打一次是纯浪费。
+- **半成品 5min**：采集器每分钟一跳，半成品 5min 后必有补采。原 12h 缓存让 60 秒定时器拿不到补采，
+  违反"采集器持续采集"的设计意图。用 `data.size >= codesCount` 判断是否采全，不依赖固定时段。
+- **LKG 回退**：红线 #2 在 direct 模式一直缺失。D-001 说"保护落在网关侧"，但 direct 模式不走网关，
+  前端必须有等效机制。复用 `srcTag` 的 stale 分支，UI 零改动。
+
+### 代价
+
+- `js/` 净增约 11 行（interact.js +6、data.js +5），`index.html` 改 2 行 onclick 不增减。
+  换来的能力：刷新按钮实时刷新、半成品不再锁 12h、direct 模式 LKG 回退。
+- force 刷新会绕过 30 秒 `_navCollectorCache`，连续点刷新会每秒打采集器端点。缓解：`_isFetchingData`
+  互斥锁防止并发刷新。
+- LKG 回退的条目 `offDate` 可能是上一交易日，`applyProxyEstimates` 用它作 baseNav 算代理——
+  这是 D-024 已覆盖的场景（offD < quoteD 直接作基准）。
+
+### 代码位置
+
+- `js/interact.js`：`refreshData` 加 force 参数 + LKG 回退
+- `js/data.js`：`fetchOfficialData` / `_fetchNavCollector` 加 force 参数；`_officialCacheTtl` 加 codesCount
+- `index.html`：两处刷新按钮 onclick 传 `true`
+
+### 须同步修订的正文章节
+
+- `CLAUDE.md` 红线 #2：补 direct 模式 LKG 回退说明（当前只说"保护落在网关侧"）
+- `docs/02-系统架构.md`：direct 模式数据流补 LKG 回退链
+- `docs/03-实现约束.md`：`_officialCacheTtl` 的 codesCount 参数和半成品判断
+
+### 取代关系
+
+不取代既有决策；补齐 D-001 在 direct 模式的缺失，补 D-023 未覆盖的前端缓存策略。
 
 ---
 
@@ -130,7 +261,7 @@
 - 每分钟一跳，19:00–23:00 北京（= 11:00–15:00 UTC），交易日。两条 cron 表达式覆盖（CF 限制每 Worker 最多 3 条）。
 - 每跳 `Promise.allSettled` **并行**打东财 `FundMNFInfo` 与腾讯 `jj{code}`，逐只**只接受 `officialAt === 今日`** 的条目。这一条直接修掉背景 1 的判据错误。
 - **先到先得**：`funds[code]` 一旦写入就永不覆盖，`src`（谁给的）与 `at`（何时给的）从此不可变。
-- 同一跳两源都给出当日 → 记 `eastmoney`（主源平局规则）。真正的"抢先"体现在**跨跳**：某只 19:41 只有腾讯有，就永久记在腾讯名下。
+- 同一跳两源都给出当日 → 记 `eastmoney`（主源平局规则）。~~此规则已被 [D-026](#d-026) 取代：改为按完成时间选源，平局归东财。~~ 真正的"抢先"体现在**跨跳**：某只 19:41 只有腾讯有，就永久记在腾讯名下。
 - 结果存 KV `nav:YYYY-MM-DD`，前端经 `GET /v1/nav/today` 读。
 
 **B. 早退，且 `complete` 不落盘**

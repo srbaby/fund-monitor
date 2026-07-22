@@ -46,7 +46,7 @@ function _normalizeCodes(codes) {
   ].filter((code) => /^\d{6}$/.test(code));
 }
 
-function _officialCacheTtl(data) {
+function _officialCacheTtl(data, codesCount) {
   const now = new Date();
   const timeNum = now.getHours() * 60 + now.getMinutes();
   const day = now.getDay();
@@ -55,9 +55,13 @@ function _officialCacheTtl(data) {
     .filter(Boolean);
   const isTodayData =
     dates.length > 0 && dates.every((date) => date === todayDateStr());
-  return isTodayData || day === 0 || day === 6
+  // 半成品（今日数据但没采全）→ 5min 短缓存等补采；采全或非交易日 → 12h（D-025）。
+  // 不假设固定时段（用户可能随时改 cron）。codesCount 来自 fetchOfficialData 入参，
+  // data.size 是采集器端点返回的实际只数（已过滤 nav>0）。
+  const isComplete = !codesCount || data?.size >= codesCount;
+  return (isTodayData && isComplete) || day === 0 || day === 6
     ? 12 * 3600000
-    : timeNum >= T_OFF_UPDATE
+    : (isTodayData || timeNum >= T_OFF_UPDATE)
       ? 5 * 60000
       : 3600000;
 }
@@ -225,8 +229,8 @@ async function _fetchIndexGroupTencent() {
 // 读端点会回退到 nav:latest（上一交易日）。officialAt 取记录自带日期，
 // 于是 getNavByCode 的市值口径与 calcTodayProfit 的收益口径各自照旧判新旧，无需感知回退。
 let _navCollectorCache = { ts: 0, value: null };
-async function _fetchNavCollector() {
-  if (Date.now() - _navCollectorCache.ts < NAV_COLLECTOR_TTL)
+async function _fetchNavCollector(force = false) {
+  if (!force && Date.now() - _navCollectorCache.ts < NAV_COLLECTOR_TTL)
     return _navCollectorCache.value;
   let value = null;
   try {
@@ -256,19 +260,21 @@ async function _fetchNavCollector() {
   return value;
 }
 
-async function fetchOfficialData(codes) {
+async function fetchOfficialData(codes, force = false) {
   const uniqueCodes = _normalizeCodes(codes);
   if (uniqueCodes.length === 0) {
     return _unavailable();
   }
 
   const cacheKey = uniqueCodes.join(",");
-  const cached = officialBatchCache[cacheKey];
-  if (cached && Date.now() - cached.ts < _officialCacheTtl(cached.value.data)) {
-    return cached.value;
+  if (!force) {
+    const cached = officialBatchCache[cacheKey];
+    if (cached && Date.now() - cached.ts < _officialCacheTtl(cached.value.data, uniqueCodes.length)) {
+      return cached.value;
+    }
   }
 
-  const group = (await _fetchNavCollector()) || _unavailable();
+  const group = (await _fetchNavCollector(force)) || _unavailable();
   if (group.source === "unavailable") {
     delete officialBatchCache[cacheKey];
     return group;

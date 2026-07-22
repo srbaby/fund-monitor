@@ -40,6 +40,8 @@
    且 `Referer` / `User-Agent` 属 fetch 禁止修改头，靠伪造它们绕防盗链在浏览器里一律无效。
 2. **行情数据禁止因单次失败清空**：拿不到新数据时退回上次好数据并标记为陈旧，绝不把已有数据冲成空。
    保护落在**网关侧**（对所有设备生效），不是浏览器 localStorage。详见 [D-001](docs/DECISIONS.md)。
+   direct 模式不走网关，由 `refreshData` 的 LKG 回退补齐（D-025）：`fetchSingleFund` 返回 error
+   时从 `getLastResults()` 取上次好数据填入，`offSource:"stale"` 标记陈旧。
 3. **`js/` 无文件数上限**（2026-07-21 解除，原为「上限 10 个，已满」）。但**新增文件仍需先问**（见 #10），
    且必须落在既有分层里、在 `index.html` 按依赖顺序加载。解除上限不等于鼓励开新文件——
    **先问「这个函数是不是本来就该属于某个既有层」**：`applyProxyEstimates` 一度因"ui 不该算业务"
@@ -137,6 +139,7 @@ fund-monitor/
 **官方净值夜间采集器（`workers/fund-nav-collector/`，详见 D-023）**：带 Cron 的 Worker，
 19:00–23:00 北京每分钟一跳，**并行**打东财与腾讯，逐只只收当日净值、**先到先得**记账
 （`src` 谁给的 / `at` 何时给的，写入后不可变），写 KV。全部到齐即早退。
+两源都给出当日数据时按**完成时间**选先到的，平局归东财（D-026，取代 D-023 A 节"东财平局胜"）。
 ⚠️ **读写分在两个部署里**：Worker 只写；前端读的 `/v1/nav/today` 挂在**网关** `router.mjs`，
 故 `NAV_BASE = API_BASE`。成因是 Worker 拿不到大陆可达域名（`bailuzun.com` 不在 CF zone，
 `*.workers.dev` 大陆不可达），详见 `workers/fund-nav-collector/README.md`「读写分离」节。

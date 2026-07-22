@@ -23,8 +23,8 @@ function bjNow() {
 function bjDateStr() {
   return bjNow().toISOString().slice(0, 10);
 }
-function bjStamp() {
-  return bjNow().toISOString().replace("T", " ").slice(0, 19);
+function bjStamp(ms = Date.now()) {
+  return new Date(ms + BJ_OFFSET_MS).toISOString().replace("T", " ").slice(0, 19);
 }
 
 // 上游抓取。cache-busting 参数 + cacheTtl:0 是 D-009 的结论：
@@ -213,36 +213,45 @@ async function collect(env) {
   // 否则用户 21:00 加一只基金时当晚已 complete，会一直早退，新基金永远抓不到。
   const complete = codes.every((code) => record.funds[code]);
 
-  const at = bjStamp();
   let added = 0;
   // 上游诊断，只在真正打了上游的那些跳里有意义；早退跳保持零值
   let diag = { emSize: 0, txSize: 0, emError: null, txError: null };
   if (!complete) {
-    const [em, tx] = await Promise.allSettled([fetchEastmoney(codes), fetchTencent(codes)]);
-    const emMap = em.status === "fulfilled" ? em.value : new Map();
-    const txMap = tx.status === "fulfilled" ? tx.value : new Map();
+    // 真竞争（D-026，取代 D-023 A 节"东财平局胜"）：两源谁先返回当日数据就用谁。
+    // per-fund at 反映实际抢到时刻（毫秒级），跨跳仍先到先得、写入不可变。
+    const [em, tx] = await Promise.allSettled([
+      fetchEastmoney(codes).then((m) => ({ map: m, doneAt: Date.now() })),
+      fetchTencent(codes).then((m) => ({ map: m, doneAt: Date.now() })),
+    ]);
+    const emRes = em.status === "fulfilled" ? em.value : null;
+    const txRes = tx.status === "fulfilled" ? tx.value : null;
     diag = {
-      emSize: emMap.size,
-      txSize: txMap.size,
+      emSize: emRes?.map.size || 0,
+      txSize: txRes?.map.size || 0,
       emError: em.status === "rejected" ? String(em.reason) : null,
       txError: tx.status === "rejected" ? String(tx.reason) : null,
     };
     for (const code of codes) {
       if (record.funds[code]) continue; // 先到先得：已记账的绝不覆盖，保证 at/src 不可变
-      const fromEm = emMap.get(code);
-      const fromTx = txMap.get(code);
+      const fromEm = emRes?.map.get(code);
+      const fromTx = txRes?.map.get(code);
       const emOk = fromEm?.date === today;
       const txOk = fromTx?.date === today;
       // 只接受**当日**净值。原前端 bug 的根因正是没判这一条：东财在净值未披露时
       // 返回昨日数据且 size>0，于是整组被采纳，腾讯备源一次都轮不到。
       if (!emOk && !txOk) continue;
-      const picked = emOk ? { ...fromEm, src: "eastmoney" } : { ...fromTx, src: "tencent" };
+      // 两源都有当日数据时按完成时间选先到的；只有一方有时用那一方。
+      // 平局（doneAt 相等，毫秒级极少见）归东财，保留主源 tiebreaker。
+      const useEm = emOk && (!txOk || emRes.doneAt <= txRes.doneAt);
+      const picked = useEm
+        ? { ...fromEm, src: "eastmoney", at: bjStamp(emRes.doneAt) }
+        : { ...fromTx, src: "tencent", at: bjStamp(txRes.doneAt) };
       record.funds[code] = {
         nav: picked.nav,
         pct: picked.pct,
         name: picked.name,
         src: picked.src,
-        at,
+        at: picked.at,
       };
       added += 1;
     }

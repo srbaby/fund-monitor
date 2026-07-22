@@ -82,7 +82,7 @@ function reapplyProxyEstimates() {
   );
 }
 
-async function refreshData() {
+async function refreshData(force = false) {
   if (_isFetchingData) return;
   _isFetchingData = true;
   toggleRefreshBtn(true);
@@ -104,7 +104,7 @@ async function refreshData() {
       : Promise.resolve({ source: "unavailable", data: new Map() });
 
     const [official, estimate] = await Promise.all([
-      fetchOfficialData(funds),
+      fetchOfficialData(funds, force),
       estimatePromise,
     ]);
     // 基准代理在**入库前**回填，让 results 从此只有一条净值链（D-022）：
@@ -113,7 +113,17 @@ async function refreshData() {
     // 渲染层的副本它看不见——那正是"顶部有收益、权益%却纹丝不动"的成因。
     // 安全性：估算缓存与 Gist 推送都只吃 fetchEstimates 抓到的原始 map（saveEstCache /
     // loadEstCacheEntry），不读 results，故代理值不会沉进缓存冒充真估算。
-    const merged = funds.map((code) => fetchSingleFund(code, official, estimate));
+    // LKG 回退（红线 #2 direct 模式补齐，D-025）：拿不到新数据时退回上次好数据标陈旧，
+    // applyProxyEstimates 据此重算代理，估算列不会全空。offSource:"stale" 复用 srcTag
+    // 既有的"陈旧"分支（ui.js:70），pickWinnerTag 跳过 stale（SRC_LABELS 无此项）。
+    const prev = new Map(getLastResults().map((r) => [r.code, r]));
+    const merged = funds.map((code) => {
+      const fresh = fetchSingleFund(code, official, estimate);
+      if (!fresh.error) return fresh;
+      const last = prev.get(code);
+      if (last && !last.error && last.offVal) return { ...last, offSource: "stale" };
+      return fresh;
+    });
     setLastResults(
       applyProxyEstimates(
         merged,
