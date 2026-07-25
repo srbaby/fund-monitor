@@ -13,7 +13,6 @@
 const BJ_OFFSET_MS = 8 * 3_600_000;
 const TIMEOUT_MS = 10_000; // 跨境跳 2s 会频繁 flap（见 fund-market-api upstreams.mjs:116），设宽
 const CODES_CACHE_MS = 5 * 60_000; // 换产品最多 5 分钟生效
-const IDLE_GIVE_UP = 30; // 连续 30 跳一条都没抓到 → 判为非交易日，当晚收工
 const RECORD_TTL_S = 7 * 24 * 3600;
 
 // 北京时间：把 UTC 毫秒加 8 小时后按 UTC 读，等价于北京墙上时间
@@ -180,7 +179,6 @@ async function collect(env) {
     date: today,
     funds: {},
     first: null,
-    idle: 0,
   };
 
   const { codes, source: codesSource, error: codesError } = await loadCodes(env);
@@ -199,15 +197,11 @@ async function collect(env) {
     }
   }
 
-  // 非交易日：连续 IDLE_GIVE_UP 跳一条都没抓到就收工，避免整晚空打上游。
-  // 判据要求 funds 为空——已抓到一部分只是某几只发布晚，不能据此收工。
-  if (record.done)
-    return {
-      status: "done-earlier",
-      have: Object.keys(record.funds).length,
-      codesSource,
-      codesError,
-    };
+  // **节假日不早退，就是空跑一整天**（D-028）。这里曾有一套「连续 30 跳没抓到就判非交易日收工」，
+  // 实测永远跑不到：计数器只在 dirty 时落盘，而空跑跳恒不 dirty，于是每跳都从 KV 重建、恒在 1~2
+  // 摆动。**别照着注释以为它在保护什么，也别再把它加回来**——真加回来反而有害：某跳同时赶上
+  // pruned>0（用户删基金）且 funds 为空时，收工标记会真落盘，把当晚正常的采集整个废掉。
+  // 空跑的代价只是无效请求，可预测；误收工的代价是丢一整天净值，正是 2026-07-24 那种后果。
 
   // 早退：全部到齐。complete **不落盘**，每跳按当前列表现算——
   // 否则用户 21:00 加一只基金时当晚已 complete，会一直早退，新基金永远抓不到。
@@ -255,7 +249,6 @@ async function collect(env) {
       };
       added += 1;
     }
-    record.idle = added > 0 ? 0 : (record.idle || 0) + 1;
   }
 
   // first = 今晚最早抓到的那条的源。由**时间戳**决定而非写入顺序，
@@ -266,13 +259,15 @@ async function collect(env) {
     ? entries.reduce((a, b) => (a.at <= b.at ? a : b)).src
     : null;
 
-  if (record.idle >= IDLE_GIVE_UP && entries.length === 0) record.done = true;
-
   // 落盘条件：有新增或有清理。纯早退跳（两者皆无）不写，免得晚间 241 跳
   // 把 KV 免费写配额（1000/天）烧掉四分之一。
   const dirty = added > 0 || pruned > 0;
   if (dirty) {
-    record.updatedAt = at;
+    // **必须现算，不许引用循环里的变量**：per-fund 的 at 是各自的抢到时刻（D-026），
+    // 而这里要的是"本条记录最后一次写盘的时刻"，两者语义不同。D-026 删掉跳级共用的
+    // `const at` 时漏改了这一行，留下一个未定义引用，导致 2026-07-24 起每次真抓到数据
+    // 都在写盘前抛 ReferenceError、连 nav:latest 一起写不进去，静默停采两个交易日。
+    record.updatedAt = bjStamp();
     await env.NAV.put(key, JSON.stringify(record), { expirationTtl: RECORD_TTL_S });
   }
 
@@ -315,12 +310,29 @@ function corsHeaders(env) {
   };
 }
 
+// collect 单独导出供测试用（test/collector.test.mjs）。Worker 运行时只认 default 导出，
+// 多这一行不影响 Dashboard 粘贴部署。
+export { collect };
+
 export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(
-      collect(env).then((result) => {
-        console.log(JSON.stringify({ cron: event.cron, ...result }));
-      }),
+      collect(env)
+        .then((result) => {
+          console.log(JSON.stringify({ cron: event.cron, ...result }));
+        })
+        // ⚠️ **这个 catch 不许删**：没有它时 collect 抛错会让 .then 整个跳过，日志里一行都不留，
+        // 看上去和"cron 压根没触发"一模一样。2026-07-24 的停采正是这样瞒过两个交易日的——
+        // 采集器唯一的健康信号就是每跳这一行 JSON，静默失败等于把它关掉。
+        .catch((e) => {
+          console.log(
+            JSON.stringify({
+              cron: event.cron,
+              status: "error",
+              error: String(e && e.stack ? e.stack : e),
+            }),
+          );
+        }),
     );
   },
 
@@ -376,10 +388,23 @@ export default {
       // 强制这一跳真去读一次 Gist。否则命中 5 分钟缓存时 codesSource 恒为 "cache"，
       // 想验证 token 通不通反而验不出来。
       await env.NAV.delete("codes");
-      const result = await collect(env);
-      return new Response(JSON.stringify({ ok: true, ...result }), {
-        headers: corsHeaders(env),
-      });
+      // 手动触发是排查入口，异常必须**原样带回响应体**。裸 500 只会显示一句 Worker
+      // threw exception，还得回头翻日志——而排查时最想知道的恰恰就是那句 message。
+      try {
+        const result = await collect(env);
+        return new Response(JSON.stringify({ ok: true, ...result }), {
+          headers: corsHeaders(env),
+        });
+      } catch (e) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            status: "error",
+            error: String(e && e.stack ? e.stack : e),
+          }),
+          { status: 500, headers: corsHeaders(env) },
+        );
+      }
     }
 
     return new Response(JSON.stringify({ ok: false, error: "not found" }), {
