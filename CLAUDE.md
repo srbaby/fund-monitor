@@ -110,7 +110,11 @@
 git log --diff-filter=D --format='%h %ad' --date=short -1 -- docs/DECISIONS.md
 ```
 
-拿到那个 hash，`git show <hash>^:docs/DECISIONS.md` 就是全文 1671 行。
+拿到那个 hash，`git show <hash>^:docs/DECISIONS.md` 就是全文 1541 行，含 D-001～D-027。
+
+⚠️ **D-028 查不到**：它是 2026-07-26 当天写的采集器停采复盘，还没提交就随文件一起删了。
+它的可操作内容全部落在 `workers/fund-nav-collector/` 的 README、`src/index.js` 的注释
+和本文件第四节里——**那些才是要遵守的**，丢掉的只是当时的叙事。
 
 **不要为了"清理"去批量改写这些 `D-0xx`**——它们是可追溯的坐标，改写只会制造新的不一致。
 **也不要再新增 `D-0xx` 编号**：新的业务逻辑直接写进 `01`，新的实现约束直接写进 `03`。
@@ -155,7 +159,7 @@ git show <hash>:docs/01-业务意图.md            # 看当时的全文
 ```
 fund-monitor/
 ├── CLAUDE.md                 # 本文件（索引）
-├── docs/                     # 规范全文（01-05）+ archive/ 考古层
+├── docs/                     # 规范全文，只有 01-05 五篇
 ├── index.html · favicon.png · CNAME
 ├── css/style.css
 ├── js/                       # 前端运行时，当前 10 个文件（数量上限已解除，见 D-021）
