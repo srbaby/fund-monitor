@@ -351,25 +351,45 @@ export default {
 
     if (url.pathname === "/v1/nav/today") {
       const today = bjDateStr();
-      // 与网关 router.mjs 的同名端点**必须逐字同口径**：先 today 后 latest。
-      // 前端实际读的是网关那个；这里是调试用，行为不一致会让排查跑偏。
-      const record =
-        (await env.NAV.get(`nav:${today}`, "json")) ||
-        (await env.NAV.get("nav:latest", "json"));
-      const funds = record?.funds || {};
-      const codes = Object.keys(funds);
-      const first = record?.first || null;
+      // 与网关 router.mjs 的同名端点**必须逐字同口径**：先 today 后 latest，
+      // 且都要做单只兜底合并。前端实际读的是网关那个；这里是调试用，行为不一致会让排查跑偏。
+      const todayRecord = await env.NAV.get(`nav:${today}`, "json");
+      const latestRecord = await env.NAV.get("nav:latest", "json");
+      const record = todayRecord || latestRecord;
+      if (!record) {
+        return new Response(
+          JSON.stringify({ ok: true, date: today, first: null, firstCount: 0, count: 0, updatedAt: null, funds: {} }),
+          { headers: corsHeaders(env) },
+        );
+      }
+      const first = record.first || null;
+      const firstCount = first
+        ? Object.values(record.funds || {}).filter((item) => item.src === first).length
+        : 0;
+      const count = Object.keys(record.funds || {}).length;
+
+      // 单只兜底（红线 #2）：today 存在但某只当天没披露，用 nav:latest 的旧值补上，
+      // 不留空；不计入 first/firstCount（那两个数字只反映今晚真实抢到的）。见 router.mjs 同段注释。
+      let funds = record.funds || {};
+      if (todayRecord && latestRecord?.funds) {
+        const merged = { ...funds };
+        let filled = false;
+        for (const [code, item] of Object.entries(latestRecord.funds)) {
+          if (merged[code]) continue;
+          merged[code] = item;
+          filled = true;
+        }
+        if (filled) funds = merged;
+      }
+
       return new Response(
         JSON.stringify({
           ok: true,
-          date: record?.date || today,
+          date: record.date,
           first,
-          // 赢者抓到的只数——表头标签「腾讯 2」里的那个 2
-          firstCount: first
-            ? codes.filter((code) => funds[code].src === first).length
-            : 0,
-          count: codes.length,
-          updatedAt: record?.updatedAt || null,
+          firstCount,
+          count,
+          updatedAt: record.updatedAt || null,
           funds,
         }),
         { headers: corsHeaders(env) },

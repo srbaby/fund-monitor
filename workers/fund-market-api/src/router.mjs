@@ -133,20 +133,42 @@ export async function handleRequest(request, env = {}, context, dependencies = {
     // 先today后latest：官方净值是全站唯一来源，而盘中/周末/节假日没有「今日记录」，
     // 必须回退到上一交易日，否则那些时段官方净值整列变空（红线 #2）。
     // 返回的 date 是**记录自带的**日期，不是请求当天——前端据它判新旧，不会误当今日。
-    const record =
-      (await env.NAV.get(`nav:${today}`, "json")) ||
-      (await env.NAV.get("nav:latest", "json"));
-    const funds = record?.funds || {};
-    const first = record?.first || null;
+    const todayRecord = await env.NAV.get(`nav:${today}`, "json");
+    const latestRecord = await env.NAV.get("nav:latest", "json");
+    const record = todayRecord || latestRecord;
+    if (!record) {
+      return response({ ok: true, date: today, first: null, firstCount: 0, count: 0, updatedAt: null, funds: {} });
+    }
+    const first = record.first || null;
+    const firstCount = first
+      ? Object.values(record.funds || {}).filter((item) => item.src === first).length
+      : 0;
+    const count = Object.keys(record.funds || {}).length;
+
+    // 单只兜底（红线 #2）：today 记录存在，但某只当天压根没披露净值（如该基金
+    // 官方净值今天没更新，东财/腾讯两源都还停在旧日期——见 2026-07-27 110027 一案），
+    // 用 nav:latest 里那只的上次好值补上，不留空。**不计入 first/firstCount**——
+    // 那两个数字要如实反映今晚真实的采集竞速，补的旧值不算「今晚抢到」。
+    // 补入的条目自带 at（完整旧日期），前端按每只自己的 at 判新旧，不看这个响应顶层 date。
+    let funds = record.funds || {};
+    if (todayRecord && latestRecord?.funds) {
+      const merged = { ...funds };
+      let filled = false;
+      for (const [code, item] of Object.entries(latestRecord.funds)) {
+        if (merged[code]) continue;
+        merged[code] = item;
+        filled = true;
+      }
+      if (filled) funds = merged;
+    }
+
     return response({
       ok: true,
-      date: record?.date || today,
+      date: record.date,
       first,
-      firstCount: first
-        ? Object.values(funds).filter((item) => item.src === first).length
-        : 0,
-      count: Object.keys(funds).length,
-      updatedAt: record?.updatedAt || null,
+      firstCount,
+      count,
+      updatedAt: record.updatedAt || null,
       funds,
     });
   }

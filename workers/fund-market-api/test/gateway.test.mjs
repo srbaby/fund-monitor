@@ -342,7 +342,10 @@ test("nav endpoint falls back to the latest record when today has none", async (
   assert.equal(body.first, "tencent");
 });
 
-test("today's record wins over the latest pointer", async () => {
+test("today's record wins for funds it actually has, latest only fills the gaps", async () => {
+  // 110027 今天真采到了；003949 今天没披露（两源都没给当日值），但 latest 里有它上次的好值。
+  // 红线 #2：单只当天没数据不该整只消失，应该用 latest 兜底补上、标为旧数据由前端按 at 判断。
+  // first/firstCount 只认今天真采到的，不能被兜底的旧值稀释——003949 不该算进「谁抢到」。
   const { kv } = memoryKv({
     [`nav:${NAV_TODAY}`]: JSON.stringify({
       date: NAV_TODAY,
@@ -360,5 +363,29 @@ test("today's record wins over the latest pointer", async () => {
   })).json();
   assert.equal(body.date, NAV_TODAY);
   assert.equal(body.first, "eastmoney");
-  assert.deepEqual(Object.keys(body.funds), ["110027"]);
+  assert.equal(body.firstCount, 1, "补的旧值不算今晚抢到的");
+  assert.deepEqual(new Set(Object.keys(body.funds)), new Set(["110027", "003949"]));
+  assert.deepEqual(body.funds["110027"], { nav: 2.3278, pct: 1.7, src: "eastmoney", at: `${NAV_TODAY} 20:03:55` });
+  assert.deepEqual(body.funds["003949"], { nav: 1.2362, pct: 0.01, src: "tencent", at: "2026-07-20 19:41:12" });
+});
+
+test("latest never overwrites a fund today's record already booked", async () => {
+  // 补洞逻辑必须严格只填「今天完全没有」的代码，不能因为 latest 里也有同一只就覆盖今天的新值。
+  const { kv } = memoryKv({
+    [`nav:${NAV_TODAY}`]: JSON.stringify({
+      date: NAV_TODAY,
+      first: "eastmoney",
+      funds: { "003949": { nav: 1.2369, pct: 0.01, src: "eastmoney", at: `${NAV_TODAY} 20:13:32` } },
+    }),
+    "nav:latest": JSON.stringify({
+      date: "2026-07-20",
+      first: "tencent",
+      funds: { "003949": { nav: 1.2362, pct: 0.01, src: "tencent", at: "2026-07-20 19:41:12" } },
+    }),
+  });
+  const body = await (await handleRequest(new Request(NAV_URL), { NAV: kv }, null, {
+    fetch: async () => { throw new Error("upstream must not run"); },
+  })).json();
+  assert.deepEqual(Object.keys(body.funds), ["003949"]);
+  assert.equal(body.funds["003949"].nav, 1.2369, "今天真采到的值不能被 latest 覆盖");
 });

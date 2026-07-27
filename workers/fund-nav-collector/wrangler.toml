@@ -1,6 +1,5 @@
-# ⚠️ 当前实际部署走 Cloudflare Dashboard（见 README「网页端部署」），
-# **本文件此时完全不生效**——KV 绑定、变量、Cron 三样都在界面上配。
-# 保留它作配置留档，也为将来改回 CLI 部署留底。改本文件不会影响线上，别指望它。
+# 2026-07-27 起改为 wrangler CLI 部署（KV id 已填真实值）。secrets（GIST_ID /
+# GIST_TOKEN / COLLECT_TOKEN）仍走 `wrangler secret put`，不受本文件部署影响。
 name = "fund-nav-collector"
 main = "src/index.js"
 compatibility_date = "2026-07-21"
@@ -21,7 +20,7 @@ ALLOW_ORIGIN = "https://fund.bailuzun.com"
 
 [[kv_namespaces]]
 binding = "NAV"
-id = "PLACEHOLDER_KV_NAMESPACE_ID"
+id = "483cc886433741629643f118007803c1"
 
 # 北京时间 = UTC+8，采集窗口 9:00–24:00 北京 = 1:00–16:00 UTC（[D-027]）。
 # Cloudflare 限制每个 Worker 最多 3 条 cron，这里用 1 条覆盖整个窗口。

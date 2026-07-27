@@ -244,7 +244,9 @@ async function _fetchNavCollector(force = false) {
           name: item.name || NAMES[code] || null,
           officialNav: item.nav,
           officialPct: item.pct,
-          officialAt: payload.date,
+          // 逐只用自己的 at 判日期，不用整份响应顶层的 date：网关现在会用 nav:latest
+          // 给"今天没披露"的个别基金补上次好值（红线 #2），那种条目的真实日期比 payload.date 旧。
+          officialAt: item.at ? item.at.slice(0, 10) : payload.date,
           navSource: item.src,
           navAt: item.at,
         });
