@@ -2,10 +2,8 @@ import {
   ANCHOR_INDEX,
   INDEX_DEFINITIONS,
   parseEastmoneyIndices,
-  parseFundGz,
   parseOfficialPrimary,
   parseOfficialSecondary,
-  parseTencentEstimates,
   parseTencentIndices,
 } from "./parsers.mjs";
 
@@ -86,20 +84,6 @@ export async function fetchBackupIndices(fetcher) {
     }
   }
   return null;
-}
-
-export async function fetchPrimaryEstimates(fetcher, codes) {
-  const records = await Promise.all(
-    codes.map(async (code) => {
-      const response = await fetchWithTimeout(fetcher, `https://fundgz.1234567.com.cn/js/${code}.js`, 5_000);
-      return parseFundGz(await response.text(), code);
-    }),
-  );
-  return records.every(Boolean) ? records : null;
-}
-
-export async function fetchBackupEstimates(fetcher, codes) {
-  return parseTencentEstimates(await fetchTencentText(fetcher, codes.map((code) => `jj${code}`).join(",")), codes);
 }
 
 export async function fetchPrimaryOfficial(fetcher, codes) {

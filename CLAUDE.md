@@ -31,10 +31,9 @@
    盘中 / 周末 / 节假日没有当日记录时，读端点回退 `nav:latest`，返回的 `date` 是**记录自带日期**，
    两类口径（红线 #6）据它照旧判新旧，不需要感知这层回退。
 
-   以下双模只适用于**盘中数据（估算、指数）**：`config.js` 的 `DATA_MODE` 切换两条链路——
+   以下双模只适用于**实时指数**：`config.js` 的 `DATA_MODE` 切换两条链路——
    - `"gateway"`：走 `API_BASE` 三个端点，主备切换 + KV last-known-good 全在 `workers/fund-market-api/` 网关内。
-   - `"direct"`：浏览器直连。**估算**腾讯 `TX_BASE`（`_fetchTencentFunds`，只产出 estimate 块）；
-     **指数**单源腾讯（`_fetchIndexGroupTencent`）——新浪备源因无 CORS 头在浏览器侧不可用，
+   - `"direct"`：浏览器直连。**指数**单源腾讯（`_fetchIndexGroupTencent`）——新浪备源因无 CORS 头在浏览器侧不可用，
      已删，见 D-020。
    改盘中数据逻辑只在这两套分支内，不得到处加 fetch。
    **选新数据源前先验 CORS**：浏览器直连要求对方返回 `Access-Control-Allow-Origin`，
@@ -52,11 +51,9 @@
 6. **净值判据分两类口径，不许混用**（D-019）：
    - **市值口径**（持仓值多少钱）：`data.js` 的 `getNavByCode`，判据 `f.offVal && (!estD || offD >= estD)`，
      要**最新可得**净值，哪天的都对。
-   - **收益口径**（今天赚了多少）：`engine.js` 的 `calcTodayProfit` 与 `interact.js` 的 `profitMap`，
-     **必须是今日数据**（`offD===today` 或 `estD===today`，官方优先），非交易日才回退最近可得。
-     **这两处必须逐字同步**——只改一处就会重现「顶部归零、抽屉却有收益」（D-010 修过一次）。
-     基准代理不在这里分叉：它在 `refreshData` 入库前就填进 `results` 的估算位了（D-022），
-     两处看到的都是同一条净值链，**不要再往这两个函数里加取值分支**。
+   - **收益口径**（今天赚了多少）：只走 `engine.js` 的 `calcFundProfit`。
+     金额公式固定为 `份额 ×（活动净值 − 基准官方净值）`；顶部 `calcTodayProfit` 与抽屉
+     `calcProfitMap` 共用它，`interact.js` 禁止复制收益判据。百分比只作展示派生，绝不反推金额。
    - 曾经写成"三处逐字一致"，把两种口径捆在一起，导致盘中估算断供时把上一交易日的涨跌
      当成今日收益显示。
 7. **engine 是纯函数**，外部依赖全部参数传入。
@@ -187,12 +184,11 @@ fund-monitor/
 `node --test workers/fund-nav-collector/test/collector.test.mjs`。
 
 **数据源双模（`DATA_MODE`，详见 归档层 D-013、D-020）**：
-`config.js` 一个常量控制**盘中数据**（估算、指数）的取数路径，官方净值已由采集器 KV 接管（红线 #1）。
-`"direct"` 时分两路取数——**盘中估算走腾讯**（`jj{code}`，GBK 须 `TextDecoder("gbk")` 解码）；
-**指数单源腾讯**（`qt.gtimg.cn`）——曾接新浪备源，因其不返回 CORS 头浏览器取不到，代码已删（D-020 代价栏）。
+`config.js` 一个常量控制**实时指数**的取数路径，官方净值已由采集器 KV 接管（红线 #1）。
+`"direct"` 时指数单源腾讯（`qt.gtimg.cn`）——曾接新浪备源，因其不返回 CORS 头浏览器取不到，代码已删（D-020 代价栏）。
 `workers/` 网关此时不被前端使用，仅作为备选保留。`DATA_MODE` 当前实际值为 `"direct"`。
 
-**基准代理（`DATA_SOURCE_SWITCH`，详见 D-020、D-022）**：盘中估算源全部失效后，
+**基准代理**：真实估算链删除后，
 用「产品自定义基准权重 × 实时指数」推日内方向。**回填发生在 `refreshData` 入库前**（D-022），
 于是权益%、持仓总额、最新收益、估算列、增权/降权预案读的是**同一条净值链**；
 官方净值当晚落地后由 `getNavByCode` 的 `offD >= estD` 一只一只替换回官方。
@@ -204,10 +200,8 @@ fund-monitor/
 **全站经 `getAnchorPE` 取值，禁止直接调 `getEnginePE` / `getEnginePE1`**；另一条由 `getRefPE`
 自动降为 PE 栏小字。曾因两处各自直调而 PE 栏与持仓抽屉判定不一致。
 
-**估算持久化（D-014 定结构，D-018 修实现）**：直连模式盘后腾讯返回 0 → 回退 **localStorage 缓存**
-→ 再回退 **Gist `fm_est.json`**（跨设备兜底，收盘后推一次，读侧 30 分钟节流）。
-三层链：fresh → localStorage → Gist → unavailable。缓存**不存日期**，新旧一律按每条自带的
-`estimateAt` 判，非当日即挂「陈旧」小字（卡片与表格两个视图都挂）。网关模式不受影响。
+**估算持久化已删除**：不再请求真实估算、不再写 localStorage 估算缓存、不再读写 Gist `fm_est.json`。
+卡片「盘中估算」仅保留基准代理结果，金额计算不读百分比、不读旧 `baseNav/baseDate`。
 
 加载顺序：`config → logger → store → data → engine → ui → ui-holding → ui-pe → interact → main`
 

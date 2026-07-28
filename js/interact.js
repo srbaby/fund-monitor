@@ -69,7 +69,6 @@ function rebuildSortable() {
 // applyProxyEstimates 幂等且只覆盖自产的代理条目，反复调用安全。
 // 无持仓或无结果时直接返回，避免每 10 秒空转一次全量重画。
 function reapplyProxyEstimates() {
-  if (DATA_SOURCE_SWITCH !== "benchmark") return;
   const results = getLastResults();
   if (!results.length) return;
   setLastResults(
@@ -91,34 +90,17 @@ async function refreshData(force = false) {
     loadFunds();
     fetchIndices();
 
-    // 估算只在盘中时段有意义。
-    // 网关模式：盘后 / 盘前 / 周末跳过——节省 4s+ 的网关超时（fundgz 对 CF IP 限速）
-    // 直连模式：始终调用——返回空时自动回退 localStorage/Gist 缓存，估值列不消失
-    const mkt = getMarketState();
-    const needEstimate = DATA_MODE === "direct"
-      ? true
-      : (mkt === "PRE_MARKET" || mkt === "TRADING" || mkt === "MID_BREAK");
-
-    const estimatePromise = needEstimate
-      ? fetchEstimates(funds)
-      : Promise.resolve({ source: "unavailable", data: new Map() });
-
-    const [official, estimate] = await Promise.all([
-      fetchOfficialData(funds, force),
-      estimatePromise,
-    ]);
-    // 基准代理在**入库前**回填，让 results 从此只有一条净值链（D-022）：
-    // 官方缺当日 → 估算位填代理值，全站（权益%、持仓总额、收益、卡片）读同一份数字。
+    const official = await fetchOfficialData(funds, force);
+    // 基准代理在**入库前**回填，让 results 从此只有一条净值链：
+    // 官方未披露 → 估算位填代理值；官方披露 → 收益切到官方净值差。
     // 放在 setLastResults 之前而非渲染时，是因为 getNavByCode 读的是 store 里的 results，
     // 渲染层的副本它看不见——那正是"顶部有收益、权益%却纹丝不动"的成因。
-    // 安全性：估算缓存与 Gist 推送都只吃 fetchEstimates 抓到的原始 map（saveEstCache /
-    // loadEstCacheEntry），不读 results，故代理值不会沉进缓存冒充真估算。
     // LKG 回退（红线 #2 direct 模式补齐，D-025）：拿不到新数据时退回上次好数据标陈旧，
     // applyProxyEstimates 据此重算代理，估算列不会全空。offSource:"stale" 复用 srcTag
     // 既有的"陈旧"分支（ui.js:70），pickWinnerTag 跳过 stale（SRC_LABELS 无此项）。
     const prev = new Map(getLastResults().map((r) => [r.code, r]));
     const merged = funds.map((code) => {
-      const fresh = fetchSingleFund(code, official, estimate);
+      const fresh = fetchSingleFund(code, official);
       if (!fresh.error) return fresh;
       const last = prev.get(code);
       if (last && !last.error && last.offVal) return { ...last, offSource: "stale" };
@@ -132,11 +114,6 @@ async function refreshData(force = false) {
         getIndicesMeta()?.quoteAt,
       ),
     );
-
-    // 收盘后把当日最后一笔估算推一次 Gist，供换设备冷启动兜底（D-018）。
-    // 判断放这里而非 data 层：getMarketState 属 engine，与 data 平级互不依赖。
-    // 收盘后首个 tick 落在 15:00–15:01，缓存里正是当日最后一笔，"收盘后"与"最新"同时满足。
-    if (DATA_MODE === "direct" && mkt === "POST_MARKET") pushEstToGist();
 
     if (funds.length > 0) rebuildSortable();
   } finally {
@@ -256,46 +233,13 @@ function openHoldingDrawer() {
   // 在 interact 层完成权益计算，传给 UI 工厂
   const eqData = calcCurrentEquity(holdings, activeProds, getNavByCode);
 
-  // 在 interact 层计算各产品今日盈亏，传给 UI 工厂（避免 ui 层自行做计算）
-  const lastResults = getLastResults();
-  const today = todayDateStr();
-  const mkt = getMarketState();
-  const profitMap = {};
-  activeProds.forEach((p) => {
-    const shares = holdings[p.code] || 0;
-    const f = lastResults.find((r) => r.code === p.code);
-    if (!f || f.error || shares <= 0) {
-      profitMap[p.code] = null;
-      return;
-    }
-    const offD = f.offDate ? f.offDate.slice(0, 10) : "";
-    const estD = f.estTime ? f.estTime.slice(0, 10) : "";
-    // 收益口径的日期闸门，与 engine 的 calcTodayProfit 同口径（D-019）。
-    // 顶部和抽屉是同一个口径的两个出口，**必须同步**——只改顶部就会精确复现
-    // D-010 当初修掉的那个 bug：顶部归零，抽屉里却照常有收益，两者对不上。
-    const isNonTradingDay = mkt === "WEEKEND" || mkt === "BEFORE_PRE";
-    const isFundUpdated = offD === today || estD === today;
-    // 与 calcTodayProfit 同口径（红线 #6）。代理回退已上移到 refreshData 的入库前回填
-    // （D-022），两处都不再自带代理分支，同步契约因此回到"只有一套判据"。
-    if (!isFundUpdated && !isNonTradingDay) {
-      profitMap[p.code] = null;
-      return;
-    }
-    const useOfficial = isNonTradingDay
-      ? !!(f.offVal && (!estD || offD >= estD))
-      : offD === today;
-    const nav = parseFloat(useOfficial ? f.offVal : f.estVal);
-    if (isNaN(nav)) {
-      profitMap[p.code] = null;
-      return;
-    }
-    const activePct = useOfficial ? f.offPct : f.estPct;
-    let yestNav = null;
-    if (f.baseNav && f.baseDate) yestNav = f.baseNav;
-    else if (activePct != null && !isNaN(activePct))
-      yestNav = nav / (1 + activePct / 100);
-    profitMap[p.code] = yestNav != null ? shares * (nav - yestNav) : null;
-  });
+  const profitMap = calcProfitMap(
+    getLastResults(),
+    holdings,
+    activeProds,
+    getMarketState(),
+    todayDateStr(),
+  );
 
   const savedPlan = loadSellPlan();
   const priorityCode = loadPrioritySell();

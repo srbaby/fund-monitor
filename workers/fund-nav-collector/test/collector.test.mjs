@@ -144,6 +144,36 @@ test("the same hop also refreshes the nav:latest pointer", async () => {
   assert.equal(latest.funds["003949"].nav, 1.2366);
 });
 
+test("a new official day promotes the old today window to previous", async () => {
+  const { kv, store } = memoryKv({
+    "nav:today": JSON.stringify({
+      date: YESTERDAY,
+      first: "tencent",
+      updatedAt: `${YESTERDAY} 20:00:00`,
+      funds: {
+        "003949": { nav: 1.0, pct: null, src: "tencent", at: `${YESTERDAY} 20:00:00` },
+      },
+    }),
+  });
+  const restore = stubUpstreams({
+    em: eastmoneyBody([["003949", 1.0123, 1.99, TODAY]]),
+    tx: tencentBody([]),
+  });
+  try {
+    await collect(envWith(kv, "003949"));
+  } finally {
+    restore();
+  }
+
+  const previous = JSON.parse(store.get("nav:previous"));
+  const today = JSON.parse(store.get("nav:today"));
+  assert.equal(previous.date, YESTERDAY);
+  assert.equal(previous.funds["003949"].nav, 1.0);
+  assert.equal(today.date, TODAY);
+  assert.equal(today.funds["003949"].nav, 1.0123);
+  assert.equal(Number(today.funds["003949"].pct.toFixed(4)), 1.23);
+});
+
 test("a throwing upstream still leaves the record writable on the next hop", async () => {
   // 两源全挂的一跳不该写盘，也不该把已有记录破坏掉。
   const { kv, store } = memoryKv();

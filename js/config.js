@@ -47,14 +47,6 @@ const TX_INDEX_QQ = {
 };
 
 // ════════════════════════════════════════════════════════════
-// §2 收益数据源开关（详见 docs/DECISIONS.md D-020）
-// ════════════════════════════════════════════════════════════
-
-// "estimate"  → 走外部估算接口（天天基金/腾讯/东财；当前全源已死，保留结构备恢复）
-// "benchmark" → 走业绩基准代理（BENCHMARK_PROXY 表 × 实时指数涨跌）
-const DATA_SOURCE_SWITCH = "benchmark";
-
-// ════════════════════════════════════════════════════════════
 // §3 指数配置
 // ════════════════════════════════════════════════════════════
 
@@ -194,16 +186,11 @@ const T_CLOSE = 900;                 // 收盘  15:00
 const T_OFF_UPDATE = 1170;           // 官方净值更新 19:30
 
 // 超时配置（ms）
-const FETCH_EST_TIMEOUT = 12000;
 const FETCH_OFF_TIMEOUT = 12000;
 const FETCH_INDEX_TIMEOUT = 12000;
 
 // 夜间采集器读节流（ms），失败也推进（负缓存）。见 D-023
 const NAV_COLLECTOR_TTL = 30000;
-
-// 估算缓存（详见 docs/DECISIONS.md D-018）
-const EST_CACHE_MAX_AGE = 7 * 24 * 3600000;      // 整份丢弃硬上限（ms）
-const EST_GIST_READ_THROTTLE = 30 * 60000;        // Gist 读节流（ms），失败也推进负缓存
 
 // 市场常量
 const DAYS = ["星期日","星期一","星期二","星期三","星期四","星期五","星期六"];
@@ -219,8 +206,6 @@ const STORE_HOLDINGS = "jy_holdings_v1";
 const STORE_SELL_PLAN = "jy_sell_plan_v1";
 const STORE_PRIORITY_SELL = "jy_priority_sell_v1";
 const STORE_CONFIG_VER = "jy_config_ver_v1";
-const STORE_EST_CACHE = "fm_est_cache_v1";
-const STORE_EST_GIST_DATE = "fm_est_gist_date_v1";
 const STORE_GIST_ID = "fm_gist_id";
 const STORE_GIST_TOKEN = "fm_gist_token";
 
@@ -231,7 +216,6 @@ const STORE_GIST_TOKEN = "fm_gist_token";
 const GIST_FILE_PE = "fm_pe.json";
 const GIST_FILE_CONFIG = "fm_config.json";
 const GIST_FILE_PE_ENGINE = "fm_pe_engine.json";
-const GIST_FILE_EST = "fm_est.json";
 
 // ════════════════════════════════════════════════════════════
 // §10 纯工具函数（无副作用，供所有层调用）

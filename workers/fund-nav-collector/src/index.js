@@ -26,6 +26,76 @@ function bjStamp(ms = Date.now()) {
   return new Date(ms + BJ_OFFSET_MS).toISOString().replace("T", " ").slice(0, 19);
 }
 
+function compactRecord(record) {
+  if (!record?.date || !record.funds) return null;
+  const funds = {};
+  for (const [code, item] of Object.entries(record.funds)) {
+    if (!(item?.nav > 0)) continue;
+    funds[code] = { ...item };
+  }
+  return Object.keys(funds).length
+    ? {
+        date: record.date,
+        funds,
+        first: record.first || null,
+        updatedAt: record.updatedAt || null,
+      }
+    : null;
+}
+
+async function findRecordBefore(env, date) {
+  const direct = await env.NAV.get("nav:previous", "json");
+  if (direct?.date && direct.date < date) return compactRecord(direct);
+
+  const latest = await env.NAV.get("nav:latest", "json");
+  if (latest?.date && latest.date < date) return compactRecord(latest);
+
+  for (let days = 1; days <= 10; days += 1) {
+    const d = new Date(Date.parse(`${date}T00:00:00Z`) - days * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const record = await env.NAV.get(`nav:${d}`, "json");
+    if (record?.date && record.date < date) return compactRecord(record);
+  }
+  return null;
+}
+
+async function loadNavWindow(env, today) {
+  const pointerToday = await env.NAV.get("nav:today", "json");
+  const todayRecord = await env.NAV.get(`nav:${today}`, "json");
+  const latest = await env.NAV.get("nav:latest", "json");
+
+  const current =
+    (todayRecord?.date === today && compactRecord(todayRecord)) ||
+    compactRecord(pointerToday) ||
+    compactRecord(latest);
+
+  const previous =
+    current?.date === today
+      ? await findRecordBefore(env, today)
+      : current || (await findRecordBefore(env, today));
+
+  return { current, previous };
+}
+
+function attachPreviousNav(code, item, previousRecord) {
+  const previous = previousRecord?.funds?.[code];
+  const previousNav = previous?.nav > 0 ? previous.nav : null;
+  return {
+    ...item,
+    pct:
+      previousNav == null
+        ? null
+        : ((item.nav - previousNav) / previousNav) * 100,
+    previousNav,
+    previousDate: previousNav == null ? null : previous.at?.slice(0, 10) || previousRecord.date,
+    previousPct:
+      previousNav == null || !Number.isFinite(previous.pct)
+        ? null
+        : previous.pct,
+  };
+}
+
 // 上游抓取。cache-busting 参数 + cacheTtl:0 是 D-009 的结论：
 // 部分上游前面挂第三方 CDN，会按出口 IP 把响应缓存 40+ 分钟不更新。
 async function fetchUpstream(url) {
@@ -175,7 +245,9 @@ async function loadCodes(env) {
 async function collect(env) {
   const today = bjDateStr();
   const key = `nav:${today}`;
-  const record = (await env.NAV.get(key, "json")) || {
+  const { current, previous } = await loadNavWindow(env, today);
+  const storedToday = await env.NAV.get(key, "json");
+  const record = storedToday || (current?.date === today ? current : null) || {
     date: today,
     funds: {},
     first: null,
@@ -240,9 +312,14 @@ async function collect(env) {
       const picked = useEm
         ? { ...fromEm, src: "eastmoney", at: bjStamp(emRes.doneAt) }
         : { ...fromTx, src: "tencent", at: bjStamp(txRes.doneAt) };
+      const previousNav = previous?.funds?.[code]?.nav;
       record.funds[code] = {
         nav: picked.nav,
-        pct: picked.pct,
+        // 百分比是两次官方净值的派生结果，只作快照展示；收益金额从不读它。
+        pct:
+          previousNav > 0
+            ? ((picked.nav - previousNav) / previousNav) * 100
+            : null,
         name: picked.name,
         src: picked.src,
         at: picked.at,
@@ -271,15 +348,21 @@ async function collect(env) {
     await env.NAV.put(key, JSON.stringify(record), { expirationTtl: RECORD_TTL_S });
   }
 
-  // 「最近可得」指针。官方净值是全站唯一来源（D-023 G 节），而盘中 / 周末 / 节假日
-  // 根本没有「今日记录」——读端点靠它回退到上一交易日，否则那些时段官方净值整列变空
-  // （红线 #2）。内容与当日记录一致，`date` 自带日期，前端据它判新旧，不会误当今日。
+  // 官方净值窗口：KV 对外始终是 nav:previous + nav:today 两组事实。
+  // nav:today 是“最新已公布净值日”，不是北京日历当天；新净值真正采到后才滚动。
   //
-  // ⚠️ **早退跳也要走到这里**：当日 complete 后每跳都早退，不在这儿补写的话 latest
-  // 永远出不来，次日盘中官方净值整列空白到当晚 19:00。按 date 比对节流，每天最多一次；
-  // dirty 时无条件重写，否则清理掉的僵尸会继续活在 latest 里。
+  // nav:latest 保留为旧读端兼容指针；新逻辑不把它当收益基准。
   if (entries.length) {
     const latest = await env.NAV.get("nav:latest", "json");
+    if (previous?.date && previous.date < record.date) {
+      const prevPointer = await env.NAV.get("nav:previous", "json");
+      if (dirty || prevPointer?.date !== previous.date) {
+        await env.NAV.put("nav:previous", JSON.stringify(previous));
+      }
+    }
+    if (dirty || latest?.date !== record.date) {
+      await env.NAV.put("nav:today", JSON.stringify(record));
+    }
     if (dirty || latest?.date !== record.date) {
       await env.NAV.put("nav:latest", JSON.stringify(record));
     }
@@ -351,14 +434,21 @@ export default {
 
     if (url.pathname === "/v1/nav/today") {
       const today = bjDateStr();
-      // 与网关 router.mjs 的同名端点**必须逐字同口径**：先 today 后 latest，
-      // 且都要做单只兜底合并。前端实际读的是网关那个；这里是调试用，行为不一致会让排查跑偏。
-      const todayRecord = await env.NAV.get(`nav:${today}`, "json");
-      const latestRecord = await env.NAV.get("nav:latest", "json");
-      const record = todayRecord || latestRecord;
+      // 与网关 router.mjs 的同名端点同口径：KV 窗口是 nav:today + nav:previous。
+      // 前端实际读网关；这里是调试用，行为不一致会让排查跑偏。
+      const { current: record, previous } = await loadNavWindow(env, today);
       if (!record) {
         return new Response(
-          JSON.stringify({ ok: true, date: today, first: null, firstCount: 0, count: 0, updatedAt: null, funds: {} }),
+          JSON.stringify({
+            ok: true,
+            date: today,
+            previousDate: previous?.date || null,
+            first: null,
+            firstCount: 0,
+            count: 0,
+            updatedAt: null,
+            funds: {},
+          }),
           { headers: corsHeaders(env) },
         );
       }
@@ -368,24 +458,22 @@ export default {
         : 0;
       const count = Object.keys(record.funds || {}).length;
 
-      // 单只兜底（红线 #2）：today 存在但某只当天没披露，用 nav:latest 的旧值补上，
-      // 不留空；不计入 first/firstCount（那两个数字只反映今晚真实抢到的）。见 router.mjs 同段注释。
-      let funds = record.funds || {};
-      if (todayRecord && latestRecord?.funds) {
-        const merged = { ...funds };
-        let filled = false;
-        for (const [code, item] of Object.entries(latestRecord.funds)) {
-          if (merged[code]) continue;
-          merged[code] = item;
-          filled = true;
+      const funds = {};
+      for (const [code, item] of Object.entries(record.funds || {})) {
+        funds[code] = attachPreviousNav(code, item, previous);
+      }
+      if (previous?.funds) {
+        for (const [code, item] of Object.entries(previous.funds)) {
+          if (funds[code]) continue;
+          funds[code] = { ...item, previousNav: null, previousDate: null, previousPct: null };
         }
-        if (filled) funds = merged;
       }
 
       return new Response(
         JSON.stringify({
           ok: true,
           date: record.date,
+          previousDate: previous?.date || null,
           first,
           firstCount,
           count,

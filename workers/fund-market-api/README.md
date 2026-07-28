@@ -59,8 +59,8 @@ they stay reachable everywhere — harmless, since they make no upstream calls.
 ## API contract
 
 - `GET /v1/indices`
-- `GET /v1/funds/estimate?codes=003949,160622`
 - `GET /v1/funds/official?codes=003949,160622`
+- `GET /v1/nav/today`
 
 Each endpoint selects a complete primary group or a complete backup group. It never mixes records, and a
 group that cannot be completed is **not** served half-filled. Querying `force=primary`
@@ -83,7 +83,6 @@ page even while the first one still had the day's data.
 | endpoint | primary | backup |
 | --- | --- | --- |
 | `/v1/indices` | Tencent `qt.gtimg.cn` | Eastmoney `push2delay` mirror |
-| `/v1/funds/estimate` | Tiantian `fundgz` | Tencent `jj<code>` |
 | `/v1/funds/official` | `FundMNFInfo` | `FundMNHisNetList` |
 
 Indices run Tencent-first because the board's PE bar anchors on HS300 realtime market cap and the reachable
@@ -130,9 +129,9 @@ per-isolate `Map`, D-011) → throttle cache (`src/router.mjs:142-143`, per-isol
 The success path never touches KV. A cold isolate therefore always pays a full upstream round trip even
 when KV holds a perfectly good LKG record.
 
-**Fan-out has no concurrency cap.** `estimate` primary (`src/upstreams.mjs:92`) and `official` backup
-(`src/upstreams.mjs:126`) both `Promise.all` over every code, up to the 50-code limit at
-`src/router.mjs:52`. See D-012 for the measured consequence on rate-limited `fundgz`.
+**Fan-out has no concurrency cap.** `official` backup (`src/upstreams.mjs`) `Promise.all`s over every
+code, up to the 50-code limit at `src/router.mjs`. The removed estimate endpoint must not be restored;
+daily profit now depends on official NAV pairs plus benchmark proxy, not third-party estimate snapshots.
 
 ### Known but deliberately not done
 

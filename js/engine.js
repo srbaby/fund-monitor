@@ -341,7 +341,7 @@ function getBenchmarkProxyPct(code, baseNav, indicesMap) {
 // 官方净值落地后，市值链由 `getNavByCode` 自动切到官方；估算列仍保留盘中代理供对照。
 // 冷启动也不依赖旧终端：官方旧于指数就直接作基准，同日则先按官方涨幅还原前一日净值。
 function applyProxyEstimates(results, todayStr, indicesMap, quoteAt) {
-  if (DATA_SOURCE_SWITCH !== "benchmark" || !indicesMap) return results;
+  if (!indicesMap) return results;
   return results.map((f) => {
     if (f.error || !f.offVal) return f;
     // 只让路给**真**估算；自己产的代理条目要允许被重算，否则指数再涨也不动
@@ -352,24 +352,75 @@ function applyProxyEstimates(results, todayStr, indicesMap, quoteAt) {
     const quoteD = quoteAt ? quoteAt.slice(0, 10) : "";
     if (!offD || !quoteD || offD > quoteD) return f;
 
-    // 两套冷启动算法：白天官方还是昨日值可直接乘；夜间同日正式值已落地则先还原昨日值。
+    // 两套算法：白天最新官方值就是今日收益基准；夜间同日正式值已落地时，
+    // 代理仍以网关给出的前一官方净值为基准，绝不用百分比反推。
     let baseNav = parseFloat(f.offVal);
+    let baseDate = offD;
     if (offD === quoteD) {
-      const offPct = parseFloat(f.offPct);
-      const factor = 1 + offPct / 100;
-      if (!Number.isFinite(offPct) || factor <= 0) return f;
-      baseNav /= factor;
+      baseNav = parseFloat(f.previousNav);
+      baseDate = f.previousDate || "";
+      if (!Number.isFinite(baseNav) || baseNav <= 0) return f;
     }
     const proxy = getBenchmarkProxyPct(f.code, baseNav, indicesMap);
     if (!proxy) return f;
     return {
       ...f,
       estVal: proxy.estVal.toFixed(4),
+      estNavRaw: proxy.estVal,
+      estBaseNav: baseNav,
+      estBaseDate: baseDate,
       estPct: parseFloat(proxy.estPct.toFixed(2)),
       estTime: quoteAt || null,
       estSource: "proxy",
     };
   });
+}
+
+function _finiteNav(value) {
+  const n = parseFloat(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function calcFundProfit(f, shares, mktState, todayStr) {
+  if (!f || f.error || shares <= 0) return null;
+  const offD = f.offDate ? f.offDate.slice(0, 10) : "";
+  const estD = f.estTime ? f.estTime.slice(0, 10) : "";
+  const isNonTradingDay = mktState === "WEEKEND" || mktState === "BEFORE_PRE";
+
+  let nav = null;
+  let baseNav = null;
+  let isRealUpdate = false;
+
+  if (offD === todayStr) {
+    nav = _finiteNav(f.offVal);
+    baseNav = _finiteNav(f.previousNav);
+    isRealUpdate = true;
+  } else if (!isNonTradingDay && estD === todayStr) {
+    nav = _finiteNav(f.estNavRaw ?? f.estVal);
+    baseNav = _finiteNav(f.estBaseNav ?? f.offVal);
+  } else if (isNonTradingDay && f.offVal) {
+    nav = _finiteNav(f.offVal);
+    baseNav = _finiteNav(f.previousNav);
+    isRealUpdate = !!(offD && f.previousDate);
+  }
+
+  if (nav == null || baseNav == null) return null;
+  return {
+    profit: shares * (nav - baseNav),
+    baseValue: shares * baseNav,
+    isRealUpdate,
+  };
+}
+
+function calcProfitMap(results, holdings, activeProducts, mktState, todayStr) {
+  const map = {};
+  activeProducts.forEach((p) => {
+    const shares = holdings[p.code] || 0;
+    const f = results.find((r) => r.code === p.code);
+    const detail = calcFundProfit(f, shares, mktState, todayStr);
+    map[p.code] = detail ? detail.profit : null;
+  });
+  return map;
 }
 
 function calcTodayProfit(results, holdings, activeProducts, mktState, todayStr) {
@@ -385,64 +436,21 @@ function calcTodayProfit(results, holdings, activeProducts, mktState, todayStr) 
     // 「有持仓」只看份额，不看请求成没成功——否则整组超时会让顶部变空白，
     // 看起来像"没有持仓"，而正确的表达是"有持仓但此刻不知道"（显示 -）。
     hasHoldings = true;
-    const f = results.find((r) => r.code === p.code);
-    if (!f || f.error) {
+    const detail = calcFundProfit(
+      results.find((r) => r.code === p.code),
+      shares,
+      mktState,
+      todayStr,
+    );
+    if (!detail) {
       allUpdated = false;
       return;
     }
 
-    const estD = f.estTime ? f.estTime.slice(0, 10) : "";
-    const offD = f.offDate ? f.offDate.slice(0, 10) : "";
-
-    const isOffToday = offD === todayStr;
-    const isEstToday = estD === todayStr;
-    // 取值用：今天有官方或估算（含代理）就能算出今日收益
-    const isFundUpdated = isOffToday || isEstToday;
-
-    // 「已更新」徽标用：**代理不算已更新**（D-022）。徽标语义是"今天的数据到了"，
-    // 而代理是拿昨日净值乘指数推出来的，一条真数据都没到。D-022 把代理并进净值链后，
-    // 若沿用 isFundUpdated，徽标会在估算源全死的日子里天天亮着，等于永久说谎——
-    // D-010 当初拆开徽标与取值判据，正是为了"数值可放宽、状态必须严格"。
-    const isRealUpdate =
-      isOffToday || (isEstToday && f.estSource !== "proxy");
-    if (!isRealUpdate) allUpdated = false;
-
-    // 收益口径的日期闸门（D-019）：**只有今天的数据才算今天的收益。**
-    // 盘中官方永远停在昨天，估算断供时旧判据会退到官方，把上一交易日的涨跌
-    // 当成今日收益发出来（2026-07-21 实测 +1010，实为周一那段）。
-    // 非交易日例外：WEEKEND / BEFORE_PRE 今天本就不该有数据，回退到最近可得，
-    // 顶部因而改名「最新收益」；其余时段今天该有却没有，先试代理再谈弃权。
-    const isNonTradingDay = mktState === "WEEKEND" || mktState === "BEFORE_PRE";
-
-    // 交易日却没有今日数据 → 整只弃权。
-    // D-022 前这里还有一段基准代理兜底，现已上移到 refreshData：results 入库时
-    // 估算位就填好了代理值，走到这里 estD 必为今日，本分支再也不会因代理而进入。
-    if (!isFundUpdated && !isNonTradingDay) return;
-
-    // 同为今日时官方优先；非交易日回退沿用「有官方且不比估算旧」。
-    // ⚠️ 与 data.js 的 getNavByCode **有意不同**——那条是市值口径，要最新可得净值，
-    // 哪天的都对；这条是收益口径，必须是今天的。见红线 #6 的两类口径。
-    const useOfficial = isNonTradingDay
-      ? !!(f.offVal && (!estD || offD >= estD))
-      : isOffToday;
-
-    const nav = useOfficial ? parseFloat(f.offVal) : parseFloat(f.estVal);
-    const pct = useOfficial ? parseFloat(f.offPct) : parseFloat(f.estPct);
-    if (isNaN(nav)) return;
-
-    let yestNav = null;
-    const isBaseNavValid =
-      f.baseNav &&
-      f.baseDate &&
-      (useOfficial ? f.baseDate < offD : f.baseDate < todayStr);
-
-    if (isBaseNavValid) yestNav = f.baseNav;
-    else if (!isNaN(pct)) yestNav = nav / (1 + pct / 100);
-    else return;
-
     hasParticipating = true;
-    totalYestVal += shares * yestNav;
-    totalProfit += shares * (nav - yestNav);
+    if (!detail.isRealUpdate) allUpdated = false;
+    totalYestVal += detail.baseValue;
+    totalProfit += detail.profit;
   });
 
   // 有持仓、却没有一只拿得出今日数据（连代理都算不出）→ 顶部显示「-」而不是编一个 0.00。

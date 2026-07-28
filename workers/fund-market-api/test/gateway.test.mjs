@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseEastmoneyIndices, parseFundGz, parseTencentEstimates } from "../src/parsers.mjs";
-import { resetLkgThrottle } from "../src/lkg.mjs";
+import { parseEastmoneyIndices } from "../src/parsers.mjs";
 import { handleRequest, resetGatewayCache } from "../src/router.mjs";
 
 const CODES = ["003949", "160622"];
@@ -19,9 +18,6 @@ function eastmoneyIndices(omit = false) {
   return { data: { diff: codes.filter((code) => !omit || code !== "000905").map((code, index) => ({ f12: code, f14: `指数${code}`, f2: 1000 + index, f3: 1.2, f124: "20260719103000", f115: 12.3, f116: 456 })) } };
 }
 
-// Real Tencent fund shape, captured live: ten fields where [2..4] carry the
-// intraday estimate and [5..8] the official NAV block. Outside a trading
-// session Tencent zeroes the estimate and leaves its timestamp empty.
 function qqIndices({ anchorPe = "13.98", anchorMcap = "536149.80" } = {}) {
   return ["sh000300", "sh000510", "sh000905", "sh000832", "sh000012", "hkHSI"].map((code, index) => {
     const fields = Array(46).fill("");
@@ -35,34 +31,6 @@ function qqIndices({ anchorPe = "13.98", anchorMcap = "536149.80" } = {}) {
     return `v_${code}="${fields.join("~")}";`;
   }).join("\n");
 }
-
-function qqEstimates(codes, { session = "open" } = {}) {
-  return codes.map((code, index) => {
-    const fields = [code, `基金${code}`, "0.0000", "0.0000", "", "9.9999", "1.4152", "0.0081", "2026-07-17", ""];
-    if (session === "open") {
-      fields[2] = String(1.2 + index / 10);
-      fields[3] = "0.88";
-      fields[4] = "2026-07-20 10:30";
-    }
-    return `v_jj${code}="${fields.join("~")}";`;
-  }).join("\n");
-}
-
-test("fundgz parser requires every intraday estimate field", () => {
-  assert.equal(parseFundGz('jsonpgz({"fundcode":"003949","gsz":"1.2345","gszzl":"0.45","gztime":"2026-07-19 10:30:00"});', "003949").estimateNav, 1.2345);
-  assert.equal(parseFundGz('jsonpgz({"fundcode":"003949","gsz":"1.2345","gszzl":"","gztime":"2026-07-19 10:30:00"});', "003949"), null);
-});
-
-test("Tencent estimate parser never uses field 5 official NAV", () => {
-  const parsed = parseTencentEstimates(qqEstimates(["003949"]), ["003949"]);
-  assert.equal(parsed[0].estimateNav, 1.2);
-  assert.equal(parsed[0].estimateAt, "2026-07-20 10:30");
-  assert.notEqual(parsed[0].estimateNav, 9.9999);
-});
-
-test("Tencent estimates are unavailable outside a trading session", () => {
-  assert.equal(parseTencentEstimates(qqEstimates(["003949"], { session: "closed" }), ["003949"]), null);
-});
 
 test("Eastmoney HSI mirror responses collapse to one canonical HSI record", () => {
   const payload = eastmoneyIndices();
@@ -169,8 +137,15 @@ test("the custom domain still works with no token at all", async () => {
   assert.equal((await res.json()).status, "primary");
 });
 
-// ---- D-001 行情数据 last-known-good 保护 ----
-// 这组测试守的是"收盘后一次刷新把全天数据冲成空白"那起事故。改动网关时不要绕过它们。
+test("the removed estimate endpoint stays unavailable", async () => {
+  const res = await handleRequest(
+    new Request(`https://fund-api.bailuzun.com/v1/funds/estimate?codes=${CODES.join(",")}`),
+    {},
+    null,
+    { fetch: async () => { throw new Error("upstream must not run"); } },
+  );
+  assert.equal(res.status, 404);
+});
 
 function memoryKv(seed = {}) {
   const store = new Map(Object.entries(seed));
@@ -182,86 +157,6 @@ function memoryKv(seed = {}) {
     store,
   };
 }
-
-const CLOSED_ESTIMATE_FETCHER = async (url) => {
-  if (url.includes("fundgz")) return textResponse("");
-  if (url.includes("qt.gtimg.cn")) return textResponse(qqEstimates(CODES, { session: "closed" }));
-  throw new Error(`unexpected ${url}`);
-};
-
-const ESTIMATE_URL = `https://fund-api.bailuzun.com/v1/funds/estimate?codes=${CODES.join(",")}`;
-
-test("a good estimate group is persisted, then served as stale once upstreams stop supplying it", async () => {
-  resetGatewayCache();
-  resetLkgThrottle();
-  const { kv } = memoryKv();
-  const env = { MARKET_LKG: kv };
-
-  const openFetcher = async (url) =>
-    url.includes("fundgz")
-      ? textResponse(`jsonpgz({"fundcode":"${new URL(url).pathname.match(/(\d{6})/)[1]}","name":"基金","gsz":"1.2345","gszzl":"0.45","gztime":"2026-07-20 14:55:00"});`)
-      : Promise.reject(new Error("backup must not run"));
-  const live = await (await handleRequest(new Request(ESTIMATE_URL), env, null, { fetch: openFetcher })).json();
-  assert.equal(live.status, "primary");
-
-  // 收盘：天天基金停供、腾讯把估算字段清零，整组取不到
-  resetGatewayCache();
-  const afterClose = await (await handleRequest(new Request(ESTIMATE_URL), env, null, { fetch: CLOSED_ESTIMATE_FETCHER })).json();
-
-  assert.equal(afterClose.status, "stale");
-  assert.equal(afterClose.ok, true, "陈旧数据仍是完整一组，前端要照常渲染");
-  assert.equal(afterClose.servedFrom, "primary");
-  assert.deepEqual(afterClose.data.map((item) => item.estimateNav), [1.2345, 1.2345]);
-  assert.equal(afterClose.data[0].estimateAt, "2026-07-20 14:55:00", "陈旧数据必须保留原始时间戳，供前端如实显示");
-});
-
-test("without a stored good group the gateway still reports unavailable rather than inventing data", async () => {
-  resetGatewayCache();
-  resetLkgThrottle();
-  const { kv } = memoryKv();
-  const body = await (await handleRequest(new Request(ESTIMATE_URL), { MARKET_LKG: kv }, null, { fetch: CLOSED_ESTIMATE_FETCHER })).json();
-  assert.equal(body.status, "unavailable");
-  assert.equal(body.ok, false);
-  assert.deepEqual(body.data, []);
-});
-
-test("a stored group past its shelf life is not served", async () => {
-  resetGatewayCache();
-  resetLkgThrottle();
-  const stale = {
-    savedAt: Date.now() - 96 * 3_600_000,
-    payload: { ok: true, status: "primary", sourceLabel: "天天基金盘中估算", data: [{ code: CODES[0] }] },
-  };
-  const { kv } = memoryKv({ [`lkg:estimate:${CODES.join(",")}`]: JSON.stringify(stale) });
-  const body = await (await handleRequest(new Request(ESTIMATE_URL), { MARKET_LKG: kv }, null, { fetch: CLOSED_ESTIMATE_FETCHER })).json();
-  assert.equal(body.status, "unavailable");
-});
-
-test("the gateway behaves exactly as before when no KV namespace is bound", async () => {
-  resetGatewayCache();
-  resetLkgThrottle();
-  const body = await (await handleRequest(new Request(ESTIMATE_URL), {}, null, { fetch: CLOSED_ESTIMATE_FETCHER })).json();
-  assert.equal(body.status, "unavailable");
-});
-
-test("repeated successful refreshes do not burn a KV write each time", async () => {
-  resetGatewayCache();
-  resetLkgThrottle();
-  const { kv, store } = memoryKv();
-  let writes = 0;
-  const counting = { ...kv, put: async (key, value) => { writes += 1; return kv.put(key, value); } };
-  const fetcher = async (url) =>
-    url.includes("fundgz")
-      ? textResponse(`jsonpgz({"fundcode":"${new URL(url).pathname.match(/(\d{6})/)[1]}","name":"基金","gsz":"1.2345","gszzl":"0.45","gztime":"2026-07-20 14:55:00"});`)
-      : Promise.reject(new Error("backup must not run"));
-
-  for (let i = 0; i < 5; i += 1) {
-    resetGatewayCache();
-    await handleRequest(new Request(ESTIMATE_URL), { MARKET_LKG: counting }, null, { fetch: fetcher });
-  }
-  assert.equal(writes, 1, "节流窗口内只该落盘一次");
-  assert.equal(store.size, 1);
-});
 
 // ---- D-023 官方净值采集器的读端点 ----
 // 数据由 workers/fund-nav-collector 写入 NAV，网关只读出。这里验三件事：
@@ -365,8 +260,24 @@ test("today's record wins for funds it actually has, latest only fills the gaps"
   assert.equal(body.first, "eastmoney");
   assert.equal(body.firstCount, 1, "补的旧值不算今晚抢到的");
   assert.deepEqual(new Set(Object.keys(body.funds)), new Set(["110027", "003949"]));
-  assert.deepEqual(body.funds["110027"], { nav: 2.3278, pct: 1.7, src: "eastmoney", at: `${NAV_TODAY} 20:03:55` });
-  assert.deepEqual(body.funds["003949"], { nav: 1.2362, pct: 0.01, src: "tencent", at: "2026-07-20 19:41:12" });
+  assert.deepEqual(body.funds["110027"], {
+    nav: 2.3278,
+    pct: null,
+    src: "eastmoney",
+    at: `${NAV_TODAY} 20:03:55`,
+    previousNav: null,
+    previousDate: null,
+    previousPct: null,
+  });
+  assert.deepEqual(body.funds["003949"], {
+    nav: 1.2362,
+    pct: 0.01,
+    src: "tencent",
+    at: "2026-07-20 19:41:12",
+    previousNav: null,
+    previousDate: null,
+    previousPct: null,
+  });
 });
 
 test("latest never overwrites a fund today's record already booked", async () => {
@@ -388,4 +299,32 @@ test("latest never overwrites a fund today's record already booked", async () =>
   })).json();
   assert.deepEqual(Object.keys(body.funds), ["003949"]);
   assert.equal(body.funds["003949"].nav, 1.2369, "今天真采到的值不能被 latest 覆盖");
+});
+
+test("nav endpoint derives each fund percentage from its own previous NAV", async () => {
+  const { kv } = memoryKv({
+    [`nav:${NAV_TODAY}`]: JSON.stringify({
+      date: NAV_TODAY,
+      first: "eastmoney",
+      funds: {
+        "003949": { nav: 1.0123, pct: 99, src: "eastmoney", at: `${NAV_TODAY} 20:00:00` },
+        "110027": { nav: 2.2, pct: 99, src: "eastmoney", at: `${NAV_TODAY} 20:01:00` },
+      },
+    }),
+    "nav:previous": JSON.stringify({
+      date: "2026-07-20",
+      first: "tencent",
+      funds: {
+        "003949": { nav: 1.0, pct: null, src: "tencent", at: "2026-07-20 20:00:00" },
+        "110027": { nav: 2.0, pct: null, src: "tencent", at: "2026-07-20 20:00:00" },
+      },
+    }),
+  });
+  const body = await (await handleRequest(new Request(NAV_URL), { NAV: kv }, null, {
+    fetch: async () => { throw new Error("upstream must not run"); },
+  })).json();
+  assert.equal(body.funds["003949"].previousNav, 1.0);
+  assert.equal(Number(body.funds["003949"].pct.toFixed(4)), 1.23);
+  assert.equal(body.funds["110027"].previousNav, 2.0);
+  assert.equal(Number(body.funds["110027"].pct.toFixed(4)), 10);
 });

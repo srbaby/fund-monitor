@@ -110,67 +110,6 @@ export function parseTencentIndices(text) {
   return data.every(Boolean) ? data : null;
 }
 
-export function parseFundGz(text, requestedCode) {
-  const match = text.match(/jsonpgz\((\{[\s\S]*\})\)\s*;?\s*$/);
-  if (!match) return null;
-  try {
-    const raw = JSON.parse(match[1]);
-    const code = normalizeCode(raw?.fundcode);
-    const estimateNav = finiteNumber(raw?.gsz);
-    const estimatePct = finiteNumber(raw?.gszzl);
-    const estimateAt = formatQuoteAt(raw?.gztime);
-    if (
-      code !== requestedCode ||
-      estimateNav == null ||
-      estimateNav <= 0 ||
-      estimatePct == null ||
-      !estimateAt
-    ) {
-      return null;
-    }
-    // baseNav/baseDate are the previous confirmed NAV. calcTodayProfit prefers
-    // them over re-deriving yesterday's NAV from a rounded percentage, so they
-    // ride along with the estimate while belonging to neither chain. Optional:
-    // the caller already falls back when they are missing.
-    return {
-      code,
-      name: raw?.name || null,
-      estimateNav,
-      estimatePct,
-      estimateAt,
-      baseNav: finiteNumber(raw?.dwjz),
-      baseDate: formatQuoteAt(raw?.jzrq),
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function parseTencentEstimates(text, codes) {
-  const quotes = parseTencentAssignments(text);
-  const data = codes.map((code) => {
-    const fields = quotes.get(`jj${code}`);
-    if (!fields) return null;
-    // Fund quotes are ten fields, not the wide stock layout: [2..4] hold the
-    // intraday estimate, [5..8] the official NAV block. [5] is the official
-    // NAV and must never be used as an estimate.
-    const estimateNav = finiteNumber(fields[2]);
-    const estimatePct = finiteNumber(fields[3]);
-    const estimateAt = formatQuoteAt(fields[4]);
-    if (estimateNav == null || estimateNav <= 0 || estimatePct == null || !estimateAt) return null;
-    return {
-      code,
-      name: fields[1] || null,
-      estimateNav,
-      estimatePct,
-      estimateAt,
-      baseNav: finiteNumber(fields[5]),
-      baseDate: formatQuoteAt(fields[8]),
-    };
-  });
-  return data.every(Boolean) ? data : null;
-}
-
 function normalizeOfficial(raw, code) {
   const officialNav = finiteNumber(raw?.NAV ?? raw?.DWJZ);
   const officialPct = finiteNumber(raw?.NAVCHGRT ?? raw?.JZZZL);

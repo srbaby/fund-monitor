@@ -1,10 +1,8 @@
 import { readLastKnownGood, saveLastKnownGood, stalePayload } from "./lkg.mjs";
 import { latestQuoteAt } from "./parsers.mjs";
 import {
-  fetchBackupEstimates,
   fetchBackupIndices,
   fetchBackupOfficial,
-  fetchPrimaryEstimates,
   fetchPrimaryIndices,
   fetchPrimaryOfficial,
 } from "./upstreams.mjs";
@@ -12,7 +10,7 @@ import {
 // 看板每 10 秒取一次指数，故 8 秒的 TTL 对它每次都过期、拿到的照样是新数据；
 // 但突发流量下把上游从最多 20 次/分钟压到 7 次/分钟。这三个 TTL 与其说是缓存，
 // 不如说是上游的限流器——bailuzun.com 不在 CF zone 内，没有 WAF 可用。
-const SUCCESS_TTL = { indices: 8_000, estimate: 15_000, official: 60_000 };
+const SUCCESS_TTL = { indices: 8_000, official: 60_000 };
 const cache = new Map();
 const inflight = new Map();
 
@@ -21,11 +19,6 @@ const SOURCE = {
     primary: ["tencent", "腾讯指数"],
     backup: ["eastmoney", "东方财富指数（缺PE与总市值）"],
     unavailable: [null, "不可用 · 顶部指数"],
-  },
-  estimate: {
-    primary: ["eastmoney", "天天基金盘中估算"],
-    backup: ["tencent", "腾讯基金估算"],
-    unavailable: [null, "不可用 · 盘中估算"],
   },
   official: {
     primary: ["eastmoney", "天天基金移动批量"],
@@ -77,10 +70,58 @@ function makePayload(kind, status, data, quoteAt) {
   return { ok: status !== "unavailable", status, source, sourceLabel, quoteAt: quoteAt || null, data: data || [] };
 }
 
+function compactRecord(record) {
+  if (!record?.date || !record.funds) return null;
+  return record;
+}
+
+async function findNavBefore(env, date) {
+  const previous = compactRecord(await env.NAV.get("nav:previous", "json"));
+  if (previous?.date && previous.date < date) return previous;
+
+  const latest = compactRecord(await env.NAV.get("nav:latest", "json"));
+  if (latest?.date && latest.date < date) return latest;
+
+  for (let days = 1; days <= 10; days += 1) {
+    const d = new Date(Date.parse(`${date}T00:00:00Z`) - days * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const record = compactRecord(await env.NAV.get(`nav:${d}`, "json"));
+    if (record?.date && record.date < date) return record;
+  }
+  return null;
+}
+
+async function readNavWindow(env, today) {
+  const dateRecord = compactRecord(await env.NAV.get(`nav:${today}`, "json"));
+  const pointerToday = compactRecord(await env.NAV.get("nav:today", "json"));
+  const latest = compactRecord(await env.NAV.get("nav:latest", "json"));
+  const current = dateRecord || pointerToday || latest;
+  const previous = current?.date ? await findNavBefore(env, current.date) : null;
+  return { current, previous };
+}
+
+function attachPreviousNav(code, item, previousRecord) {
+  const previous = previousRecord?.funds?.[code];
+  const previousNav = previous?.nav > 0 ? previous.nav : null;
+  return {
+    ...item,
+    pct:
+      previousNav == null
+        ? null
+        : ((item.nav - previousNav) / previousNav) * 100,
+    previousNav,
+    previousDate: previousNav == null ? null : previous.at?.slice(0, 10) || previousRecord.date,
+    previousPct:
+      previousNav == null || !Number.isFinite(previous.pct)
+        ? null
+        : previous.pct,
+  };
+}
+
 async function selectGroup(kind, force, fetcher, codes) {
   const loaders = {
     indices: [() => fetchPrimaryIndices(fetcher), () => fetchBackupIndices(fetcher)],
-    estimate: [() => fetchPrimaryEstimates(fetcher, codes), () => fetchBackupEstimates(fetcher, codes)],
     official: [() => fetchPrimaryOfficial(fetcher, codes), () => fetchBackupOfficial(fetcher, codes)],
   }[kind];
   const diagnostics = [];
@@ -103,7 +144,7 @@ async function selectGroup(kind, force, fetcher, codes) {
 
 function quoteAtFor(kind, data) {
   if (kind === "indices") return latestQuoteAt(data);
-  return data.map((item) => item.estimateAt || item.officialAt).filter(Boolean).sort().at(-1) || null;
+  return data.map((item) => item.officialAt).filter(Boolean).sort().at(-1) || null;
 }
 
 export function resetGatewayCache() {
@@ -130,14 +171,20 @@ export async function handleRequest(request, env = {}, context, dependencies = {
   if (url.pathname === "/v1/nav/today") {
     if (!env?.NAV) return response({ ok: false, error: "nav_kv_unbound" }, 503);
     const today = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
-    // 先today后latest：官方净值是全站唯一来源，而盘中/周末/节假日没有「今日记录」，
-    // 必须回退到上一交易日，否则那些时段官方净值整列变空（红线 #2）。
-    // 返回的 date 是**记录自带的**日期，不是请求当天——前端据它判新旧，不会误当今日。
-    const todayRecord = await env.NAV.get(`nav:${today}`, "json");
-    const latestRecord = await env.NAV.get("nav:latest", "json");
-    const record = todayRecord || latestRecord;
+    // KV 对外是两组官方事实：nav:today（最新已公布净值日）与 nav:previous。
+    // nav:{date}/nav:latest 只作迁移兼容；前端不再用百分比或估算缓存反推基准。
+    const { current: record, previous: previousRecord } = await readNavWindow(env, today);
     if (!record) {
-      return response({ ok: true, date: today, first: null, firstCount: 0, count: 0, updatedAt: null, funds: {} });
+      return response({
+        ok: true,
+        date: today,
+        previousDate: previousRecord?.date || null,
+        first: null,
+        firstCount: 0,
+        count: 0,
+        updatedAt: null,
+        funds: {},
+      });
     }
     const first = record.first || null;
     const firstCount = first
@@ -145,26 +192,21 @@ export async function handleRequest(request, env = {}, context, dependencies = {
       : 0;
     const count = Object.keys(record.funds || {}).length;
 
-    // 单只兜底（红线 #2）：today 记录存在，但某只当天压根没披露净值（如该基金
-    // 官方净值今天没更新，东财/腾讯两源都还停在旧日期——见 2026-07-27 110027 一案），
-    // 用 nav:latest 里那只的上次好值补上，不留空。**不计入 first/firstCount**——
-    // 那两个数字要如实反映今晚真实的采集竞速，补的旧值不算「今晚抢到」。
-    // 补入的条目自带 at（完整旧日期），前端按每只自己的 at 判新旧，不看这个响应顶层 date。
-    let funds = record.funds || {};
-    if (todayRecord && latestRecord?.funds) {
-      const merged = { ...funds };
-      let filled = false;
-      for (const [code, item] of Object.entries(latestRecord.funds)) {
-        if (merged[code]) continue;
-        merged[code] = item;
-        filled = true;
+    const funds = {};
+    for (const [code, item] of Object.entries(record.funds || {})) {
+      funds[code] = attachPreviousNav(code, item, previousRecord);
+    }
+    if (previousRecord?.funds) {
+      for (const [code, item] of Object.entries(previousRecord.funds)) {
+        if (funds[code]) continue;
+        funds[code] = { ...item, previousNav: null, previousDate: null, previousPct: null };
       }
-      if (filled) funds = merged;
     }
 
     return response({
       ok: true,
       date: record.date,
+      previousDate: previousRecord?.date || null,
       first,
       firstCount,
       count,
@@ -175,7 +217,6 @@ export async function handleRequest(request, env = {}, context, dependencies = {
 
   const endpoint = {
     "/v1/indices": "indices",
-    "/v1/funds/estimate": "estimate",
     "/v1/funds/official": "official",
   }[url.pathname];
   if (!endpoint) return response({ ok: false, error: "not_found" }, 404);

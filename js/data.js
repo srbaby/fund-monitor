@@ -4,7 +4,6 @@
 // ============================================================
 
 const officialBatchCache = {};
-let _estGistReadTs = 0; // Gist 兜底读的节流时间戳，成败均推进（负缓存，见 D-018）
 
 function _fetchJson(url, timeoutMs) {
   const controller = new AbortController();
@@ -67,11 +66,9 @@ function _officialCacheTtl(data, codesCount) {
 }
 
 // ============================================================
-// 腾讯行情直连（DATA_MODE === "direct"）
-// 单域名、单请求覆盖「官方净值 + 盘中估算」两链（基金），指数单独单请求。
+// 腾讯指数行情直连（DATA_MODE === "direct"）
 // 返回 GBK，必须用 TextDecoder("gbk")，不能用 UTF-8（否则中文名乱码、字段错位）。
-// 字段布局与网关 parsers.mjs 的 parseTencent* 逐字段对齐，产物字段名与网关一致，
-// 保证 fetchSingleFund / setIndices / setQQIndex 无需感知来源。
+// 基金官方净值统一由采集器 KV 提供；已下线的基金估算接口不再请求。
 // ============================================================
 
 function _txNum(value) {
@@ -114,60 +111,6 @@ function _parseTxAssignments(text) {
   const pattern = /v_([^=\s]+)="([\s\S]*?)"\s*;/g;
   for (const m of text.matchAll(pattern)) quotes.set(m[1], m[2].split("~"));
   return quotes;
-}
-
-// 盘中估算链。**官方净值已不走这里**——它统一从采集器 KV 取（D-023 修订），
-// 故本函数只产出 estimate 一条链。in-flight 去重保留：同一次刷新内若有并发调用只打一次上游。
-const _txFundInflight = new Map();
-async function _fetchTencentFunds(codes) {
-  const key = codes.join(",");
-  if (_txFundInflight.has(key)) return _txFundInflight.get(key);
-  const promise = (async () => {
-    const url = `${TX_BASE}/q=` + codes.map((c) => `jj${c}`).join(",");
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_OFF_TIMEOUT);
-    try {
-      const res = await fetch(url, { signal: controller.signal });
-      const buf = await res.arrayBuffer();
-      const text = new TextDecoder("gbk").decode(buf);
-      return _parseTencentFunds(text, codes);
-    } catch {
-      return null;
-    } finally {
-      clearTimeout(timer);
-    }
-  })().finally(() => _txFundInflight.delete(key));
-  _txFundInflight.set(key, promise);
-  return promise;
-}
-
-// 字段布局（与 parsers.mjs parseTencentEstimates 一致）：
-//   [1]名称 [2]估算净值 [3]估算% [4]估算时间 [5]官方净值 [7]官方% [8]官方日期
-// 只取估算块 [2][3][4]；baseNav/baseDate 仍借 [5][8]（= 最新确认净值，估算的基数）。
-// **官方块 [5][7][8] 不再产出条目**——官方净值统一走采集器 KV（D-023 修订），
-// 这里再解析一份就是两条并存的取数路径，正是那次修订要消除的东西。
-function _parseTencentFunds(text, codes) {
-  const quotes = _parseTxAssignments(text);
-  const estimate = new Map();
-  for (const code of codes) {
-    const fields = quotes.get(`jj${code}`);
-    if (!fields || fields.length < 9) continue;
-    const estimateNav = _txNum(fields[2]);
-    const estimatePct = _txNum(fields[3]);
-    const estimateAt = _txDate(fields[4]);
-    if (estimateNav != null && estimateNav > 0 && estimatePct != null && estimateAt) {
-      estimate.set(code, {
-        code,
-        name: fields[1] || NAMES[code] || null,
-        estimateNav,
-        estimatePct,
-        estimateAt,
-        baseNav: _txNum(fields[5]),
-        baseDate: _txDate(fields[8]),
-      });
-    }
-  }
-  return { estimate };
 }
 
 // 指数直连：单请求覆盖全部指数。字段布局与 parsers.mjs parseTencentIndices 对齐：
@@ -244,6 +187,9 @@ async function _fetchNavCollector(force = false) {
           name: item.name || NAMES[code] || null,
           officialNav: item.nav,
           officialPct: item.pct,
+          previousNav: item.previousNav ?? null,
+          previousDate: item.previousDate || null,
+          previousPct: item.previousPct ?? null,
           // 逐只用自己的 at 判日期，不用整份响应顶层的 date：网关现在会用 nav:latest
           // 给"今天没披露"的个别基金补上次好值（红线 #2），那种条目的真实日期比 payload.date 旧。
           officialAt: item.at ? item.at.slice(0, 10) : payload.date,
@@ -285,115 +231,33 @@ async function fetchOfficialData(codes, force = false) {
   return group;
 }
 
-// 盘中估算：直连模式带 localStorage 持久化 + Gist 跨设备兜底。
-// 收盘后腾讯返回 0 → parse 滤空 → 回退缓存，避免估值列直接变"--"。
-function fetchEstimates(codes) {
-  const uniqueCodes = _normalizeCodes(codes);
-  if (uniqueCodes.length === 0) {
-    return Promise.resolve(_unavailable());
-  }
-  if (DATA_MODE === "direct") {
-    return (async () => {
-      const r = await _fetchTencentFunds(uniqueCodes);
-      if (r && r.estimate.size) {
-        saveEstCache(r.estimate);
-        return { source: "tencent", data: r.estimate };
-      }
-      // 本次无新估算 → 回退本地缓存
-      const lsCached = loadEstCache(uniqueCodes);
-      if (lsCached) return { source: "cached", data: lsCached };
-      // 本地无缓存 → Gist 跨设备兜底。节流且失败也推进时间戳：
-      // 估算源断供时 fm_est.json 可能长期不存在，只在成功时节流等于没节流，
-      // 会退化成每 60 秒一次注定 404 的认证请求，还串在刷新的 await 链上。
-      if (Date.now() - _estGistReadTs < EST_GIST_READ_THROTTLE)
-        return _unavailable();
-      _estGistReadTs = Date.now();
-      const { id, token } = loadGistConfig();
-      if (!id || !token) return _unavailable();
-      const gistData = await cloudReadEst(id, token);
-      const gistMap = new Map(gistData?.data || []);
-      const filtered = new Map();
-      for (const code of uniqueCodes) {
-        if (gistMap.has(code)) filtered.set(code, gistMap.get(code));
-      }
-      if (!filtered.size) return _unavailable();
-      saveEstCache(filtered); // 落到本地，下次秒回
-      return { source: "gist", data: filtered };
-    })();
-  }
-  return _fetchGroup(
-    "/v1/funds/estimate?codes=" + uniqueCodes.join(","),
-    FETCH_EST_TIMEOUT,
-  );
-}
-
-// Gist 快照：收盘后推一次当日最后的估算（fire-and-forget，不阻塞刷新）。
-// **时机由 interact 的 refreshData 按 POST_MARKET 决定，不在这里判**——getMarketState 属
-// engine 层，而 data 与 engine 平级互不依赖（docs/02 §2.2）。
-// 旧实现挂在每次估算成功之后，推的是当日第一笔（09:31 开盘估算），与 D-014 的「收盘后」相悖。
-// 标记改为推送成功后才落：先落会让一次失败吞掉当天仅有的机会。
-function pushEstToGist() {
-  const today = todayDateStr();
-  if (loadEstGistDate() === today) return;
-  const { id, token } = loadGistConfig();
-  if (!id || !token) return;
-  const entry = loadEstCacheEntry();
-  if (!entry) return;
-  setTimeout(async () => {
-    const ok = await cloudUpdateEst(id, token, {
-      date: today,
-      updatedAt: new Date().toISOString(),
-      data: entry.data,
-    });
-    if (ok) {
-      markEstGistPushed();
-      console.log("✅ 估算快照已同步 Gist");
-    }
-  }, 0);
-}
-
-// 涨跌幅一律规整到 2 位小数，**在数据入口统一，不留给渲染层**（D-023）。
-// 上游精度本就不一致：东财 NAVCHGRT 给 2 位（"1.70"），腾讯给 4 位（"1.7039"）。
-// 渲染层的 fp() 早就 toFixed(2)，所以**显示从来是一致的**——但原始值会漏进两处判断：
-//   1. calcFlash 逐字比较 pr.offPct !== f.offPct → 源切换时 1.7039 ≠ 1.70 成立，
-//      触发涨跌闪烁动画，可界面上数字纹丝未动（都是 1.70）。伪闪烁。
-//   2. calcTodayProfit 直接拿 offPct 算收益 → 同一只基金的今日收益随源切换微跳。
-// 统一到 2 位后两处自然消停。精度代价：单只最多 0.005%，10 万持仓约 5 元，
-// 远小于净值本身 4 位小数的量化误差，可忽略。
-function _pct2(value) {
-  return value == null || !Number.isFinite(Number(value))
-    ? null
-    : Number(Number(value).toFixed(2));
-}
-
-function fetchSingleFund(code, official, estimate) {
+function fetchSingleFund(code, official) {
   const key = String(code).trim().padStart(6, "0");
-  const est = estimate.data.get(key) || null;
   const off = official.data.get(key) || null;
   // offSource 优先读条目自带的源（采集器逐只记账，官方列因此**可能混源**，
   // 与 D-002「整组同源」的差别见 D-023）；整组 source 只作没有逐条信息时的兜底。
   const sources = {
-    estSource: estimate.source,
+    estSource: "unavailable",
     offSource: off?.navSource || official.source,
   };
-  if (!est && !off) return { code, error: true, ...sources };
+  if (!off) return { code, error: true, ...sources };
   return {
     code,
     error: false,
-    name: est?.name || NAMES[code] || off?.name || "基金 " + code,
-    estPct: _pct2(est?.estimatePct),
-    // 净值统一补足4位小数，否则 1.236 会当作 "1.236" 直接显示
-    estVal: est?.estimateNav != null ? est.estimateNav.toFixed(4) : null,
-    estTime: est?.estimateAt || null,
-    offPct: _pct2(off?.officialPct),
+    name: NAMES[code] || off?.name || "基金 " + code,
+    estPct: null,
+    estVal: null,
+    estTime: null,
+    offPct: off?.officialPct ?? null,
     offVal: off?.officialNav != null ? off.officialNav.toFixed(4) : null,
     offDate: off?.officialAt || null,
+    previousNav: off?.previousNav ?? null,
+    previousDate: off?.previousDate || null,
+    previousPct: off?.previousPct ?? null,
     // 采集器抢到该只的时刻。ui 用它挑出「今晚最早那条」定标签名，直连补的条目没有此字段，
     // 自然不参与抢先计算（它本来也说不清是谁先）。
     offAt: off?.navAt || null,
     ...sources,
-    baseNav: est?.baseNav ?? null,
-    baseDate: est?.baseDate || null,
   };
 }
 
@@ -536,10 +400,4 @@ function cloudUpdatePe(gistId, token, peData) {
 }
 function cloudUpdateConfig(gistId, token, payload) {
   return _cloudWriteFile(gistId, token, GIST_FILE_CONFIG, payload);
-}
-function cloudReadEst(gistId, token) {
-  return _cloudReadFile(gistId, token, GIST_FILE_EST);
-}
-function cloudUpdateEst(gistId, token, data) {
-  return _cloudWriteFile(gistId, token, GIST_FILE_EST, data);
 }
