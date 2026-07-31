@@ -52,8 +52,8 @@ const SRC_LABELS = {
 };
 
 // 主线路不出声，只在数据不新鲜时挂两个小字。
-// backup / stale 由网关给定，stale 代表网关退回了上次好数据（D-001）。
-// cached / gist 是直连模式的本地/跨设备回退（D-018）——**它们本身不代表旧**：
+// backup / stale 由网关给定，stale 代表网关退回了上次好数据。
+// cached / gist 是本地/跨设备快照——**它们本身不代表旧**：
 // 收盘后沿用当日 14:59 那笔仍是当日数据，标成陈旧反而不准。故按数据自带日期判，
 // 不按来源判。dataDate 取自条目的 estimateAt / officialAt，旁边 meta 行显示的就是它。
 function srcTag(source, dataDate, today) {
@@ -74,12 +74,10 @@ function srcTag(source, dataDate, today) {
 }
 
 // 数据源标签在表头出现一次，手机卡片视图则挂在卡片上方那条（#cardSrcTags）。
-// **卡片视图原本刻意不挂**（D-020 C 节「手机收窄本就该少字」），D-023 改为挂——
-// 手机是主力入口，而"官方净值今晚是哪一路抢先、抢到几只"恰恰是手机上最该看见的一格。
+// 手机是主力入口，“官方净值今晚是哪一路抢先、抢到几只”也必须在这里可见。
 //
-// 估算那列**可能混源**：代理是逐只让路的，某只估算源复活时其余仍是代理（D-020 恢复路径）。
-// 故分两轮取：先找非代理的真实源，找不到才退回代理。这样任何一只恢复都能把表头顶成「腾讯」，
-// 而这一格变字正是察觉"估算源活了"的唯一信号——反过来（代理优先）会把恢复整个盖住。
+// 估算列保留逐只来源能力：先找非代理来源，找不到才显示代理。当前正式路径只有代理；
+// 将来若经单独验收引入真实估值，这个顺序可避免被代理标签遮住。
 function renderSourceTags(results, today) {
   const pick = (srcKey, dateKey) => {
     const tagOf = (f) => srcTag(f[srcKey], f[dateKey]?.slice(0, 10), today);
@@ -104,9 +102,8 @@ function renderSourceTags(results, today) {
     card = _getEl("cardSrcTags");
   if (est) est.innerHTML = estTag;
   if (off) off.innerHTML = offTag;
-  // 手机只挂官方那格。估算源标签（当前恒为「代理」）在手机上是常态噪音——
-  // 它天天挂着不变，而这一格的价值全在"变字"。桌面表头仍然保留它，
-  // D-020 说的"估算源复活的唯一信号"因此没有丢，只是不在手机上抢位置。
+  // 手机只挂官方那格。估算源标签当前恒为「代理」，在窄屏上是常态噪音；
+  // 桌面表头仍保留它，避免把代理误认为真实净值。
   if (card) card.innerHTML = offTag;
 }
 
@@ -417,7 +414,7 @@ function renderTodayProfit(results, holdings, activeProds, mktState, todayStr) {
 // 响应式订阅更新器 (Topic-based Renderers)
 // ============================================================
 
-// LOCAL_CONFIG 频道：PE 定锚、持仓/降权预案/优先卖出变更时触发
+// LOCAL_CONFIG 频道：PE 档位、持仓/降权预案/优先卖出变更时触发
 function UI_updateLocalConfig() {
   const results = getLastResults(),
     mktState = getMarketState(),
@@ -450,7 +447,7 @@ function UI_updateFunds() {
     document.getElementById("cardView").innerHTML = empty.card;
     document.getElementById("fundTbody").innerHTML = empty.table;
   } else if (uiResults.length > 0) {
-    // results 入库前已由 refreshData 回填代理（D-022），渲染层直接用，不再另做副本
+    // results 入库前已由 refreshData 回填代理，渲染层直接用，不再另做副本
     renderCards(uiResults, fl, today, tradingDay);
     renderTable(uiResults, fl, today, tradingDay);
     renderSourceTags(uiResults, today);
@@ -491,5 +488,3 @@ function cycleMiniMode() {
   document.getElementById("cycleBtn").textContent = miniLabels[miniMode];
   UI_updateFunds();
 }
-
-

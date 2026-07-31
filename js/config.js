@@ -7,17 +7,18 @@
 // §1 数据源配置
 // ════════════════════════════════════════════════════════════
 
-// 数据源模式开关（详见 docs/DECISIONS.md D-013）
-//   "gateway" → Cloudflare 网关（API_BASE），主备在网关内，带 KV last-known-good
-//   "direct"  → 浏览器直连行情源。净值主东财/备腾讯；指数单源腾讯（新浪备源因 CORS 不可用，见 D-020）。
-//   切换逻辑只在 data.js 的两个分支内，禁止在第三处另开数据源。
+// 盘中行情模式开关（详见 docs/02-系统架构.md §2.4）
+//   "gateway" → /v1/indices，网关内腾讯主源、东财备源，带 KV last-known-good
+//   "direct"  → 浏览器单次直连腾讯行情。
+// 官方净值固定走 NAV_BASE/v1/nav/today，不受本开关影响。
+// 切换逻辑只在 data.js 的既有分支内，禁止另开第三条行情路径。
 const DATA_MODE = "direct";
 
 // 市场数据网关（gateway 模式用）。浏览器只请求这一个域名。
 const API_BASE = "https://fund-api.bailuzun.com";
 
-// 官方净值夜间采集器（详见 D-023）。**官方净值的唯一来源**，不受 DATA_MODE 影响——
-// 那个开关从此只管盘中数据（估算、指数）。浏览器侧本就凑不出第二个官方源：
+// 官方净值夜间采集器（详见 docs/02-系统架构.md §2.6）。**官方净值的唯一来源**，
+// 不受 DATA_MODE 影响。浏览器侧本就凑不出第二个官方源：
 // 东财 FundMNFInfo 前端直连被 ErrCode:61136 拦（需 APP 签名，仅服务端调得通），
 // 只剩腾讯一路；且没人开着看板时浏览器压根不会去取。采集器每分钟两源并行抢，
 // 把结果连同「谁先抢到 + 何时抢到」存进 KV，前端读一次即可。
@@ -29,10 +30,10 @@ const API_BASE = "https://fund-api.bailuzun.com";
 // 是 "direct"，这一个端点仍走网关域名——它读的是 KV，不触发网关的任何上游主备逻辑。
 const NAV_BASE = API_BASE;
 
-// 腾讯行情直连基地址（direct 模式用，盘中估算与指数）。返回 GBK，前端 TextDecoder("gbk") 解码。
+// 腾讯行情直连基地址（direct 模式的盘中指数/ETF行情）。返回 GBK，前端 TextDecoder("gbk") 解码。
 const TX_BASE = "https://qt.gtimg.cn";
 
-// EM_BASE 已删（D-023 修订）：官方净值统一走采集器 KV 后，前端不再直连东财——
+// 前端不保留 EM_BASE：官方净值统一走采集器 KV，不再从浏览器直连东财——
 // 那条链在浏览器里本来就是死的（ErrCode:61136），删掉的是一个从未成功过的主源。
 // 服务端那份仍在 workers/fund-nav-collector/src/index.js 的 fetchEastmoney 里，活得好好的。
 
@@ -71,8 +72,8 @@ const HIDDEN_INDICES = [
   { id: "399006", lbl: "创业板指" },
 ];
 
-// PE 锚定路径开关（详见 docs/DECISIONS.md D-017）
-//   "mcap"  → 1.0 总市值路。D-006 实测平均误差 0.41pp / 最大 0.86pp
+// PE 锚定路径开关（详见 docs/01-业务意图.md §1.2）
+//   "mcap"  → 1.0 总市值路。15日样本平均误差 0.41pp / 最大 0.86pp
 //   "price" → 2.0 点位路。平均 1.31pp / 最大 3.69pp，成分调整日更可靠
 // 新增 PE 调用点一律走 getAnchorPE，禁止直接调 getEnginePE / getEnginePE1
 const PE_ANCHOR = "mcap";
@@ -226,7 +227,7 @@ const T_OFF_UPDATE = 1170;           // 官方净值更新 19:30
 const FETCH_OFF_TIMEOUT = 12000;
 const FETCH_INDEX_TIMEOUT = 12000;
 
-// 夜间采集器读节流（ms），失败也推进（负缓存）。见 D-023
+// 官方净值 KV 读节流（ms），失败也推进（负缓存）。
 const NAV_COLLECTOR_TTL = 30000;
 
 // 市场常量

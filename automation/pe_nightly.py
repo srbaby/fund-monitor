@@ -4,7 +4,7 @@
 
 职责：抓取乐咕沪深300滚动 PE，把次日旁路锚（peYest / priceYest / mcapYest）
 与历史 PE 排序数组写入 Gist fm_pe_engine.json，供看板 1.0 总市值路与
-2.0 点位路盘中插值使用。
+2.0 点位路盘中比例外推使用。
 
 双路验证层已于 2026-07-19 拆除：15 个交易日的比对显示 1.0 平均绝对误差
 0.41pp、从未超过 0.9pp，2.0 为 1.31pp 且 40% 的交易日超过 1pp，结论已定，
@@ -123,7 +123,7 @@ def main():
         "date": last_date,
         "peYest": official_pe,
         "pctYest": official_pct,
-        "priceYest": close_price,          # 乐咕官方收盘点位（2.0主锚）
+        "priceYest": close_price,          # 乐咕收盘点位（2.0主锚）
         "priceQQYest": close_price_qq,     # 腾讯收盘点位（参考，验证两源一致性）
         "mcapYest": close_mcap,            # 腾讯收盘总市值（1.0锚）
         "peQQYest": qq_pe,

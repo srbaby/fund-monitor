@@ -11,7 +11,7 @@
 // 当前接入点（10处）：
 //   store.js
 //     - saveFunds          基金列表变更（含拖拽排序）
-//     - savePe             PE 定锚更新
+//     - savePe             用户 PE 档位更新
 //     - saveHoldingsData   持仓份额 / 权益 / 短名称保存
 //     - saveSellPlan       降权预案保存
 //     - savePrioritySell   设置优先卖出品种

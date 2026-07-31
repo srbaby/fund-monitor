@@ -161,7 +161,7 @@ export async function handleRequest(request, env = {}, context, dependencies = {
     return response({ ok: false, error: "host_not_allowed" }, 403);
   }
 
-  // D-023：官方净值采集器的**读**端点。数据由 workers/fund-nav-collector 每分钟写入
+  // 官方净值采集器的**读**端点。数据由 workers/fund-nav-collector 每分钟写入
   // 同一个 KV，这里只做读出，不打任何上游、不走主备那套。
   //
   // 为什么读写分在两个部署里：采集要 Cron，而本项目是 Pages Functions 没有 Cron；
@@ -243,7 +243,7 @@ export async function handleRequest(request, env = {}, context, dependencies = {
       const payload = makePayload(endpoint, status, selected.data, selected.data ? quoteAtFor(endpoint, selected.data) : null);
       if (force) payload.diagnostic = selected.diagnostics;
 
-      // D-001：这一次取不到，不等于把用户已有的数据清空。退回上次好数据并标记陈旧，
+      // 这一次取不到，不等于把用户已有的数据清空。退回上次好数据并标记陈旧，
       // 真的连 LKG 都没有（首次访问、换了基金列表、超出保质期）才如实返回不可用。
       if (status === "unavailable") {
         const record = await readLastKnownGood(env, cacheKey);

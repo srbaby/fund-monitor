@@ -22,7 +22,7 @@ ALLOW_ORIGIN = "https://fund.bailuzun.com"
 binding = "NAV"
 id = "483cc886433741629643f118007803c1"
 
-# 北京时间 = UTC+8，采集窗口 9:00–24:00 北京 = 1:00–16:00 UTC（[D-027]）。
+# 北京时间 = UTC+8，采集窗口 9:00–24:00 北京 = 1:00–16:00 UTC。
 # Cloudflare 限制每个 Worker 最多 3 条 cron，这里用 1 条覆盖整个窗口。
 # 全部基金当日净值到齐后 handler 会立即 return（早退），后续跳只空转约 1ms、
 # 不打上游，所以「每分钟」的实际成本远低于 900 跳。

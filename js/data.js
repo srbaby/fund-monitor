@@ -54,7 +54,7 @@ function _officialCacheTtl(data, codesCount) {
     .filter(Boolean);
   const isTodayData =
     dates.length > 0 && dates.every((date) => date === todayDateStr());
-  // 半成品（今日数据但没采全）→ 5min 短缓存等补采；采全或非交易日 → 12h（D-025）。
+  // 半成品（今日数据但没采全）→ 5min 短缓存等补采；采全或非交易日 → 12h。
   // 不假设固定时段（用户可能随时改 cron）。codesCount 来自 fetchOfficialData 入参，
   // data.size 是采集器端点返回的实际只数（已过滤 nav>0）。
   const isComplete = !codesCount || data?.size >= codesCount;
@@ -161,8 +161,8 @@ async function _fetchIndexGroupTencent() {
   return { map, group: { source: "tencent", data: dataMap } };
 }
 
-// 官方净值：**全站唯一来源是采集器 KV，不再看 DATA_MODE**（D-023 修订）。
-// `DATA_MODE` 从此只管盘中数据（估算、指数）——官方净值那两条老链路已经删干净，
+// 官方净值：**全站唯一来源是采集器 KV，不看 DATA_MODE**。
+// `DATA_MODE` 只管盘中指数/ETF行情——官方净值的浏览器直连链路已经删干净，
 // 别再往这里加"直连兜底"：浏览器侧东财被 61136 拦、腾讯只有一路，兜不出第二个源，
 // 加回来只是把已经收敛的取数路径重新摊开。KV 拿不到就走下面的 officialBatchCache。
 //
@@ -170,7 +170,7 @@ async function _fetchIndexGroupTencent() {
 // 表头与卡片的「腾讯 2」就是数它们算出来的。
 //
 // **不再要求 payload.date === 今天**：盘中 / 周末 / 节假日本来就没有「今日记录」，
-// 读端点会回退到 nav:latest（上一交易日）。officialAt 取记录自带日期，
+// 读端点会回退到最新已公布净值日。officialAt 取记录自带日期，
 // 于是 getNavByCode 的市值口径与 calcTodayProfit 的收益口径各自照旧判新旧，无需感知回退。
 let _navCollectorCache = { ts: 0, value: null };
 async function _fetchNavCollector(force = false) {
@@ -191,8 +191,8 @@ async function _fetchNavCollector(force = false) {
           previousNav: item.previousNav ?? null,
           previousDate: item.previousDate || null,
           previousPct: item.previousPct ?? null,
-          // 逐只用自己的 at 判日期，不用整份响应顶层的 date：网关现在会用 nav:latest
-          // 给"今天没披露"的个别基金补上次好值（红线 #2），那种条目的真实日期比 payload.date 旧。
+          // 逐只用自己的 at 判日期，不用整份响应顶层的 date：端点可能为尚未披露的基金
+          // 带回前一净值日条目，那种条目的真实日期比 payload.date 旧。
           officialAt: item.at ? item.at.slice(0, 10) : payload.date,
           navSource: item.src,
           navAt: item.at,
@@ -235,8 +235,8 @@ async function fetchOfficialData(codes, force = false) {
 function fetchSingleFund(code, official) {
   const key = String(code).trim().padStart(6, "0");
   const off = official.data.get(key) || null;
-  // offSource 优先读条目自带的源（采集器逐只记账，官方列因此**可能混源**，
-  // 与 D-002「整组同源」的差别见 D-023）；整组 source 只作没有逐条信息时的兜底。
+  // offSource 优先读条目自带的源：采集器逐只记账，官方列因此可能混源；
+  // 整组 source 只作没有逐条信息时的兜底。
   const sources = {
     estSource: "unavailable",
     offSource: off?.navSource || official.source,
@@ -290,8 +290,7 @@ function _latestQuoteAt(map) {
 }
 
 async function _fetchIndexGroup() {
-  // direct 模式指数是**单源**：曾接过新浪备源，但 hq.sinajs.cn 不返回 CORS 头，
-  // 浏览器 fetch 必失败，代码恒返回 null，已删（D-020 代价栏留了考证）。
+  // direct 模式指数是**单源**：新浪接口不返回 CORS 头，浏览器 fetch 不可用。
   // 要恢复主备只能搬回网关（服务端无 CORS 限制）或换带 CORS 的源。
   if (DATA_MODE === "direct") return _fetchIndexGroupTencent();
   const group = await _fetchGroup("/v1/indices", FETCH_INDEX_TIMEOUT);

@@ -1,4 +1,4 @@
-// Last-known-good 持久层。存在理由见 docs/DECISIONS.md 的 D-001。
+// Last-known-good 持久层：新数据失败时保留最近完整组，并在响应中明确标记 stale。
 //
 // 行情拿不到新数据时必须退回上次好数据，而不是把用户已看到的数据冲成空。
 // 保护放在网关而不是浏览器 localStorage，是因为后者是单机的：换台电脑、

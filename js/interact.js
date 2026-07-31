@@ -65,7 +65,7 @@ function rebuildSortable() {
 }
 
 // 指数每 10 秒一跳，代理估值要跟着重算，否则权益%/持仓总额/收益只能等 60 秒的
-// 净值刷新才动一次。重算走 setLastResults 广播，订阅者照常重画（D-022）。
+// 净值刷新才动一次。重算走 setLastResults 广播，订阅者照常重画。
 // applyProxyEstimates 幂等且只覆盖自产的代理条目，反复调用安全。
 // 无持仓或无结果时直接返回，避免每 10 秒空转一次全量重画。
 function reapplyProxyEstimates() {
@@ -95,7 +95,7 @@ async function refreshData(force = false) {
     // 官方未披露 → 估算位填代理值；官方披露 → 收益切到官方净值差。
     // 放在 setLastResults 之前而非渲染时，是因为 getNavByCode 读的是 store 里的 results，
     // 渲染层的副本它看不见——那正是"顶部有收益、权益%却纹丝不动"的成因。
-    // LKG 回退（红线 #2 direct 模式补齐，D-025）：拿不到新数据时退回上次好数据标陈旧，
+    // 前端逐只 LKG：拿不到新数据时退回上次好数据并标记陈旧，
     // applyProxyEstimates 据此重算代理，估算列不会全空。offSource:"stale" 复用 srcTag
     // 既有的"陈旧"分支（ui.js:70），pickWinnerTag 跳过 stale（SRC_LABELS 无此项）。
     const prev = new Map(getLastResults().map((r) => [r.code, r]));

@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       base_url:
-        description: "Custom API URL. pages.dev is host-locked and only answers with the diagnostic token"
+        description: "Custom API URL; pages.dev requires the diagnostic token"
         required: true
         default: "https://fund-api.bailuzun.com"
       market_session:
-        description: "Set to open only during a mainland trading session; the Tencent estimate backup and the HS300 point comparison can be verified then and only then"
+        description: "Set to open to compare HS300 primary and backup points during mainland trading"
         required: false
         type: choice
         options:
@@ -26,13 +26,12 @@ jobs:
     env:
       BASE_URL: ${{ inputs.base_url }}
       DIAGNOSTIC_TOKEN: ${{ secrets.MARKET_API_DIAGNOSTIC_TOKEN }}
-      FUND_CODES: "003949,160622,110027,011554,007466,022435"
-      MARKET_SESSION: ${{ inputs.market_session }}
+      FUND_CODES: "003949,160622,110027,011554,022435,007045,007413"
     steps:
       - name: Check diagnostic secret
         run: test -n "$DIAGNOSTIC_TOKEN"
 
-      - name: Verify complete forced primary and backup groups
+      - name: Verify current API contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -42,70 +41,74 @@ jobs:
               -H "X-Diagnostic-Token: $DIAGNOSTIC_TOKEN" \
               "$1"
           }
-          verify() {
+          verify_codes() {
             local endpoint="$1"
             local expected="$2"
-            local required_codes="$3"
+            local required_csv="$3"
             local output
             echo "Checking $endpoint"
             if ! output="$(request "$BASE_URL$endpoint")"; then
-              echo "Request failed: $endpoint"
               failures=1
               return
             fi
-            echo "$output" | jq -c '{ok, status, source, sourceLabel, count: (.data | length), diagnostic}'
-            if ! echo "$output" | jq -e --arg expected "$expected" --argjson count "$required_codes" '
-              .ok == true and .status == $expected and (.data | length == $count) and
-              ([.data[] | .code] | unique | length == $count)
-            ' >/dev/null; then
+            echo "$output" | jq -c '{ok, status, source, count: (.data | length), diagnostic}'
+            if ! echo "$output" | jq -e \
+              --arg expected "$expected" \
+              --arg required "$required_csv" '
+                (.ok == true and .status == $expected) and
+                (($required | split(",")) - ([.data[].code] | unique) | length == 0)
+              ' >/dev/null; then
               failures=1
             fi
           }
-          # Tencent zeroes its fund estimate outside a trading session, so the
-          # backup group is legitimately unavailable then. Assert that shape
-          # rather than a complete group, and never call the leg verified.
-          expect_offsession() {
+          verify_count() {
             local endpoint="$1"
+            local expected="$2"
+            local expected_count="$3"
             local output
-            echo "Checking $endpoint (off-session)"
+            echo "Checking $endpoint"
             if ! output="$(request "$BASE_URL$endpoint")"; then
-              echo "Request failed: $endpoint"
               failures=1
               return
             fi
-            echo "$output" | jq -c '{ok, status, source, sourceLabel, count: (.data | length), diagnostic}'
-            if ! echo "$output" | jq -e '.ok == false and .status == "unavailable" and (.data | length == 0)' >/dev/null; then
-              failures=1
-            fi
-            echo "::warning::Tencent estimate backup UNVERIFIED. Rerun with market_session=open during a trading session before treating acceptance as complete."
-          }
-          # The 1.0 bypass path anchors the PE bar on HS300 realtime market cap.
-          # A group without it still passes a code-completeness check while
-          # freezing the bar, so assert the anchor fields explicitly.
-          verify_anchor() {
-            local output
-            echo "Checking HS300 PE anchor fields"
-            if ! output="$(request "$BASE_URL/v1/indices?force=primary")"; then
-              echo "Request failed"
-              failures=1
-              return
-            fi
-            echo "$output" | jq -c '.data[] | select(.code == "000300") | {price, pe, marketCap}'
-            if ! echo "$output" | jq -e '.data[] | select(.code == "000300") | (.pe > 0 and .marketCap > 0)' >/dev/null; then
+            echo "$output" | jq -c '{ok, status, source, count: (.data | length), diagnostic}'
+            if ! echo "$output" | jq -e \
+              --arg expected "$expected" \
+              --argjson count "$expected_count" '
+                .ok == true and .status == $expected and
+                (.data | length == $count) and
+                ([.data[].code] | unique | length == $count)
+              ' >/dev/null; then
               failures=1
             fi
           }
-          verify "/v1/indices?force=primary" primary 6
-          verify_anchor
-          verify "/v1/indices?force=backup" backup 6
-          verify "/v1/funds/estimate?codes=$FUND_CODES&force=primary" primary 6
-          if [ "$MARKET_SESSION" = open ]; then
-            verify "/v1/funds/estimate?codes=$FUND_CODES&force=backup" backup 6
-          else
-            expect_offsession "/v1/funds/estimate?codes=$FUND_CODES&force=backup"
-          fi
-          verify "/v1/funds/official?codes=$FUND_CODES&force=primary" primary 6
-          verify "/v1/funds/official?codes=$FUND_CODES&force=backup" backup 6
+
+          core="000300,000510,000905,000832,000012,HSI"
+          all_factors="$core,159352,000013,000688,399006"
+          verify_codes "/v1/indices?force=primary" primary "$all_factors"
+          verify_codes "/v1/indices?force=backup" backup "$core"
+          verify_count "/v1/funds/official?codes=$FUND_CODES&force=primary" primary 7
+          verify_count "/v1/funds/official?codes=$FUND_CODES&force=backup" backup 7
+
+          nav="$(request "$BASE_URL/v1/nav/today")"
+          echo "$nav" | jq -c '{ok, date, previousDate, count, updatedAt}'
+          echo "$nav" | jq -e '
+            .ok == true and
+            (.date | type == "string") and
+            (.funds | type == "object")
+          ' >/dev/null || failures=1
+
+          removed_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            -H "X-Diagnostic-Token: $DIAGNOSTIC_TOKEN" \
+            "$BASE_URL/v1/funds/estimate?codes=$FUND_CODES")"
+          test "$removed_status" = "404" || failures=1
+
+          anchor="$(request "$BASE_URL/v1/indices?force=primary")"
+          echo "$anchor" | jq -e '
+            .data[] | select(.code == "000300") |
+            (.pe > 0 and .marketCap > 0)
+          ' >/dev/null || failures=1
+
           test "$failures" = 0
 
       - name: Compare HS300 primary and backup points during trading
@@ -124,12 +127,14 @@ jobs:
           backup_price="$(echo "$backup" | jq -er '.data[] | select(.code == "000300") | .price')"
           primary_time="$(echo "$primary" | jq -er '.data[] | select(.code == "000300") | .quoteAt')"
           backup_time="$(echo "$backup" | jq -er '.data[] | select(.code == "000300") | .quoteAt')"
-          relative_delta="$(awk -v primary="$primary_price" -v backup="$backup_price" 'BEGIN { printf "%.6f", (primary - backup < 0 ? backup - primary : primary - backup) / backup }')"
+          relative_delta="$(awk -v primary="$primary_price" -v backup="$backup_price" \
+            'BEGIN { printf "%.6f", (primary - backup < 0 ? backup - primary : primary - backup) / backup }')"
           echo "HS300 primary=$primary_price at $primary_time; backup=$backup_price at $backup_time; delta=$relative_delta"
           awk -v delta="$relative_delta" 'BEGIN { exit !(delta <= 0.0005) }'
 
       - name: Verify force is denied without diagnostic token
         shell: bash
         run: |
-          status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$BASE_URL/v1/indices?force=primary")"
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            "$BASE_URL/v1/indices?force=primary")"
           test "$status" = "403"

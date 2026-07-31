@@ -1,196 +1,120 @@
 # fund-nav-collector
 
-官方净值夜间采集器。决策与理由见 [`docs/DECISIONS.md` D-023](../../docs/DECISIONS.md#d-023)。
+Cloudflare Cron Worker，负责在无人打开看板时持续采集官方净值，并写入 `NAV` KV。
+前端不直连本 Worker，而是通过 `fund-api.bailuzun.com/v1/nav/today` 读取同一个 KV。
 
-9:00–24:00 北京每分钟一跳，并行打东财与腾讯，逐只只收**当日**净值，**先到先得**记账
-（谁先给的记谁 + 记下何时给的），写 KV。全部到齐即早退。
+完整数据流和口径见 [系统架构](../../docs/02-系统架构.md)。
 
-**节假日不早退，就是空跑一整天**——曾有一套"连续 30 跳没抓到就判非交易日收工"，实测永远跑不到，
-已于 2026-07-26 拆除，理由见 [D-028](../../docs/DECISIONS.md#d-028)。别再把它加回来。
+## 1. 为什么独立采集
 
-## 测试
+- 官方净值通常在晚间陆续披露，不能依赖浏览器保持在线轮询。
+- 东方财富 `FundMNFInfo` 浏览器直连受签名/访问条件限制，但服务端可调用。
+- Pages Functions 有大陆可达的自定义域名但没有 Cron；本 Worker 有 Cron，但
+  `workers.dev` 不作为前端依赖。因此采用“Worker 写 KV、Pages 网关读 KV”。
+
+## 2. 采集规则
+
+- 北京时间工作日 09:00–24:00，每分钟触发一次。
+- 东方财富与腾讯并行请求，逐只只接受 `officialAt/date` 等于北京当天的净值。
+- 同一只基金当日两源都有效时，采用先完成的来源；一经写入不覆盖，`src` 和 `at` 保持不变。
+- 当前基金全部到齐后立即早退，不再请求上游。
+- 节假日没有专用日历，Cron 会空跑；不得凭连续空结果擅自判定休市。
+- `complete` 不落盘，每次按当前基金列表重算，保证当晚新增基金仍会继续采集。
+- 基金删除后，旧记录在早退判断前清理，随后重新计算 `first`。
+
+上游：
+
+| 来源 | 接口 | 读取内容 |
+|---|---|---|
+| 东方财富 | `FundMNFInfo` | 批量官方单位净值、日期、名称 |
+| 腾讯 | `qt.gtimg.cn/q=jj{code}` | `jj` 十字段结构的官方块 `[5]`、`[7]`、`[8]` |
+
+腾讯 `[2]`–`[4]` 是已失效的历史盘中估值字段，本采集器永远不读取。两源自带涨跌幅精度
+不同，KV 原样保留；对外百分比由相邻两次官方净值重新派生。
+
+## 3. 基金列表
+
+正常路径读取 Gist `fm_config.json` 的 `f` 字段，自动跟随看板增删基金：
+
+1. 先用 `NAV/codes` 的 5 分钟缓存；
+2. 缓存过期后读取 Gist；
+3. Gist 临时失败时使用旧缓存，并标记 `stale-cache`；
+4. 没有任何缓存时才使用 `wrangler.toml` 的 `FALLBACK_CODES`。
+
+`codesSource` 和 `codesError` 会进入采集结果及日志，不能把 Gist 故障静默伪装成正常采集。
+
+## 4. KV 契约
+
+| Key | 含义 |
+|---|---|
+| `nav:{YYYY-MM-DD}` | 该北京日期采到的逐只官方净值，保留 7 天 |
+| `nav:today` | 最新已公布净值日的完整记录，不等同于北京日历当天 |
+| `nav:previous` | `nav:today` 之前的最近官方净值日 |
+| `nav:latest` | 旧读端兼容指针；不作为收益基准 |
+| `codes` | 从 Gist 读取的基金代码缓存 |
+
+收益基准只认 `nav:today + nav:previous` 窗口。`nav:latest` 用于兼容和迁移，禁止用快照
+百分比反推上一净值。
+
+写入条件：
+
+- 当日有新基金净值或清理了已删除基金时，写 `nav:{date}`。
+- 有有效记录时维护 `nav:today`、`nav:previous` 和兼容指针 `nav:latest`。
+- `updatedAt` 是整条记录最后写盘时间；逐只 `at` 是该基金实际抢到时间，两者不可混用。
+- Cron 的异步链必须保留错误日志；静默失败会让停采无法被发现。
+
+## 5. 部署配置
+
+项目已使用 Wrangler CLI 部署，`wrangler.toml` 是明文变量、KV 和 Cron 的声明源：
+
+```bash
+cd workers/fund-nav-collector
+npx wrangler deploy
+```
+
+绑定和变量：
+
+| 名称 | 类型 | 用途 |
+|---|---|---|
+| `NAV` | KV | 写入官方净值；必须与 `fund-market-api` 绑定同一 namespace |
+| `FALLBACK_CODES` | 明文变量 | Gist 和代码缓存都不可用时兜底 |
+| `ALLOW_ORIGIN` | 明文变量 | 调试端点 CORS |
+| `GIST_ID` | Secret | 配置 Gist ID |
+| `GIST_TOKEN` | Secret | 读取私有 Gist |
+| `COLLECT_TOKEN` | Secret | 手动触发采集 |
+
+Secret 不写入仓库：
+
+```bash
+npx wrangler secret put GIST_ID
+npx wrangler secret put GIST_TOKEN
+npx wrangler secret put COLLECT_TOKEN
+```
+
+Cron 声明：
+
+```toml
+[triggers]
+crons = ["* 1-16 * * 1-5"]
+```
+
+UTC 01:00–16:00 对应北京时间 09:00–24:00。
+
+## 6. 调试端点
+
+| 端点 | 部署位置 | 用途 |
+|---|---|---|
+| `GET /v1/nav/today` | 本 Worker | 调试 KV 窗口；正式前端不使用 |
+| `GET /v1/collect?token=...` | 本 Worker | 清除代码缓存并立即采集一跳 |
+| `GET /v1/nav/today` | `fund-market-api` | 正式前端读端点 |
+
+手动采集会把错误直接放进响应体，便于检查 Gist 权限、基金列表来源和两路上游状态。
+
+## 7. 验证
 
 ```bash
 node --test workers/fund-nav-collector/test/collector.test.mjs
 ```
 
-8 个冒烟用例，第一条锁的就是"真采到数据的一跳必须把 `nav:{date}` 写进 KV 且 `updatedAt` 非空"。
-这个目录建立于 2026-07-24 那次静默停采之后——当时一个用例都没有，而那正是一行冒烟测试
-就能挡住的故障。**改 `collect()` 之后必须跑它。**
-
-## 为什么需要它
-
-两条**浏览器侧无解**的约束：
-
-1. 东财 `FundMNFInfo` 前端直连被 `ErrCode:61136` 拦（需 APP 签名，仅服务端调得通。
-   2026-07-21 实测复核：direct 模式下 6 只基金 `offSource` 全部落到 tencent）。
-   所以浏览器里其实**只有腾讯一路**，没得"抢"。
-2. 净值 19:00–23:00 陆续披露，而那个时段通常没人开着看板。轮询必须发生在一直醒着的地方。
-
-## 读写分离——先理解这个，否则部署步骤看不懂
-
-**本 Worker 只写 KV，不对外提供数据。前端读的是网关 `fund-api.bailuzun.com/v1/nav/today`。**
-
-绕这一圈是被两头夹出来的：
-
-| | 能 Cron 吗 | 有大陆可达的域名吗 |
-| --- | --- | --- |
-| `fund-market-api`（Pages Functions） | ❌ Pages 不支持 Cron Triggers | ✅ `fund-api.bailuzun.com` |
-| `fund-nav-collector`（Worker） | ✅ | ❌ 见下 |
-
-Worker 的 Custom Domain 与 Routes **都要求域名在 Cloudflare zone 里**，而 `bailuzun.com`
-的权威 DNS 在腾讯 dnspod（`nslookup -type=NS bailuzun.com` → `*.dnspod.net`），不是 CF zone。
-剩下的 `*.workers.dev` 在大陆常年不可达，前端读不到就等于白采。
-
-于是：**Worker 写，网关读，同一个 KV 是唯一交接点**。网关那个端点只读 KV，
-不触发它的任何上游主备逻辑（`router.mjs` 里 `/v1/nav/today` 在 endpoint 表之前就返回了）。
-
-## 网页端部署（Cloudflare Dashboard，不需要装 wrangler）
-
-> ⚠️ 走 Dashboard 部署时 **`wrangler.toml` 完全不生效**——它是给 CLI 用的，这里保留
-> 只作配置留档。KV 绑定、环境变量、Cron 三样都必须在界面上再配一遍。
-
-### 1. 建 KV namespace
-
-左侧 **Storage & Databases → KV → Create a namespace**
-名称填 `fund-nav`。（本步产生的 namespace 后面要绑给**两个**项目。）
-
-### 2. 建 Worker 并贴代码
-
-**Workers & Pages → Create → Workers**，名称 `fund-nav-collector`，先 Deploy 一个默认版本。
-
-然后 **Edit code**（或 Quick edit）→ 编辑器里全选删除 → 把本目录 `src/index.js`
-的**全部内容**粘进去 → **Deploy**。
-
-### 3. 给 Worker 绑 KV
-
-Worker → **Settings → Bindings → Add → KV namespace**
-
-| 字段 | 值 |
-| --- | --- |
-| Variable name | `NAV` |
-| KV namespace | `fund-nav` |
-
-### 4. 给 Worker 配变量
-
-Worker → **Settings → Variables and Secrets → Add**
-
-| 名称 | 类型 | 值 |
-| --- | --- | --- |
-| `FALLBACK_CODES` | Text | `003949,160622,110027,011554,007466,022435` |
-| `ALLOW_ORIGIN` | Text | `https://fund.bailuzun.com` |
-| `GIST_ID` | Secret | 与看板同一个 Gist 的 id |
-| `GIST_TOKEN` | Secret | 该 Gist 的访问 token |
-| `COLLECT_TOKEN` | Secret | 自己定一个长随机串，手动触发用 |
-
-`GIST_ID` / `GIST_TOKEN` 用来读 `fm_config.json` 取当前基金列表——**配好之后你在看板增删
-基金，采集器 5 分钟内自动跟随，不用回来改任何东西**。不配的话就一直用 `FALLBACK_CODES`。
-
-### 5. 配 Cron
-
-Worker → **Settings → Trigger Events → Add → Cron Trigger**，一条覆盖整个采集窗口：
-
-```
-* 1-16 * * 1-5
-```
-
-UTC 时间 1:00–16:00 = 北京 **9:00–24:00**（次日 00:00），交易日每分钟一跳。
-
-当日净值到齐后每跳命中早退（约 1ms、不打上游、不写 KV），
-所以「每分钟 × 15 小时」的实际成本远低于 900 跳。
-
-⚠️ **代价**：白天 9:00–19:00 基金公司尚未发布当日净值，采集器空跑不采到数据。
-在那之前新增的基金要等当晚发布才有净值，其持仓市值暂时算不出来（前端显示 `--`）。
-这是用户裁决接受的取舍。
-
-### 6. 给网关也绑同一个 KV
-
-**Workers & Pages → fund-market-api → Settings → Bindings → Add → KV namespace**
-
-| 字段 | 值 |
-| --- | --- |
-| Variable name | `NAV` |
-| KV namespace | `fund-nav`（与第 1 步同一个） |
-
-### 7. 部署网关新代码
-
-`router.mjs` 里新增了 `/v1/nav/today` 路由。Pages 是 Git 集成的，**把本次改动 push 上去
-会自动部署**；或在 **fund-market-api → Deployments → 最新一条 → Retry deployment**。
-
-### 8. 验证
-
-浏览器直接打开：
-
-```
-https://fund-api.bailuzun.com/v1/nav/today
-```
-
-预期（当晚采集开始前 `funds` 为空是正常的）：
-
-```json
-{"ok":true,"date":"2026-07-22","first":"tencent","firstCount":2,"count":6,"funds":{...}}
-```
-
-若返回 `{"ok":false,"error":"nav_kv_unbound"}` → 第 6 步的 KV 绑定没生效，或网关还没重新部署。
-
-**部署新版后确认 `nav:latest` 已生成**（官方净值在盘中/周末全靠它）：
-
-```
-npx wrangler kv key list --binding NAV        # 应同时看到 nav:{今天} 和 nav:latest
-```
-
-当日已 complete 时，新版上线后的**下一跳会在早退分支自动补写 latest**，无需人工干预。
-但触发器只在北京 9:00–24:00 跑，**在那个窗口之外部署就不会有下一跳**——
-这时手动打一次 `/v1/collect` 立刻生成，别干等。
-
-手动触发一次采集（不必等整分钟），在 Worker 的 workers.dev 地址上打：
-
-```
-https://fund-nav-collector.<你的账户子域>.workers.dev/v1/collect?token=<COLLECT_TOKEN>
-```
-
-> 这个地址你自己调试时用（挂代理即可），前端不依赖它。
-
-当晚盯实时日志：Worker → **Logs → Begin log stream**。
-
-## 端点
-
-| 端点 | 部署在哪 | 说明 |
-| --- | --- | --- |
-| `GET /v1/nav/today` | **网关** | 前端读。返回 `first`（今晚最早抢到的源）、`firstCount`、`funds` |
-| `GET /v1/collect?token=` | 本 Worker | 手动触发一跳，需 `COLLECT_TOKEN`，仅调试用 |
-
-## 几个不要动错的地方
-
-- **`complete` 绝不落盘**，每跳按当前基金列表现算。存了的话，用户 21:00 加一只基金时
-  当晚已 `complete=true`，Worker 会一直早退，新基金永远抓不到。
-- **`nav:latest` 是官方净值在盘中/周末/节假日的唯一依靠**。官方净值现在是全站唯一来源
-  （D-023 G 节），而那些时段根本没有「今日记录」。读端点先 today 后 latest，
-  两个端点（本 Worker 的调试端点与网关的正式端点）**必须逐字同口径**。
-- **早退分支也要写 `nav:latest`**：当日 complete 后每跳都从早退直接 return，
-  不在那里补写的话 latest 永远出不来，次日盘中官方净值整列空白。写前按 `date` 比对节流，
-  每天最多一次——晚间每分钟一跳，无节流会烧掉 KV 免费写配额（1000/天）的四分之一。
-- **`funds[code]` 一旦写入永不覆盖**，`src` 与 `at` 从此不可变——这是"先到先得"的全部实现。
-- **只接受 `officialAt === 今日`**。前端原来那个 bug 的根因正是没判这条：东财在净值未披露时
-  返回昨日数据且 `size > 0`，于是整组被采纳，腾讯备源一次都轮不到。
-- **基金列表读 Gist `fm_config.json` 的 `f`**，跟随看板增删。读失败不清空已缓存列表——
-  宁可用旧列表也不要因一次抖动漏采。
-- **僵尸清理必须在早退判断之前**：基金从看板删除后，KV 当日记录里那条要一并删掉。
-  放在早退之后的话，当日一旦 complete 就再没有跳会走到清理，僵尸能赖到记录过期（7 天）。
-  不清的代价不只是数据脏——端点的 `count` / `firstCount` 会一直偏大，
-  且 `first` 可能锚在一只已经删掉的基金上。
-- **`first` 要在清理之后统一重算**：删掉的可能正好是最早抢到的那只，那时赢者必须换人。
-  实测：种子 `first=tencent`（003949 于 19:41 最早），删掉 003949 后 `first` 正确变成 `eastmoney`。
-- **落盘条件是「有新增或有清理」**（`dirty`）。纯早退跳两者皆无、不写盘，
-  免得晚间 241 跳把 KV 免费写配额（1000/天）烧掉四分之一。但 `nav:latest` 例外——
-  见上一条，早退跳也要走到那儿。
-- **两源涨跌幅精度不同**（东财 2 位 / 腾讯 4 位），前端已在 `data.js` 的 `_pct2` 统一到 2 位，
-  采集器这边**原样存**不做规整——KV 里留原始精度，将来换显示口径不必重采。
-- **`record.updatedAt` 必须用 `bjStamp()` 现算**，绝不许引用循环里的 per-fund `at`：后者是
-  各只基金各自的抢到时刻（D-026），这里要的是"本条记录最后一次写盘的时刻"，语义不同。
-  D-026 删掉跳级共用的 `const at` 时漏改了这一行，留下未定义引用，导致 2026-07-24 起
-  **每次真抓到数据都在写盘前抛 `ReferenceError`**，当日记录连同 `nav:latest` 一起写不进去。
-- **`scheduled` 的 `waitUntil` 链必须有 `.catch()`**。没有它时 `collect` 抛错会让 `.then` 整个
-  跳过，日志一行不留，看上去和"cron 压根没触发"一模一样——上面那次停采正是这样瞒过两个交易日的。
-  **采集器唯一的健康信号就是每跳那行 JSON 日志**，静默失败等于把它关掉。同理 `/v1/collect`
-  要把异常带回响应体：手动触发的用途就是排查，最想知道的恰恰是那句 message。
+当前测试共 9 项，覆盖真实写盘路径、早退、基金增删、双源抢先、官方净值窗口和错误可见性。
+改动 `collect()`、KV 指针或端点口径后必须运行。

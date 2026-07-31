@@ -7,7 +7,7 @@ document.getElementById("codeInput").addEventListener("keydown", (e) => {
   if (e.key === "Enter") addFund();
 });
 
-// 指数到货除了重画指数条，还要重算基准代理（D-022）：代理估值是权益%、持仓总额、
+// 指数到货除了重画指数条，还要重算基准代理：代理值是权益%、持仓总额、
 // 最新收益、估算列的共同输入，指数一跳它们全都该跟着动。
 // reapplyProxyEstimates 内部走 setLastResults → 广播 FUNDS → UI_updateFunds，
 // 故这里不必再显式调 UI_updateFunds；无持仓/无结果时它直接返回，不会空转。

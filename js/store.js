@@ -303,7 +303,7 @@ function bumpConfigVer() {
   return v;
 }
 
-// 只更新 PE 定锚；内容与本地相同时返回 false 跳过
+// 只更新用户 PE 档位；内容与本地相同时返回 false 跳过
 function importPeSnapshot(p) {
   if (!p) return false;
   if (JSON.stringify(loadPe()) === JSON.stringify(p)) return false;

@@ -107,7 +107,7 @@ function updatePeBar() {
   // 数字恰恰是仅存的实时估计，正是最该露出来的时候。
   // 注：类名 pe-bypass2 是 PE_ANCHOR="mcap" 时代的遗留（那时小字恒为 2.0）。
   // 翻成 "price" 后小字变 1.0，类名语义会反过来——纯命名问题，不影响渲染，故不动 CSS。
-  // 备用源标签由数据源名称替代（D-020）。
+  // 备用源标签由实际数据源名称替代。
   const refHtml = engRef && engRef.mode !== "close"
     ? `<span class="pe-bypass2"><span class="num">${engRef.pct.toFixed(2)}%</span>${
         getIndicesMeta()?.source === "sina" ? '<span class="src-tag is-alt">新浪</span>' : ""
@@ -228,4 +228,3 @@ function UI_updateIndices() {
   renderIndices(getIndices(), getIndicesMeta());
   updatePeBar();
 }
-

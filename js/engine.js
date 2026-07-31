@@ -32,7 +32,7 @@ function isEquityWrongDir(peVal, diff) {
 
 // engineResult: getAnchorPE() 的返回值，由调用方注入（依赖注入，engine 层不读 store）。
 // peData 只承载 bucketStr（用户定的档位区间），PE 数值全部来自旁路引擎——
-// 早年的"夜间录入三个点位 + 分段线性插值"已被引擎百分位取代，见 D-016。
+// 早年的“夜间录入三个点位 + 分段线性插值”已被自动引擎百分位取代。
 // 引擎未就绪时 value 为 undefined，由 ui-pe.js 的 Number.isFinite 守卫落入"等待数据"。
 function getCurrentPE(peData, engineResult) {
   if (!peData || !peData.bucketStr) return null;
@@ -110,7 +110,7 @@ function getEnginePE1(engineData, qqIdx) {
   return { pe, pct: (lo / a.length) * 100, mode, date: engineData.date || "" };
 }
 
-// PE 锚定路径分发：全站 PE 的唯一入口，由 config 的 PE_ANCHOR 决定走哪条（D-017）。
+// PE 锚定路径分发：全站 PE 的唯一入口，由 config 的 PE_ANCHOR 决定走哪条。
 // 收口在这里而不是各调用点自己选，是因为"哪条是主路径"这个知识一旦散落，
 // 下次新增调用点必然再分叉一次——2026-07-21 之前 PE 栏走 1.0、持仓抽屉走 2.0 就是这么来的。
 function getAnchorPE(engineData, qqIdx) {
@@ -333,7 +333,7 @@ function getBenchmarkProxyPct(code, baseNav, indicesMap) {
   );
 }
 
-// 基准代理回填（D-020 引入，D-022 改为入库前统一回填）：
+// 基准代理回填：在结果入库前统一计算。
 // 外部估算源全死后，用「产品自定义基准权重 × 实时指数」补出估算净值。
 // 由 refreshData 在 setLastResults **之前**调用，于是 results 只有一条净值链——
 // 权益%、持仓总额、最新收益、卡片估算列全部读同一份数字，不会各算各的。

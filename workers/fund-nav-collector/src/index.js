@@ -1,5 +1,5 @@
 // ============================================================
-// fund-nav-collector — 官方净值夜间采集器（详见 docs/DECISIONS.md D-023）
+// fund-nav-collector — 官方净值夜间采集器（详见本目录 README 与 docs/02-系统架构.md）
 //
 // 存在理由：官方净值 19:00–23:00 陆续披露，而那个时段用户大概率没开看板。
 // 浏览器里做轮询等于假设有人开着；更要命的是浏览器**只有腾讯一路**——东财
@@ -96,7 +96,7 @@ function attachPreviousNav(code, item, previousRecord) {
   };
 }
 
-// 上游抓取。cache-busting 参数 + cacheTtl:0 是 D-009 的结论：
+// 上游抓取使用 cache-busting 参数 + cacheTtl:0：
 // 部分上游前面挂第三方 CDN，会按出口 IP 把响应缓存 40+ 分钟不更新。
 async function fetchUpstream(url) {
   const controller = new AbortController();
@@ -123,7 +123,7 @@ async function fetchUpstream(url) {
 
 // 东财 FundMNFInfo：一次批量。字段 NAV / NAVCHGRT / PDATE，旧版镜像用 DWJZ / JZZZL / FSRQ。
 // 注意 NAVCHGRT 只有 2 位小数（"1.98"），腾讯给的是 4 位（"1.9821"）——同一只基金
-// 两源精度不同，切源时涨跌幅会有末位跳变，这是上游差异不是 bug（D-023 代价栏）。
+// 两源精度不同，切源时涨跌幅会有末位跳变，这是上游差异，不是 bug。
 async function fetchEastmoney(codes) {
   const params = new URLSearchParams({
     Fcodes: codes.join(","),
@@ -158,7 +158,7 @@ async function fetchEastmoney(codes) {
 
 // 腾讯 jj{code}：GBK，必须 TextDecoder("gbk")，UTF-8 会中文乱码且字段错位。
 // 字段布局 [1]名称 [2]估算净值 [3]估算% [4]估算时间 [5]官方净值 [6]累计 [7]官方% [8]官方日期
-// （[2][3] 自 2026-01 监管要求下线估值后恒为 0，见 D-015，本采集器只取官方块）
+// [2][3] 是已失效的历史估值字段，本采集器只取官方块。
 async function fetchTencent(codes) {
   const response = await fetchUpstream(
     `https://qt.gtimg.cn/q=${codes.map((code) => `jj${code}`).join(",")}`,
@@ -269,7 +269,7 @@ async function collect(env) {
     }
   }
 
-  // **节假日不早退，就是空跑一整天**（D-028）。这里曾有一套「连续 30 跳没抓到就判非交易日收工」，
+  // **节假日不早退，就是空跑一整天**。这里曾有一套「连续 30 跳没抓到就判非交易日收工」，
   // 实测永远跑不到：计数器只在 dirty 时落盘，而空跑跳恒不 dirty，于是每跳都从 KV 重建、恒在 1~2
   // 摆动。**别照着注释以为它在保护什么，也别再把它加回来**——真加回来反而有害：某跳同时赶上
   // pruned>0（用户删基金）且 funds 为空时，收工标记会真落盘，把当晚正常的采集整个废掉。
@@ -283,7 +283,7 @@ async function collect(env) {
   // 上游诊断，只在真正打了上游的那些跳里有意义；早退跳保持零值
   let diag = { emSize: 0, txSize: 0, emError: null, txError: null };
   if (!complete) {
-    // 真竞争（D-026，取代 D-023 A 节"东财平局胜"）：两源谁先返回当日数据就用谁。
+    // 真竞争：两源谁先返回当日数据就用谁。
     // per-fund at 反映实际抢到时刻（毫秒级），跨跳仍先到先得、写入不可变。
     const [em, tx] = await Promise.allSettled([
       fetchEastmoney(codes).then((m) => ({ map: m, doneAt: Date.now() })),
@@ -340,10 +340,9 @@ async function collect(env) {
   // 把 KV 免费写配额（1000/天）烧掉四分之一。
   const dirty = added > 0 || pruned > 0;
   if (dirty) {
-    // **必须现算，不许引用循环里的变量**：per-fund 的 at 是各自的抢到时刻（D-026），
-    // 而这里要的是"本条记录最后一次写盘的时刻"，两者语义不同。D-026 删掉跳级共用的
-    // `const at` 时漏改了这一行，留下一个未定义引用，导致 2026-07-24 起每次真抓到数据
-    // 都在写盘前抛 ReferenceError、连 nav:latest 一起写不进去，静默停采两个交易日。
+    // **必须现算，不许引用循环里的变量**：per-fund 的 at 是各自的抢到时刻，
+    // 而这里要的是“本条记录最后一次写盘的时刻”，两者语义不同。曾因误用已删除变量，
+    // 导致每次真抓到数据都在写盘前抛错，连 nav:latest 一起停写。
     record.updatedAt = bjStamp();
     await env.NAV.put(key, JSON.stringify(record), { expirationTtl: RECORD_TTL_S });
   }

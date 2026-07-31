@@ -1,149 +1,100 @@
-# Fund Market API (Cloudflare Pages Functions)
+# fund-market-api
 
-The board at `fund.bailuzun.com` fetches all of its market data from here and contacts no third-party
-quote host directly. Breaking an endpoint breaks the board.
+Cloudflare Pages Functions 网关。它承担两件事：
 
-## Pages configuration
+1. 在前端选择 `DATA_MODE = "gateway"` 时提供盘中指数/ETF 行情；
+2. 始终向前端提供官方净值 KV 的只读端点。
 
-- Project name: `fund-market-api`
-- Production branch: `main`
-- Root directory: `workers/fund-market-api`
-- Framework preset: `None`
-- Build command: leave empty
-- Build output directory: `public`
+默认 `direct` 模式下，盘中行情由浏览器直连腾讯，本项目的 `/v1/indices` 不在主路径上；但
+`/v1/nav/today` 无论哪种模式都在主路径上。完整数据流见
+[系统架构](../../docs/02-系统架构.md)。
 
-Add the production environment variable `DIAGNOSTIC_TOKEN` as a random long string. Do not commit it. Add the same value to the repository Actions secret `MARKET_API_DIAGNOSTIC_TOKEN`.
+## 1. 接口
 
-### KV binding `MARKET_LKG` (required for the last-known-good protection)
+| 端点 | 当前用途 | 数据来源 | 完整性规则 |
+|---|---|---|---|
+| `GET /v1/indices` | `gateway` 模式盘中行情 | 腾讯主源；东方财富三镜像备源 | 主源整组完整，否则整组切备源；不拼接半组 |
+| `GET /v1/nav/today` | 所有模式的官方净值窗口 | 只读 `NAV` KV，不请求外部上游 | 返回当前/前一官方净值日及逐只净值 |
+| `GET /v1/funds/official?codes=...` | 兼容、诊断端点；前端不使用 | 东财批量主源；东财历史逐只备源 | 整组主备切换 |
+| `GET /v1/funds/estimate` | 已移除 | 无 | 固定 `404 not_found`，不得恢复为业务依赖 |
 
-Create a KV namespace and bind it to this Pages project as **`MARKET_LKG`**:
+`/v1/indices` 的主源覆盖 6 个可见核心指数和 4 个隐藏代理因子。备源必须保证 6 个核心指数
+完整；隐藏因子缺失时，前端代理模型按 `fallbackLegs` 整套降级。具体代码和用途以
+[`js/config.js`](../../js/config.js) 的 `INDICES`、`BENCHMARK_PROXY` 为准。
 
-```text
-Workers & Pages → KV → Create namespace → name: fund-market-lkg
-Pages project fund-market-api → Settings → Functions → KV namespace bindings
-  Variable name: MARKET_LKG      Namespace: fund-market-lkg
+`/v1/indices` 和 `/v1/funds/official` 的 `status`：
+
+| `status` | `ok` | 含义 |
+|---|---:|---|
+| `primary` / `backup` | `true` | 本次由完整主源/备源返回 |
+| `stale` | `true` | 两路失败，返回 `MARKET_LKG` 的最近完整快照 |
+| `unavailable` | `false` | 两路失败且没有可用快照 |
+
+`stale` 会保留原始行情时间，并增加 `servedFrom`、`staleSince`、`staleAgeMs`。前端必须明确
+标记陈旧，不能把旧值显示成实时行情。
+
+## 2. 数据源边界
+
+- 腾讯行情：`https://qt.gtimg.cn/q=...`，GBK 解码；提供指数、ETF、债券指数行情，
+  沪深300还提供 PE 和总市值。
+- 东方财富行情备源：`push2delay`、`push2his`、`push2` 三个镜像；只作为网关降级，
+  不提供可用的沪深300 PE/总市值。
+- 东方财富官方净值兼容端点：
+  `FundMNFInfo` 批量主源、`FundMNHisNetList` 逐只备源。
+- `NAV` KV：由 `fund-nav-collector` 写入，本项目只读。它是前端官方净值的正式来源。
+
+基金盘中估算不是本项目输出的数据源。前端使用官方净值基准和行情因子，在本地按
+`BENCHMARK_PROXY` 计算方向代理。
+
+## 3. Pages 配置
+
+| 配置 | 值 |
+|---|---|
+| 项目名 | `fund-market-api` |
+| 生产分支 | `main` |
+| Root directory | `workers/fund-market-api` |
+| Framework preset | `None` |
+| Build command | 留空 |
+| Build output directory | `public` |
+| 自定义域名 | `fund-api.bailuzun.com` |
+
+绑定和密钥：
+
+| 名称 | 类型 | 是否必需 | 用途 |
+|---|---|---:|---|
+| `MARKET_LKG` | KV | 建议 | 行情主备均失败时返回最近完整快照 |
+| `NAV` | KV | 必需 | `/v1/nav/today` 官方净值读端点 |
+| `DIAGNOSTIC_TOKEN` | Secret | 必需 | 非自定义域诊断及 `force=` 强制线路 |
+
+`MARKET_LKG` 每个 key 最多 5 分钟写一次，记录 72 小时过期。缺失绑定不会阻断新鲜行情，
+但会失去服务端 last-known-good 保护。
+
+## 4. 访问控制
+
+匿名 `/v1/*` 只允许主机 `fund-api.bailuzun.com`。`pages.dev`、预览域和其他 Host 默认返回
+`403 host_not_allowed`。携带正确 `X-Diagnostic-Token` 时可用于故障诊断。
+
+诊断参数 `force=primary|backup` 同样要求该请求头；普通用户不能指定上游线路。
+
+允许的浏览器来源固定为 `https://fund.bailuzun.com`。`bailuzun.com` 的权威 DNS 不在
+Cloudflare zone，不能依赖 zone 级 WAF 或限流，因此 Host 收口必须保留在函数中。
+
+## 5. 缓存与超时
+
+- 上游单次超时：5 秒。
+- 内存成功 TTL：指数 8 秒，官方净值兼容端点 60 秒。
+- 同一实例内有 in-flight 去重。
+- `MARKET_LKG` 只在主备都失败后读取；新鲜成功路径不会从 KV 返回旧值。
+- 指数最坏路径是腾讯 5 秒后，再串行尝试三个东财镜像，可能超过前端 12 秒预算。
+  这是保留 `direct` 为默认盘中模式的原因之一。
+
+## 6. 验证
+
+```bash
+node --test workers/fund-market-api/test/gateway.test.mjs
 ```
 
-Bind it for **Production** (and Preview if you use preview deployments). Without the binding the gateway
-still works and simply reports `unavailable` on failure, exactly as it did before the protection existed —
-so a missing binding degrades quietly instead of breaking the board, but the board loses the protection.
+当前测试共 19 项，覆盖 Host/诊断权限、主备完整切换、LKG、官方净值窗口和已移除估值端点。
 
-Writes are throttled to one per key per 5 minutes and stored groups expire after 72 hours, which keeps the
-namespace far inside the free tier while still covering a weekend.
-
-`fund-api.bailuzun.com` is registered under the Pages project's **Custom domains** page and resolves through
-this Tencent Cloud DNS record:
-
-```text
-CNAME  fund-api  fund-market-api.pages.dev  TTL 600
-```
-
-Do not change the authoritative nameservers, existing DNS records, `fund.bailuzun.com`, or the existing
-`pe-night-trigger` Worker.
-
-## Why the host is locked in code
-
-`bailuzun.com` is served by Tencent Cloud DNS, so it is **not a Cloudflare zone** and no WAF or rate-limiting
-rule can be attached to it — account-level WAF is Enterprise-only and zone rules need a zone. The only place
-left to close the door is the Function itself.
-
-`/v1/*` therefore answers anonymously **only** on `fund-api.bailuzun.com`. `*.pages.dev`, preview deployment
-hostnames and subdomain probes get `403 host_not_allowed`, because they reach the same code and trigger the
-same upstream calls while sitting outside even the custom domain's control. Requests carrying a valid
-`X-Diagnostic-Token` are exempt, which keeps `pages.dev` usable for debugging if the certificate or the CNAME
-ever breaks.
-
-Note this covers the API only. `/` and other static assets are served by Pages before the Function runs, so
-they stay reachable everywhere — harmless, since they make no upstream calls.
-
-## API contract
-
-- `GET /v1/indices`
-- `GET /v1/funds/official?codes=003949,160622`
-- `GET /v1/nav/today`
-
-Each endpoint selects a complete primary group or a complete backup group. It never mixes records, and a
-group that cannot be completed is **not** served half-filled. Querying `force=primary`
-or `force=backup` requires the `X-Diagnostic-Token` header; other callers receive `403`.
-
-`status` is one of:
-
-| status | meaning | `ok` |
-| --- | --- | --- |
-| `primary` / `backup` | fresh data from that line | `true` |
-| `stale` | both lines failed, so the last known good group is served from KV | `true` |
-| `unavailable` | both lines failed and there is no usable stored group | `false` |
-
-A `stale` payload keeps every record's original timestamp and adds `servedFrom`, `staleSince` and
-`staleAgeMs`. **The board must render it and mark it visibly stale** — serving old data silently is the
-one outcome this design refuses. See `docs/DECISIONS.md` D-001 for why the protection lives here and not
-in the browser: `localStorage` is per-device, so a second computer opening the board at night saw a blank
-page even while the first one still had the day's data.
-
-| endpoint | primary | backup |
-| --- | --- | --- |
-| `/v1/indices` | Tencent `qt.gtimg.cn` | Eastmoney `push2delay` mirror |
-| `/v1/funds/official` | `FundMNFInfo` | `FundMNHisNetList` |
-
-Indices run Tencent-first because the board's PE bar anchors on HS300 realtime market cap and the reachable
-Eastmoney mirror returns `f115=f116=0`. A primary index group missing `pe`/`marketCap` is rejected, so the
-assertion in the smoke workflow guards the PE bar, not just field counts.
-
-Tencent's fund quote is ten fields wide, not the wide stock layout: `[2..4]` are the intraday estimate and
-`[5..8]` the official NAV block. `[5]` is an official NAV and must never be served as an estimate.
-
-## Verification
-
-```text
-node --test test/gateway.test.mjs
-```
-
-End-to-end acceptance is the `Market API smoke` workflow, run manually against a `base_url`. Pass
-`market_session=open` only during a mainland trading session: Tencent zeroes its fund estimate outside one,
-so the estimate backup leg cannot be verified off-session and the run reports it as unverified rather than
-counting it as a pass.
-
-## Latency budget
-
-Recorded 2026-07-21. None of this was written down before, which made it easy to reason about the
-gateway's timing from the 5s constant alone and miss the serial paths that stack on top of it.
-
-**Timeouts.** `TIMEOUT_MS = 5_000` (`src/upstreams.mjs:12`) is the default and every upstream call site
-uses it. `src/upstreams.mjs:94` passes `5_000` explicitly — same value, redundant.
-
-**Worst case is 20s on `/v1/indices`, which exceeds the browser's own budget.** Primary→backup is a
-*serial* fallback, not a race (`src/router.mjs:99-101`): the backup leg only starts after the primary has
-burned its full timeout. The indices backup then walks three East Money mirrors in a *serial* `for` loop
-(`src/upstreams.mjs:74-87`), 5s each. Total 5 + 15 = 20s, while the frontend aborts at
-`FETCH_INDEX_TIMEOUT: 12000` (`js/config.js`). In that scenario the browser has already given up and the
-gateway's remaining work is wasted. `estimate` and `official` are 10s worst case, which does fit.
-
-**`SUCCESS_TTL.indices = 8_000` is a rate limiter, not a cache.** It is shorter than the frontend's
-`REFRESH_IDX: 10000`, so steady-state polling misses it every single time and hits upstream on every
-tick. `src/router.mjs:12-14` says as much in its own comment; noting it here so the number is not
-mistaken for a cache-hit optimization.
-
-**Cache layers, in the order `handleRequest` checks them.** In-flight dedupe (`src/router.mjs:140`,
-per-isolate `Map`, D-011) → throttle cache (`src/router.mjs:142-143`, per-isolate, TTLs at
-`src/router.mjs:15`) → KV last-known-good (`src/lkg.mjs:26`), which is read **only** after both legs fail.
-The success path never touches KV. A cold isolate therefore always pays a full upstream round trip even
-when KV holds a perfectly good LKG record.
-
-**Fan-out has no concurrency cap.** `official` backup (`src/upstreams.mjs`) `Promise.all`s over every
-code, up to the 50-code limit at `src/router.mjs`. The removed estimate endpoint must not be restored;
-daily profit now depends on official NAV pairs plus benchmark proxy, not third-party estimate snapshots.
-
-### Known but deliberately not done
-
-The gateway is dormant — `DATA_MODE` is `"direct"` (D-013), so the browser talks to Tencent directly and
-none of this code runs. More importantly the floor is structural, not algorithmic: D-013 measured Tencent
-at ~0.6s through the Worker versus ~0.15s direct, because the Worker's egress IP is outside mainland
-China. No code change moves that number.
-
-So these stay on the shelf until the gateway is actually load-bearing again: racing primary against
-backup (`Promise.any` at `src/router.mjs:99-101`, and for the three mirrors at `src/upstreams.mjs:74-87`);
-stale-while-revalidate serving the KV LKG immediately and refreshing via `waitUntil` (already available,
-used at `src/lkg.mjs:48`); and preheating a cold isolate's memory cache from KV.
-
-Related decisions: D-009 (cache-busting params, and the full-RTT cost they accept), D-011 (in-flight
-dedupe), D-012 (post-close estimate skip), D-013 (dual data source, and the cross-border measurements).
+线上只读验收可手动运行 GitHub Actions 的 `Market API smoke`。它检查核心指数、隐藏因子
+可用情况、官方净值 KV 形状及兼容端点，不再调用已移除的估值接口。
