@@ -18,8 +18,9 @@ function eastmoneyIndices(omit = false) {
   return { data: { diff: codes.filter((code) => !omit || code !== "000905").map((code, index) => ({ f12: code, f14: `指数${code}`, f2: 1000 + index, f3: 1.2, f124: "20260719103000", f115: 12.3, f116: 456 })) } };
 }
 
-function qqIndices({ anchorPe = "13.98", anchorMcap = "536149.80" } = {}) {
-  return ["sh000300", "sh000510", "sh000905", "sh000832", "sh000012", "hkHSI"].map((code, index) => {
+function qqIndices({ anchorPe = "13.98", anchorMcap = "536149.80", omit = [] } = {}) {
+  const omitted = new Set(omit);
+  return ["sh000300", "sh000510", "sh000905", "sh000832", "sh000012", "hkHSI", "sz159352", "sh000013", "sh000688", "sz399006"].filter((code) => !omitted.has(code)).map((code, index) => {
     const fields = Array(46).fill("");
     const isAnchor = code === "sh000300";
     fields[1] = `指数${code}`;
@@ -57,6 +58,29 @@ test("the Tencent primary group carries the HS300 PE anchor fields", async () =>
   const anchor = body.data.find((item) => item.code === "000300");
   assert.equal(anchor.pe, 13.98);
   assert.equal(anchor.marketCap, 536149.8);
+});
+
+test("the Tencent primary group carries all four hidden estimate factors", async () => {
+  resetGatewayCache();
+  const fetcher = async (url) =>
+    url.includes("qt.gtimg.cn") ? textResponse(qqIndices()) : Promise.reject(new Error("backup must not run"));
+  const result = await handleRequest(new Request("https://fund-api.bailuzun.com/v1/indices"), {}, null, { fetch: fetcher });
+  const body = await result.json();
+  assert.equal(body.status, "primary");
+  assert.equal(body.data.length, 10);
+  assert.deepEqual(body.data.slice(6).map((item) => item.code), ["159352", "000013", "000688", "399006"]);
+});
+
+test("missing hidden Tencent factors do not invalidate the six core indices", async () => {
+  resetGatewayCache();
+  const fetcher = async (url) =>
+    url.includes("qt.gtimg.cn")
+      ? textResponse(qqIndices({ omit: ["sz159352", "sh000013", "sh000688", "sz399006"] }))
+      : Promise.reject(new Error("backup must not run"));
+  const result = await handleRequest(new Request("https://fund-api.bailuzun.com/v1/indices"), {}, null, { fetch: fetcher });
+  const body = await result.json();
+  assert.equal(body.status, "primary");
+  assert.deepEqual(body.data.map((item) => item.code), ["000300", "000510", "000905", "000832", "000012", "HSI"]);
 });
 
 // Without realtime market cap the 1.0 bypass path silently freezes the PE bar

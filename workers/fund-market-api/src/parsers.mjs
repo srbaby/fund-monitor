@@ -1,10 +1,22 @@
-export const INDEX_DEFINITIONS = [
+export const CORE_INDEX_DEFINITIONS = [
   { code: "000300", secid: "1.000300", qq: "sh000300", label: "沪深300" },
   { code: "000510", secid: "1.000510", qq: "sh000510", label: "中证A500" },
   { code: "000905", secid: "1.000905", qq: "sh000905", label: "中证500" },
   { code: "000832", secid: "1.000832", qq: "sh000832", label: "中证转债" },
   { code: "000012", secid: "1.000012", qq: "sh000012", label: "国债指数" },
   { code: "HSI", secid: "116.HSI", qq: "hkHSI", label: "恒生指数" },
+];
+
+export const HIDDEN_INDEX_DEFINITIONS = [
+  { code: "159352", secid: "0.159352", qq: "sz159352", label: "南方A500ETF" },
+  { code: "000013", secid: "1.000013", qq: "sh000013", label: "企债指数" },
+  { code: "000688", secid: "1.000688", qq: "sh000688", label: "科创50" },
+  { code: "399006", secid: "0.399006", qq: "sz399006", label: "创业板指" },
+];
+
+export const INDEX_DEFINITIONS = [
+  ...CORE_INDEX_DEFINITIONS,
+  ...HIDDEN_INDEX_DEFINITIONS,
 ];
 
 const INDEX_CODES = new Set(INDEX_DEFINITIONS.map((item) => item.code));
@@ -76,10 +88,14 @@ export function parseEastmoneyIndices(payload) {
       .map((item) => [item?.f12 === "HSI" ? "HSI" : String(item?.f12 ?? ""), item])
       .filter(([code]) => INDEX_CODES.has(code)),
   );
-  const data = INDEX_DEFINITIONS.map((definition) =>
+  const coreData = CORE_INDEX_DEFINITIONS.map((definition) =>
     normalizeIndex(byCode.get(definition.code), definition.code),
   );
-  return data.every(Boolean) ? data : null;
+  if (!coreData.every(Boolean)) return null;
+  const hiddenData = HIDDEN_INDEX_DEFINITIONS.map((definition) =>
+    normalizeIndex(byCode.get(definition.code), definition.code),
+  ).filter(Boolean);
+  return [...coreData, ...hiddenData];
 }
 
 export function parseTencentAssignments(text) {
@@ -91,7 +107,7 @@ export function parseTencentAssignments(text) {
 
 export function parseTencentIndices(text) {
   const quotes = parseTencentAssignments(text);
-  const data = INDEX_DEFINITIONS.map((definition) => {
+  const parseDefinition = (definition) => {
     const fields = quotes.get(definition.qq);
     if (!fields) return null;
     const price = finiteNumber(fields[3]);
@@ -106,8 +122,11 @@ export function parseTencentIndices(text) {
       pe: finiteNumber(fields[39]),
       marketCap: finiteNumber(fields[45]),
     };
-  });
-  return data.every(Boolean) ? data : null;
+  };
+  const coreData = CORE_INDEX_DEFINITIONS.map(parseDefinition);
+  if (!coreData.every(Boolean)) return null;
+  const hiddenData = HIDDEN_INDEX_DEFINITIONS.map(parseDefinition).filter(Boolean);
+  return [...coreData, ...hiddenData];
 }
 
 function normalizeOfficial(raw, code) {

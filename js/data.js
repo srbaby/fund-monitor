@@ -113,10 +113,11 @@ function _parseTxAssignments(text) {
   return quotes;
 }
 
-// 指数直连：单请求覆盖全部指数。字段布局与 parsers.mjs parseTencentIndices 对齐：
+// 指数直连：单请求覆盖 6 个可见指数和 4 个隐藏估算因子。字段布局与 parsers.mjs parseTencentIndices 对齐：
 //   [1]名称 [3]点位 [32]涨跌% [30]时间 [39]PE [45]市值
 async function _fetchIndexGroupTencent() {
-  const qqList = INDICES.map((idx) => TX_INDEX_QQ[idx.id]).filter(Boolean);
+  const allIndices = [...INDICES, ...HIDDEN_INDICES];
+  const qqList = allIndices.map((idx) => TX_INDEX_QQ[idx.id]).filter(Boolean);
   if (qqList.length === 0) return null;
   const url = `${TX_BASE}/q=` + qqList.join(",");
   const controller = new AbortController();
@@ -134,7 +135,7 @@ async function _fetchIndexGroupTencent() {
   const quotes = _parseTxAssignments(text);
   const map = {};
   const dataMap = new Map();
-  for (const idx of INDICES) {
+  for (const idx of allIndices) {
     const fields = quotes.get(TX_INDEX_QQ[idx.id]);
     if (!fields || fields.length < 46) continue;
     const price = _txNum(fields[3]);
@@ -301,7 +302,10 @@ async function _fetchIndexGroup() {
       f2: _numberOrNaN(item.price),
       f3: _numberOrNaN(item.changePct),
       f12: id,
-      f14: item.name || INDICES.find((idx) => idx.id === id)?.lbl || id,
+      f14: item.name ||
+        INDICES.find((idx) => idx.id === id)?.lbl ||
+        HIDDEN_INDICES.find((idx) => idx.id === id)?.lbl ||
+        id,
       f124: item.quoteAt || null,
       quoteAt: item.quoteAt || null,
     };

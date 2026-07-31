@@ -59,7 +59,7 @@ export async function fetchBackupIndices(fetcher) {
   const secids = [
     ...INDEX_DEFINITIONS.filter((item) => item.code !== "HSI").map((item) => item.secid),
     // Eastmoney's HSI market identifier varies by route; accept whichever
-    // response resolves to f12 === "HSI", while still requiring all six indices.
+    // response resolves to f12 === "HSI", while still requiring all six core indices.
     "116.HSI",
     "124.HSI",
     "100.HSI",

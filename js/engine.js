@@ -310,22 +310,27 @@ function calcSellExecutionDraft(
 }
 
 // 业绩基准代理估值：按产品库自定义基准权重 × 对应指数实时涨跌，估算基金日内净值变动。
-// 混合品种只挂权益腿（债券部分日波动 1-2bp，摊薄后 <0.02%，忽略）；纯债品种挂国债指数腿。
-// 纯函数，无副作用。不在 BENCHMARK_PROXY 表中、或表中腿为空的基金返回 null。
-// 任一条腿缺指数数据即整只返回 null——宁可留空，不出半截权重算出来的错数。
-function getBenchmarkProxyPct(code, baseNav, indicesMap) {
-  const cfg = BENCHMARK_PROXY[code];
-  if (!cfg || !cfg.legs.length) return null;
+// 纯函数，无副作用。单套 legs 必须完整，否则返回 null；调用方负责选择主模型或整套降级模型。
+function _calcBenchmarkProxyLegs(legs, baseNav, indicesMap) {
+  if (!Array.isArray(legs) || !legs.length || !indicesMap) return null;
   if (baseNav == null || isNaN(baseNav) || baseNav <= 0) return null;
-  if (!indicesMap) return null;
 
   let estPct = 0;
-  for (const leg of cfg.legs) {
+  for (const leg of legs) {
     const idx = indicesMap[leg.idx];
     if (!idx || idx.f3 == null || isNaN(idx.f3)) return null;
     estPct += leg.w * idx.f3;
   }
   return { estPct, estVal: baseNav * (1 + estPct / 100) };
+}
+
+function getBenchmarkProxyPct(code, baseNav, indicesMap) {
+  const cfg = BENCHMARK_PROXY[code];
+  if (!cfg) return null;
+  return (
+    _calcBenchmarkProxyLegs(cfg.legs, baseNav, indicesMap) ||
+    _calcBenchmarkProxyLegs(cfg.fallbackLegs, baseNav, indicesMap)
+  );
 }
 
 // 基准代理回填（D-020 引入，D-022 改为入库前统一回填）：
@@ -466,4 +471,3 @@ function calcTodayProfit(results, holdings, activeProducts, mktState, todayStr) 
     isWaitingForData,
   };
 }
-
