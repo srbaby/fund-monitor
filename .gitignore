@@ -19,5 +19,14 @@ github/
 # Wrangler build artifacts
 .wrangler/
 
-# WorkBuddy project data
+# ---- AI 工具产物 ----
+# 策略：.claude/ 入库共享；其余 AI 工具目录一律不入库。
+# 避免各类 AI 工具的运行产物误入版本库。
+.claude/settings.local.json
+.agents/
+.antigravity/
+.cloudstudio
+.codex/
+.hermes/
+.qoder/
 .workbuddy/

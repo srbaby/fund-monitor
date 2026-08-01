@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Read(//Users/srbaby/**)",
-      "Bash(find / -maxdepth 3 -iname \"*0号*\")"
-    ]
-  }
-}
