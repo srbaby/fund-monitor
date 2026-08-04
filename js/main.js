@@ -28,15 +28,18 @@ UI_updateIndices();
 updateClock();
 setInterval(updateClock, 1000);
 
-syncCloud("pull").then((ok) => {
-  // pull 成功时 syncCloud 内部已调用 refreshData，无需重复
-  if (!ok) refreshData();
+// 冷启动三条链在这里同时出发、互不等待，谁先到货谁先画：卡片不再排在云端配置之后，
+// 首屏因此只受官方净值那一次往返制约。**这五行必须留在同一个同步 tick 内**——
+// 下面三处读的是同一份 gist 文档，data.js 的 _readGistDoc 只合并「在飞中」的请求；
+// 谁把某一处挪进 .then/setTimeout，冷启动就会悄悄退回 4 次全量下载，且没有测试会红。
+fetchIndices(); // 内部同时把沪深300快照写入 QQIndex，供旁路PE引擎锚定
+refreshData();
+syncCloud("pull");
+pullPeEngine();
+{
   const { id, token } = loadGistConfig();
   if (id && token) _verifyCloudConfig(id, token);
-});
-pullPeEngine();
-// 指数与旁路PE快照同属一次网关调用，fetchIndices 内部已写入 QQIndex
-fetchIndices();
+}
 
 setInterval(() => {
   if (!document.hidden) {

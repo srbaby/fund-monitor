@@ -27,7 +27,8 @@ function toggleRefreshBtn(isFetching) {
 }
 
 // ---- 数据刷新调度 ----
-let _isFetchingData = false;
+let _refreshInflight = null;
+let _refreshQueued = null;
 
 function rebuildSortable() {
   if (typeof Sortable === "undefined") return; // CDN 未就绪/加载失败时静默降级，不拖累看板可用性
@@ -81,9 +82,31 @@ function reapplyProxyEstimates() {
   );
 }
 
-async function refreshData(force = false) {
-  if (_isFetchingData) return;
-  _isFetchingData = true;
+// 已有一轮在飞时不丢弃调用，而是排队一次跟随刷新：云端配置可能在本轮刷新期间
+// 换掉基金列表，那次重算不能被去重吃掉。官方净值有 30 秒节流缓存，跟随刷新通常
+// 不发新请求，只是按新列表重算重画。
+function refreshData(force = false) {
+  if (_refreshInflight) {
+    if (!_refreshQueued) {
+      // catch 不可省：在飞那轮一旦抛错（渲染层异常即会），裸 .then 的回调不执行，
+      // _refreshQueued 会永远停在这个已拒绝的 promise 上——此后 !_refreshQueued
+      // 恒假，整个会话再也排不进跟随刷新，且把旧的拒绝抛给 syncCloud("pull")。
+      _refreshQueued = _refreshInflight
+        .catch(() => {})
+        .then(() => {
+          _refreshQueued = null;
+          return refreshData(force);
+        });
+    }
+    return _refreshQueued;
+  }
+  _refreshInflight = _doRefreshData(force).finally(() => {
+    _refreshInflight = null;
+  });
+  return _refreshInflight;
+}
+
+async function _doRefreshData(force = false) {
   toggleRefreshBtn(true);
 
   try {
@@ -117,7 +140,6 @@ async function refreshData(force = false) {
 
     if (funds.length > 0) rebuildSortable();
   } finally {
-    _isFetchingData = false;
     toggleRefreshBtn(false);
   }
 }
@@ -383,10 +405,8 @@ async function _verifyCloudConfig(gid, token) {
   setCloudStatus({ count, ok: false });
   if (count < 2) return;
   try {
-    const res = await fetch(`https://api.github.com/gists/${gid}`, {
-      headers: { Authorization: `token ${token}` },
-    });
-    setCloudStatus({ count, ok: res.ok });
+    await _readGistDoc(gid, token);
+    setCloudStatus({ count, ok: true });
   } catch {
     setCloudStatus({ count, ok: false });
   }

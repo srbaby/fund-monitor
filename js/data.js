@@ -357,12 +357,30 @@ function getNavByCode(code) {
   return null;
 }
 
-async function _cloudReadFile(gistId, token, filename) {
-  try {
+// 冷启动同一 tick 会有 4 处要读同一份 gist（PE 档位 / 配置 / PE 引擎 / 连通性校验），
+// 而 gist 接口一次就返回整份文档（含数千点的 peSorted）。这里只合并在飞中的请求：
+// 不引入 TTL 缓存，手动拉取因而永远拿到最新内容，不产生任何陈旧风险。
+let _gistDocInflight = null; // { key, promise }
+function _readGistDoc(gistId, token) {
+  const key = `${gistId}\n${token}`;
+  if (_gistDocInflight?.key === key) return _gistDocInflight.promise;
+
+  const promise = (async () => {
     const res = await fetch(`https://api.github.com/gists/${gistId}`, {
       headers: { Authorization: `token ${token}` },
     });
-    const data = await res.json();
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return res.json();
+  })().finally(() => {
+    if (_gistDocInflight?.promise === promise) _gistDocInflight = null;
+  });
+  _gistDocInflight = { key, promise };
+  return promise;
+}
+
+async function _cloudReadFile(gistId, token, filename) {
+  try {
+    const data = await _readGistDoc(gistId, token);
     return JSON.parse(data.files[filename].content);
   } catch (e) {
     console.error("Cloud Pull Failed", filename, e);
