@@ -34,6 +34,9 @@
         <link rel="manifest" href="manifest.webmanifest" />
         <link rel="stylesheet" href="css/style.css?v=20260703-depth" />
 
+        <!-- 冷启动就把官方净值和指数两个跨域连接的 DNS+TLS 提前做掉（移动端省 100~300ms）。
+             **crossorigin 必须带**：两者都是 CORS 请求，不带则预建的是另一种连接、复用不上，
+             等于白加一次握手。api.github.com 不在首屏关键路径上，只做 DNS 预解析。 -->
         <link rel="preconnect" href="https://fund-api.bailuzun.com" crossorigin />
         <link rel="preconnect" href="https://qt.gtimg.cn" crossorigin />
         <link rel="dns-prefetch" href="https://api.github.com" />
