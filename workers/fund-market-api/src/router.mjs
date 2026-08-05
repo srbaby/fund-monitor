@@ -70,6 +70,89 @@ function makePayload(kind, status, data, quoteAt) {
   return { ok: status !== "unavailable", status, source, sourceLabel, quoteAt: quoteAt || null, data: data || [] };
 }
 
+// ── 官方净值读端点（2026-08-05 起以 nav:funds 为准）──
+// 采集器现在按「每只基金两行、行的身份是净值日期（北京时间）」存放，
+// 见 workers/fund-nav-collector/src/index.js 顶部的存储模型说明。
+// 这里只负责把它照原样铺成看板要的形状：**响应字段一个都不许变**，前端不动。
+//
+// 下面 compactRecord / findNavBefore / readNavWindow 那一套是旧的按日期整份记录，
+// 保留为过渡兜底：nav:funds 还没写出来时（首次部署、KV 未回填）仍能出数，
+// 不让看板在切换那一刻空一次（红线 #3）。等 nav:funds 稳定跑满一轮后可以删。
+const NAV_KEY = "nav:funds";
+const LIVE_SOURCES = new Set(["eastmoney", "tencent"]);
+
+function navRows(entry) {
+  return (Array.isArray(entry?.rows) ? entry.rows : []).filter(
+    (row) => /^\d{4}-\d{2}-\d{2}$/.test(row?.date || "") && row.nav > 0,
+  );
+}
+
+async function readNavState(env) {
+  const raw = await env.NAV.get(NAV_KEY, "json");
+  const funds = {};
+  for (const [code, entry] of Object.entries(raw?.funds || {})) {
+    const rows = navRows(entry);
+    if (rows.length) funds[code] = { name: entry?.name || null, rows };
+  }
+  return Object.keys(funds).length ? { updatedAt: raw?.updatedAt || null, funds } : null;
+}
+
+// 「谁先抢到」按 gotAt（真实抓取时刻）在实时源之间评选。补种行（src:"history"）的
+// at 是净值日期 00:00:00，让它参选会永远"最早"，把标签变成谎话。
+function electNavFirst(state, date) {
+  let winner = null;
+  for (const entry of Object.values(state.funds)) {
+    const row = entry.rows[0];
+    if (!row || row.date !== date || !LIVE_SOURCES.has(row.src)) continue;
+    const key = row.gotAt || row.at;
+    if (!winner || key < winner.key) winner = { key, src: row.src };
+  }
+  return winner?.src || null;
+}
+
+function buildNavPayload(state, today) {
+  let date = null;
+  let previousDate = null;
+  for (const entry of Object.values(state.funds)) {
+    const [row, previous] = entry.rows;
+    if (row?.date && (!date || row.date > date)) date = row.date;
+    if (previous?.date && (!previousDate || previous.date > previousDate)) previousDate = previous.date;
+  }
+  date = date || today;
+
+  const first = electNavFirst(state, date);
+  const funds = {};
+  let count = 0;
+  let firstCount = 0;
+
+  for (const [code, entry] of Object.entries(state.funds)) {
+    const [row, previous] = entry.rows;
+    if (!row) continue;
+    if (row.date === date) {
+      count += 1;
+      if (first && row.src === first) firstCount += 1;
+    }
+    const previousNav = previous?.nav > 0 ? previous.nav : null;
+    funds[code] = {
+      nav: row.nav,
+      // 百分比优先由相邻两次官方净值派生；两行不全时退回上游自报的官方涨跌幅。
+      // 无论哪种，收益金额都不读它（红线 #1）。
+      pct:
+        previousNav == null
+          ? (Number.isFinite(row.pct) ? row.pct : null)
+          : ((row.nav - previousNav) / previousNav) * 100,
+      name: entry.name || null,
+      src: row.src,
+      at: row.at,
+      previousNav,
+      previousDate: previousNav == null ? null : previous.date,
+      previousPct: previousNav == null || !Number.isFinite(previous.pct) ? null : previous.pct,
+    };
+  }
+
+  return { ok: true, date, previousDate, first, firstCount, count, updatedAt: state.updatedAt || null, funds };
+}
+
 function compactRecord(record) {
   if (!record?.date || !record.funds) return null;
   return record;
@@ -170,9 +253,14 @@ export async function handleRequest(request, env = {}, context, dependencies = {
   // 大陆常年不可达。于是 Worker 只写、网关只读，KV 是两者唯一的交接点。
   if (url.pathname === "/v1/nav/today") {
     if (!env?.NAV) return response({ ok: false, error: "nav_kv_unbound" }, 503);
+    // 北京日期，与采集器同口径（后台不碰运行环境本机时区）
     const today = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
-    // KV 对外是两组官方事实：nav:today（最新已公布净值日）与 nav:previous。
-    // nav:{date}/nav:latest 只作迁移兼容；前端不再用百分比或估算缓存反推基准。
+
+    // 主路径：每只基金两行，谁有数据谁就在，缺谁都不影响别人。
+    const state = await readNavState(env);
+    if (state) return response(buildNavPayload(state, today));
+
+    // 过渡兜底：旧的按日期整份记录。nav:funds 写出来之后这段自然不再命中。
     const { current: record, previous: previousRecord } = await readNavWindow(env, today);
     if (!record) {
       return response({

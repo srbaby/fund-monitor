@@ -94,7 +94,7 @@ Cloudflare zone，不能依赖 zone 级 WAF 或限流，因此 Host 收口必须
 node --test workers/fund-market-api/test/gateway.test.mjs
 ```
 
-当前测试共 19 项，覆盖 Host/诊断权限、主备完整切换、LKG、官方净值窗口和已移除估值端点。
+当前测试共 22 项，覆盖 Host/诊断权限、主备完整切换、LKG、官方净值两行窗口（含旧模型兜底）和已移除估值端点。
 
 线上只读验收可手动运行 GitHub Actions 的 `Market API smoke`。它检查核心指数、隐藏因子
 可用情况、官方净值 KV 形状及兼容端点，不再调用已移除的估值接口。

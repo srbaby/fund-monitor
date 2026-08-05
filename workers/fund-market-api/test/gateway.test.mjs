@@ -326,6 +326,97 @@ test("latest never overwrites a fund today's record already booked", async () =>
   assert.equal(body.funds["003949"].nav, 1.2369, "今天真采到的值不能被 latest 覆盖");
 });
 
+// ---- nav:funds：每只基金两行，行的身份是净值日期（2026-08-05 起的主路径）----
+
+const NAV_YESTERDAY = new Date(Date.now() + 8 * 3_600_000 - 86_400_000)
+  .toISOString()
+  .slice(0, 10);
+
+function navFundsKv(funds) {
+  const { kv } = memoryKv({
+    "nav:funds": JSON.stringify({ updatedAt: `${NAV_TODAY} 21:04:55`, funds }),
+    // 旧的整份记录故意也留着：主路径必须赢，兜底那段不该被命中
+    "nav:latest": JSON.stringify({
+      date: "2026-01-01",
+      first: "tencent",
+      funds: { "999999": { nav: 9.9, pct: 0, src: "tencent", at: "2026-01-01 20:00:00" } },
+    }),
+  });
+  return kv;
+}
+
+async function navBody(kv) {
+  return (await handleRequest(new Request(NAV_URL), { NAV: kv }, null, {
+    fetch: async () => { throw new Error("upstream must not run"); },
+  })).json();
+}
+
+test("nav endpoint keeps serving a fund that has no NAV today", async () => {
+  // 2026-08-05 晚间事故的回归线：别的基金已出今天净值，这一只还没出，
+  // 它必须照常带着自己的两行出现，而不是整只从响应里消失。
+  const body = await navBody(
+    navFundsKv({
+      "003949": {
+        name: "XQ",
+        rows: [
+          { date: NAV_TODAY, nav: 1.2376, pct: 0.01, src: "eastmoney", at: `${NAV_TODAY} 19:56:55`, gotAt: `${NAV_TODAY} 19:56:55` },
+          { date: NAV_YESTERDAY, nav: 1.2375, pct: 0.01, src: "eastmoney", at: `${NAV_YESTERDAY} 19:58:00`, gotAt: `${NAV_YESTERDAY} 19:58:00` },
+        ],
+      },
+      "007044": {
+        name: "BD",
+        rows: [
+          { date: NAV_YESTERDAY, nav: 1.8268, pct: 1.91, src: "history", at: `${NAV_YESTERDAY} 00:00:00`, gotAt: `${NAV_TODAY} 15:20:00` },
+          { date: "2026-08-03", nav: 1.7925, pct: -0.93, src: "history", at: "2026-08-03 00:00:00", gotAt: `${NAV_TODAY} 15:20:00` },
+        ],
+      },
+    }),
+  );
+  assert.equal(body.date, NAV_TODAY);
+  assert.equal(body.count, 1, "只有今天真出了净值的那只计入当日只数");
+  assert.equal(body.funds["007044"].nav, 1.8268, "还没出净值的基金不许消失");
+  assert.equal(body.funds["007044"].previousNav, 1.7925);
+  assert.equal(
+    body.funds["007044"].at.slice(0, 10),
+    NAV_YESTERDAY,
+    "时间戳日期必须是净值自己的日期，前端据它判旧数据",
+  );
+});
+
+test("nav endpoint never lets a seeded row claim the winner badge", async () => {
+  const body = await navBody(
+    navFundsKv({
+      "003949": {
+        name: "XQ",
+        rows: [
+          { date: NAV_TODAY, nav: 1.2376, pct: 0.01, src: "tencent", at: `${NAV_TODAY} 19:56:55`, gotAt: `${NAV_TODAY} 19:56:55` },
+        ],
+      },
+      "007044": {
+        name: "BD",
+        rows: [
+          { date: NAV_TODAY, nav: 1.8556, pct: 1.58, src: "history", at: `${NAV_TODAY} 00:00:00`, gotAt: `${NAV_TODAY} 15:20:00` },
+        ],
+      },
+    }),
+  );
+  assert.equal(body.first, "tencent", "赢家只在实时源之间评选");
+  assert.equal(body.firstCount, 1, "补种的那只不算谁抢到的");
+  assert.equal(body.count, 2);
+});
+
+test("nav:funds wins over the legacy records whenever it exists", async () => {
+  const body = await navBody(
+    navFundsKv({
+      "003949": {
+        name: "XQ",
+        rows: [{ date: NAV_TODAY, nav: 1.2376, pct: 0.01, src: "eastmoney", at: `${NAV_TODAY} 19:56:55`, gotAt: `${NAV_TODAY} 19:56:55` }],
+      },
+    }),
+  );
+  assert.deepEqual(Object.keys(body.funds), ["003949"], "旧记录里的僵尸不该再冒出来");
+});
+
 test("nav endpoint derives each fund percentage from its own previous NAV", async () => {
   const { kv } = memoryKv({
     [`nav:${NAV_TODAY}`]: JSON.stringify({
