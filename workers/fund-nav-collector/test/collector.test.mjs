@@ -15,7 +15,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { collect } from "../src/index.js";
+import worker, { collect } from "../src/index.js";
 
 const TODAY = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
 const YESTERDAY = new Date(Date.now() + 8 * 3_600_000 - 86_400_000)
@@ -24,13 +24,18 @@ const YESTERDAY = new Date(Date.now() + 8 * 3_600_000 - 86_400_000)
 
 function memoryKv(seed = {}) {
   const store = new Map(Object.entries(seed));
+  const writes = [];
   return {
     kv: {
       get: async (key) => (store.has(key) ? JSON.parse(store.get(key)) : null),
-      put: async (key, value) => void store.set(key, value),
+      put: async (key, value) => {
+        writes.push(key);
+        store.set(key, value);
+      },
       delete: async (key) => void store.delete(key),
     },
     store,
+    writes,
   };
 }
 
@@ -223,6 +228,210 @@ test("a single live source carries the day when the other returns stale data", a
   const record = JSON.parse(store.get(`nav:${TODAY}`));
   assert.equal(record.funds["003949"].src, "tencent");
   assert.equal(record.first, "tencent");
+});
+
+// ---- 历史记录回填：只补日期相符的最近一条，不改变当日竞速 ----
+
+test("a stale upstream NAV backfills the adjacent historical record", async () => {
+  const historical = {
+    date: YESTERDAY,
+    first: "tencent",
+    updatedAt: `${YESTERDAY} 20:00:00`,
+    funds: {
+      "003949": { nav: 1.0, pct: null, src: "tencent", at: `${YESTERDAY} 19:41:12` },
+    },
+  };
+  const { kv, store } = memoryKv({
+    [`nav:${YESTERDAY}`]: JSON.stringify(historical),
+    "nav:today": JSON.stringify(historical),
+    "nav:latest": JSON.stringify(historical),
+  });
+  const restore = stubUpstreams({
+    em: eastmoneyBody([["007044", 1.8268, 0.5, YESTERDAY]]),
+    tx: tencentBody([]),
+  });
+  try {
+    const result = await collect(envWith(kv, "003949,007044"));
+    assert.equal(result.backfilled, 1);
+  } finally {
+    restore();
+  }
+
+  const saved = JSON.parse(store.get(`nav:${YESTERDAY}`));
+  assert.equal(saved.funds["007044"].nav, 1.8268);
+  assert.equal(saved.funds["007044"].backfilled, true);
+  assert.equal(saved.funds["007044"].at, null);
+  assert.equal(saved.first, "tencent", "回填不得重算历史记录的 first");
+  assert.deepEqual(JSON.parse(store.get("nav:today")).funds["007044"], saved.funds["007044"]);
+
+  const body = await worker.fetch(new Request("https://collector.test/v1/nav/today"), { NAV: kv });
+  assert.equal((await body.json()).firstCount, 1, "采集器调试端点不应统计回填条目");
+});
+
+test("a NAV for another date does not backfill the historical record", async () => {
+  const historical = {
+    date: YESTERDAY,
+    first: "tencent",
+    funds: {
+      "003949": { nav: 1.0, pct: null, src: "tencent", at: `${YESTERDAY} 19:41:12` },
+    },
+  };
+  const { kv, store, writes } = memoryKv({
+    [`nav:${YESTERDAY}`]: JSON.stringify(historical),
+    "nav:today": JSON.stringify(historical),
+    "nav:latest": JSON.stringify(historical),
+  });
+  const before = [...store.entries()];
+  const restore = stubUpstreams({
+    em: eastmoneyBody([["007044", 1.7, 0.5, "2026-08-03"]]),
+    tx: tencentBody([]),
+  });
+  try {
+    const result = await collect(envWith(kv, "007044"));
+    assert.equal(result.backfilled, 0);
+  } finally {
+    restore();
+  }
+  assert.deepEqual([...store.entries()], before);
+  assert.deepEqual(writes, [], "日期不符时不得写 KV");
+});
+
+test("an existing historical entry is never overwritten by backfill", async () => {
+  const existing = { nav: 1.7, pct: null, src: "tencent", at: `${YESTERDAY} 19:41:12` };
+  const historical = {
+    date: YESTERDAY,
+    first: "tencent",
+    funds: { "007044": existing },
+  };
+  const { kv, store, writes } = memoryKv({
+    [`nav:${YESTERDAY}`]: JSON.stringify(historical),
+    "nav:today": JSON.stringify(historical),
+    "nav:latest": JSON.stringify(historical),
+  });
+  const restore = stubUpstreams({
+    em: eastmoneyBody([["007044", 1.8268, 0.5, YESTERDAY]]),
+    tx: tencentBody([]),
+  });
+  try {
+    const result = await collect(envWith(kv, "007044"));
+    assert.equal(result.backfilled, 0);
+  } finally {
+    restore();
+  }
+  assert.deepEqual(JSON.parse(store.get(`nav:${YESTERDAY}`)).funds["007044"], existing);
+  assert.deepEqual(writes, [], "没有缺口时不得为回填写 KV");
+});
+
+test("backfill never touches an existing today record", async () => {
+  const todayRecord = {
+    date: TODAY,
+    first: "tencent",
+    updatedAt: `${TODAY} 20:00:00`,
+    funds: {
+      "003949": { nav: 1.1, pct: null, src: "tencent", at: `${TODAY} 19:41:12` },
+    },
+  };
+  const historical = {
+    date: YESTERDAY,
+    first: "eastmoney",
+    funds: {
+      "003949": { nav: 1.0, pct: null, src: "eastmoney", at: `${YESTERDAY} 19:41:12` },
+    },
+  };
+  const { kv, store } = memoryKv({
+    [`nav:${TODAY}`]: JSON.stringify(todayRecord),
+    "nav:today": JSON.stringify(todayRecord),
+    "nav:previous": JSON.stringify(historical),
+    "nav:latest": JSON.stringify(todayRecord),
+  });
+  const before = JSON.stringify(todayRecord);
+  const restore = stubUpstreams({
+    em: eastmoneyBody([["007044", 1.8268, 0.5, YESTERDAY]]),
+    tx: tencentBody([]),
+  });
+  try {
+    const result = await collect(envWith(kv, "003949,007044"));
+    assert.equal(result.backfilled, 1);
+  } finally {
+    restore();
+  }
+  assert.equal(store.get(`nav:${TODAY}`), before, "回填不得改写当日记录");
+  assert.equal(JSON.parse(store.get("nav:previous")).funds["007044"].nav, 1.8268);
+});
+
+test("a complete current day still early-exits with a historical gap", async () => {
+  const current = {
+    date: TODAY,
+    first: "tencent",
+    funds: {
+      "003949": { nav: 1.1, pct: null, src: "tencent", at: `${TODAY} 19:41:12` },
+      "007044": { nav: 1.8268, pct: null, src: "eastmoney", at: `${TODAY} 19:42:12` },
+    },
+  };
+  const previous = {
+    date: YESTERDAY,
+    first: "tencent",
+    funds: {
+      "003949": { nav: 1.0, pct: null, src: "tencent", at: `${YESTERDAY} 19:41:12` },
+    },
+  };
+  const { kv, writes } = memoryKv({
+    [`nav:${TODAY}`]: JSON.stringify(current),
+    "nav:today": JSON.stringify(current),
+    "nav:previous": JSON.stringify(previous),
+    "nav:latest": JSON.stringify(current),
+  });
+  const touched = [];
+  const restore = stubUpstreams({ em: {}, tx: "", onFetch: (href) => touched.push(href) });
+  let result;
+  try {
+    result = await collect(envWith(kv, "003949,007044"));
+  } finally {
+    restore();
+  }
+  assert.equal(result.status, "complete");
+  assert.deepEqual(touched, [], "历史缺口不得关闭完整日早退");
+  assert.deepEqual(writes, [], "完整日早退不得写 KV");
+});
+
+test("backfill refreshes the previous pointer when the stored today record is empty", async () => {
+  const currentPointer = {
+    date: TODAY,
+    first: "tencent",
+    funds: {
+      "003949": { nav: 1.1, pct: null, src: "tencent", at: `${TODAY} 19:41:12` },
+    },
+  };
+  const emptyToday = { date: TODAY, first: null, funds: {} };
+  const previous = {
+    date: YESTERDAY,
+    first: "eastmoney",
+    funds: {
+      "003949": { nav: 1.0, pct: null, src: "eastmoney", at: `${YESTERDAY} 19:41:12` },
+    },
+  };
+  const { kv, store } = memoryKv({
+    [`nav:${TODAY}`]: JSON.stringify(emptyToday),
+    "nav:today": JSON.stringify(currentPointer),
+    "nav:previous": JSON.stringify(previous),
+    "nav:latest": JSON.stringify(currentPointer),
+  });
+  const restore = stubUpstreams({
+    em: eastmoneyBody([["007044", 1.8268, 0.5, YESTERDAY]]),
+    tx: tencentBody([]),
+  });
+  try {
+    const result = await collect(envWith(kv, "003949,007044"));
+    assert.equal(result.backfilled, 1);
+  } finally {
+    restore();
+  }
+
+  assert.equal(JSON.parse(store.get("nav:today")).date, TODAY, "current 指针不得被旧日期覆盖");
+  assert.equal(JSON.parse(store.get("nav:previous")).funds["007044"].nav, 1.8268);
+  const body = await worker.fetch(new Request("https://collector.test/v1/nav/today"), { NAV: kv });
+  const payload = await body.json();
+  assert.equal(payload.funds["007044"].nav, 1.8268, "回填条目必须从读端点可见");
 });
 
 // ---- 先到先得：写入不可变 ----

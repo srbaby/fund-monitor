@@ -211,6 +211,7 @@ test("nav endpoint counts only the winner's claims", async () => {
       "003949": { nav: 1.2362, pct: 0.01, src: "tencent", at: `${NAV_TODAY} 19:41:12` },
       "160622": { nav: 1.1472, pct: 0.12, src: "tencent", at: `${NAV_TODAY} 19:52:30` },
       "110027": { nav: 2.3278, pct: 1.7, src: "eastmoney", at: `${NAV_TODAY} 20:03:55` },
+      "007044": { nav: 1.8268, pct: null, src: "tencent", at: null, backfilled: true },
     },
   });
   const body = await (await handleRequest(new Request(NAV_URL), { NAV: kv }, null, {
@@ -219,7 +220,7 @@ test("nav endpoint counts only the winner's claims", async () => {
   assert.equal(body.ok, true);
   assert.equal(body.first, "tencent");
   assert.equal(body.firstCount, 2, "腾讯抢到 2 只，标签应显示「腾讯 2」");
-  assert.equal(body.count, 3);
+  assert.equal(body.count, 4);
 });
 
 test("nav endpoint returns an empty day rather than inventing a winner", async () => {

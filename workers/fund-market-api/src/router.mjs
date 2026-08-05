@@ -188,7 +188,7 @@ export async function handleRequest(request, env = {}, context, dependencies = {
     }
     const first = record.first || null;
     const firstCount = first
-      ? Object.values(record.funds || {}).filter((item) => item.src === first).length
+      ? Object.values(record.funds || {}).filter((item) => !item.backfilled && item.src === first).length
       : 0;
     const count = Object.keys(record.funds || {}).length;
 

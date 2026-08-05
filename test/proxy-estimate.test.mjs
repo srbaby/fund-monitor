@@ -13,8 +13,8 @@ for (const file of ["js/config.js", "js/engine.js"]) {
   });
 }
 
-const { applyProxyEstimates, calcFundProfit, getBenchmarkProxyPct } = vm.runInContext(
-  "({ applyProxyEstimates, calcFundProfit, getBenchmarkProxyPct })",
+const { applyProxyEstimates, calcFundProfit, getBenchmarkProxyPct, BENCHMARK_PROXY } = vm.runInContext(
+  "({ applyProxyEstimates, calcFundProfit, getBenchmarkProxyPct, BENCHMARK_PROXY })",
   context,
 );
 
@@ -69,7 +69,9 @@ test("a missing growth leg triggers the full 110027 fallback", () => {
 });
 
 test("unchanged funds retain their original proxy legs", () => {
+  assert.deepEqual(BENCHMARK_PROXY["007044"], BENCHMARK_PROXY["007045"]);
   assert.equal(getBenchmarkProxyPct("007045", 100, indices).estPct, 1);
+  assert.equal(getBenchmarkProxyPct("007044", 100, indices).estPct, 1);
   assert.equal(getBenchmarkProxyPct("007413", 100, indices).estPct, 1.5);
 });
 

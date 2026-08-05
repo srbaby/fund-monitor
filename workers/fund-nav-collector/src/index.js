@@ -96,6 +96,33 @@ function attachPreviousNav(code, item, previousRecord) {
   };
 }
 
+function historicalTarget(current, previous, today) {
+  if (current?.date && current.date < today) {
+    return { record: current, isCurrent: true };
+  }
+  if (previous?.date && previous.date < today) {
+    return { record: previous, isCurrent: false };
+  }
+  return null;
+}
+
+function pickOfficial(emRes, txRes, code, expectedDate) {
+  const fromEm = emRes?.map.get(code);
+  const fromTx = txRes?.map.get(code);
+  const emOk = fromEm?.date === expectedDate;
+  const txOk = fromTx?.date === expectedDate;
+  if (!emOk && !txOk) return null;
+
+  // 两源都有同一日期的数据时按完成时间选先到的；平局归东财。
+  const useEm = emOk && (!txOk || emRes.doneAt <= txRes.doneAt);
+  const picked = useEm ? fromEm : fromTx;
+  return {
+    ...picked,
+    src: useEm ? "eastmoney" : "tencent",
+    at: bjStamp(useEm ? emRes.doneAt : txRes.doneAt),
+  };
+}
+
 // 上游抓取使用 cache-busting 参数 + cacheTtl:0：
 // 部分上游前面挂第三方 CDN，会按出口 IP 把响应缓存 40+ 分钟不更新。
 async function fetchUpstream(url) {
@@ -256,6 +283,13 @@ async function collect(env) {
   const { codes, source: codesSource, error: codesError } = await loadCodes(env);
   if (!codes.length) return { status: "no-codes", codesSource, codesError };
 
+  // 当天记录不存在或已部分落地时，current/previous 中至多有一条紧邻的历史记录。
+  // 回填只针对它，不追溯更早日期，也不另发上游请求。
+  const backfillTarget = historicalTarget(current, previous, today);
+  const needsBackfill = !!backfillTarget && codes.some(
+    (code) => !backfillTarget.record.funds[code],
+  );
+
   // 僵尸清理：基金已从看板删除，KV 里那条就该走。**必须在早退判断之前**——
   // 放后面的话，当日一旦 complete 就再没有跳会走到清理，僵尸能赖到记录过期。
   // 不清的代价不只是数据脏：端点的 count / firstCount 数的是 record.funds，
@@ -280,8 +314,11 @@ async function collect(env) {
   const complete = codes.every((code) => record.funds[code]);
 
   let added = 0;
+  let backfilled = 0;
   // 上游诊断，只在真正打了上游的那些跳里有意义；早退跳保持零值
   let diag = { emSize: 0, txSize: 0, emError: null, txError: null };
+  // 历史回填只搭尚未到齐的采集跳，不能因为历史缺口单独唤醒上游。
+  // 否则某只基金永远没有相符日期时，完整日会永久失去早退保护。
   if (!complete) {
     // 真竞争：两源谁先返回当日数据就用谁。
     // per-fund at 反映实际抢到时刻（毫秒级），跨跳仍先到先得、写入不可变。
@@ -297,21 +334,31 @@ async function collect(env) {
       emError: em.status === "rejected" ? String(em.reason) : null,
       txError: tx.status === "rejected" ? String(tx.reason) : null,
     };
+    // 先回填历史记录。这样同一跳随后采到当日值时，pct 仍可基于刚补齐的官方基准派生。
+    // 回填条目没有“当晚抢到时刻”，不参与 first 的既有结论。
+    if (needsBackfill) {
+      for (const code of codes) {
+        if (backfillTarget.record.funds[code]) continue;
+        const picked = pickOfficial(emRes, txRes, code, backfillTarget.record.date);
+        if (!picked) continue;
+        backfillTarget.record.funds[code] = {
+          nav: picked.nav,
+          pct: null,
+          name: picked.name,
+          src: picked.src,
+          at: null,
+          backfilled: true,
+        };
+        backfilled += 1;
+      }
+    }
+
     for (const code of codes) {
       if (record.funds[code]) continue; // 先到先得：已记账的绝不覆盖，保证 at/src 不可变
-      const fromEm = emRes?.map.get(code);
-      const fromTx = txRes?.map.get(code);
-      const emOk = fromEm?.date === today;
-      const txOk = fromTx?.date === today;
+      const picked = pickOfficial(emRes, txRes, code, today);
       // 只接受**当日**净值。原前端 bug 的根因正是没判这一条：东财在净值未披露时
       // 返回昨日数据且 size>0，于是整组被采纳，腾讯备源一次都轮不到。
-      if (!emOk && !txOk) continue;
-      // 两源都有当日数据时按完成时间选先到的；只有一方有时用那一方。
-      // 平局（doneAt 相等，毫秒级极少见）归东财，保留主源 tiebreaker。
-      const useEm = emOk && (!txOk || emRes.doneAt <= txRes.doneAt);
-      const picked = useEm
-        ? { ...fromEm, src: "eastmoney", at: bjStamp(emRes.doneAt) }
-        : { ...fromTx, src: "tencent", at: bjStamp(txRes.doneAt) };
+      if (!picked) continue;
       const previousNav = previous?.funds?.[code]?.nav;
       record.funds[code] = {
         nav: picked.nav,
@@ -347,6 +394,15 @@ async function collect(env) {
     await env.NAV.put(key, JSON.stringify(record), { expirationTtl: RECORD_TTL_S });
   }
 
+  if (backfilled) {
+    backfillTarget.record.updatedAt = bjStamp();
+    await env.NAV.put(
+      `nav:${backfillTarget.record.date}`,
+      JSON.stringify(backfillTarget.record),
+      { expirationTtl: RECORD_TTL_S },
+    );
+  }
+
   // 官方净值窗口：KV 对外始终是 nav:previous + nav:today 两组事实。
   // nav:today 是“最新已公布净值日”，不是北京日历当天；新净值真正采到后才滚动。
   //
@@ -355,7 +411,10 @@ async function collect(env) {
     const latest = await env.NAV.get("nav:latest", "json");
     if (previous?.date && previous.date < record.date) {
       const prevPointer = await env.NAV.get("nav:previous", "json");
-      if (dirty || prevPointer?.date !== previous.date) {
+      // 当日有净值时，回填目标必然就是这里的 previous（isCurrent 与否都一样：
+      // isCurrent 时 loadNavWindow 让 previous === current）。所以 backfilled
+      // 一旦为真就得连指针一起刷，否则回填只进日期键，读端点看不见。
+      if (dirty || backfilled || prevPointer?.date !== previous.date) {
         await env.NAV.put("nav:previous", JSON.stringify(previous));
       }
     }
@@ -365,15 +424,26 @@ async function collect(env) {
     if (dirty || latest?.date !== record.date) {
       await env.NAV.put("nav:latest", JSON.stringify(record));
     }
+  } else if (backfilled) {
+    // 指针同步不能依赖当日 entries：基金列表整体替换后，当日空壳记录仍可能存在。
+    // 此时回填目标若是上一窗口，必须单独刷新 nav:previous；若是 current 才刷新两枚 current 指针。
+    const payload = JSON.stringify(backfillTarget.record);
+    if (backfillTarget.isCurrent) {
+      await env.NAV.put("nav:today", payload);
+      await env.NAV.put("nav:latest", payload);
+    } else {
+      await env.NAV.put("nav:previous", payload);
+    }
   }
 
   if (complete) {
-    return { status: "complete", have: codes.length, pruned, codesSource, codesError };
+    return { status: "complete", have: codes.length, pruned, backfilled, codesSource, codesError };
   }
 
   return {
     status: "collected",
     added,
+    backfilled,
     pruned,
     have: entries.length,
     want: codes.length,
@@ -453,7 +523,7 @@ export default {
       }
       const first = record.first || null;
       const firstCount = first
-        ? Object.values(record.funds || {}).filter((item) => item.src === first).length
+        ? Object.values(record.funds || {}).filter((item) => !item.backfilled && item.src === first).length
         : 0;
       const count = Object.keys(record.funds || {}).length;
 
